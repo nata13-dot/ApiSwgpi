@@ -18,9 +18,9 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions
+# Install PHP extensions (using -j2 to reduce memory usage during compilation)
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
+    && docker-php-ext-install -j2 \
     gd \
     zip \
     pdo \
@@ -46,14 +46,18 @@ COPY . .
 # Install PHP dependencies
 RUN composer install --no-interaction --optimize-autoloader --no-dev
 
-# Install npm dependencies with increased memory and retry
+# Install npm dependencies with increased timeouts and reduced parallelism
 RUN npm config set fetch-timeout 600000 \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000 \
-    && npm install --legacy-peer-deps --prefer-offline --no-audit
+    && npm config set maxsockets 1 \
+    && npm install --legacy-peer-deps --prefer-offline --no-audit --no-progress
 
 # Build assets
 RUN npm run build
+
+# Clear npm cache to save space in image
+RUN npm cache clean --force
 
 # Generate application key and clear caches
 RUN cp .env.example .env \
@@ -76,7 +80,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
+    && docker-php-ext-install -j2 \
     gd \
     zip \
     pdo \
@@ -113,18 +117,19 @@ RUN mkdir -p /app/docker && cat > /app/docker/entrypoint.sh << 'EOF'
 #!/bin/bash
 set -e
 
-# Run migrations
-php artisan migrate --force
+# Run migrations (allow to fail on first attempt in case DB isn't ready)
+php artisan migrate --force || true
 
-# Start PHP-FPM
-php-fpm &
+# Start PHP-FPM in background
+php-fpm -D
 
-# Start Nginx
+# Start Nginx in background
 nginx -g "daemon off;" &
 
-# Start Supervisor for queue workers
+# Start Supervisor for queue workers in background
 supervisord -c /etc/supervisor/conf.d/supervisord.conf &
 
+# Wait for all background processes
 wait
 EOF
 
