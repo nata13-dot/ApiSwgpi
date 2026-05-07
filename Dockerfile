@@ -80,31 +80,17 @@ RUN cp .env.example .env \
 # =========================================
 FROM php:8.3-fpm
 
-# Install only runtime dependencies (no -dev packages)
+# Install only runtime tools and minimal dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     nginx \
     supervisor \
-    libpng16 \
-    libjpeg62-turbo \
-    libfreetype6 \
-    libonig5 \
-    libxml2 \
-    libzip5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install only required PHP extensions (no recompilation needed for runtime)
-# Runtime stage needs the compiled extensions from build stage
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j2 \
-    gd \
-    zip \
-    pdo \
-    pdo_mysql \
-    mbstring \
-    xml \
-    bcmath \
-    opcache
+# Copy PHP compiled extensions from build stage
+# This includes all the .so files and PHP configuration
+COPY --from=build /usr/local/lib/php/extensions /usr/local/lib/php/extensions
+COPY --from=build /usr/local/etc/php/conf.d /usr/local/etc/php/conf.d
 
 WORKDIR /app
 
