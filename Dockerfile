@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     nginx \
     supervisor \
+    zlib1g-dev \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
@@ -70,8 +71,13 @@ FROM php:8.3-fpm
 RUN apt-get update && apt-get install -y \
     curl \
     nginx \
-    supervisor \
-    libpng16-16t64 \
+    supervisor \    zlib1g-dev \
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \    libpng16-16t64 \
     libjpeg62-turbo \
     libfreetype6 \
     libonig5 \
