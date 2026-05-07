@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM php:8.3-fpm as build
+FROM php:8.3-fpm AS build
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -67,12 +67,12 @@ RUN apt-get update && apt-get install -y \
     curl \
     nginx \
     supervisor \
-    libpng6 \
+    libpng16-16t64 \
     libjpeg62-turbo \
     libfreetype6 \
     libonig5 \
     libxml2 \
-    libzip4 \
+    libzip5 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
