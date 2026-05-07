@@ -3,7 +3,6 @@ vendor
 .git
 .gitignore
 .env
-.env.example
 storage
 bootstrap/cache
 .DS_Store

@@ -1,7 +1,9 @@
 # =========================================
 # Stage 1: Build (Compilation & Dependencies)
 # =========================================
-FROM php:8.3-fpm AS build
+FROM php:8.4-fpm AS build
+
+ENV COMPOSER_ALLOW_SUPERUSER=1
 
 # Install build tools and development dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -68,6 +70,15 @@ RUN npm run build
 # Clear npm cache to save space
 RUN npm cache clean --force
 
+# Create Laravel writable directories omitted from the Docker context
+RUN mkdir -p \
+    storage/app \
+    storage/framework/cache/data \
+    storage/framework/sessions \
+    storage/framework/views \
+    storage/logs \
+    bootstrap/cache
+
 # Prepare Laravel configuration
 RUN cp .env.example .env \
     && php artisan config:clear \
@@ -78,7 +89,7 @@ RUN cp .env.example .env \
 # =========================================
 # Stage 2: Runtime (Production Image)
 # =========================================
-FROM php:8.3-fpm
+FROM php:8.4-fpm
 
 # Install only runtime tools and minimal dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -98,7 +109,14 @@ WORKDIR /app
 COPY --from=build /app .
 
 # Set proper Laravel permissions
-RUN chown -R www-data:www-data /app \
+RUN mkdir -p \
+    /app/storage/app \
+    /app/storage/framework/cache/data \
+    /app/storage/framework/sessions \
+    /app/storage/framework/views \
+    /app/storage/logs \
+    /app/bootstrap/cache \
+    && chown -R www-data:www-data /app \
     && chmod -R 755 /app \
     && chmod -R 775 /app/storage \
     && chmod -R 775 /app/bootstrap/cache
