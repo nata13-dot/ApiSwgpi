@@ -49,11 +49,24 @@ WORKDIR /app
 # Copy application files
 COPY . .
 
+# Prepare Laravel writable directories omitted from the Docker context
+RUN mkdir -p \
+    storage/app \
+    storage/framework/cache/data \
+    storage/framework/sessions \
+    storage/framework/views \
+    storage/logs \
+    bootstrap/cache \
+    && cp .env.example .env
+
 # Install PHP dependencies
 RUN composer install \
     --no-interaction \
     --optimize-autoloader \
-    --no-dev
+    --no-dev \
+    --no-scripts \
+    && composer dump-autoload --no-scripts --optimize \
+    && php artisan package:discover --ansi
 
 # Configure npm with extended timeouts for Railway environment
 RUN npm config set fetch-timeout 600000 \
@@ -70,21 +83,16 @@ RUN npm run build
 # Clear npm cache to save space
 RUN npm cache clean --force
 
-# Create Laravel writable directories omitted from the Docker context
-RUN mkdir -p \
-    storage/app \
-    storage/framework/cache/data \
-    storage/framework/sessions \
-    storage/framework/views \
-    storage/logs \
-    bootstrap/cache
-
 # Prepare Laravel configuration
-RUN cp .env.example .env \
-    && php artisan config:clear \
-    && php artisan cache:clear \
-    && php artisan route:clear \
-    && php artisan view:clear
+RUN APP_ENV=production \
+    CACHE_STORE=file \
+    SESSION_DRIVER=file \
+    QUEUE_CONNECTION=sync \
+    DB_CONNECTION=sqlite \
+    php artisan config:clear \
+    && APP_ENV=production CACHE_STORE=file SESSION_DRIVER=file QUEUE_CONNECTION=sync DB_CONNECTION=sqlite php artisan cache:clear \
+    && APP_ENV=production CACHE_STORE=file SESSION_DRIVER=file QUEUE_CONNECTION=sync DB_CONNECTION=sqlite php artisan route:clear \
+    && APP_ENV=production CACHE_STORE=file SESSION_DRIVER=file QUEUE_CONNECTION=sync DB_CONNECTION=sqlite php artisan view:clear
 
 # =========================================
 # Stage 2: Runtime (Production Image)
@@ -172,6 +180,6 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8000/up || exit 1
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
