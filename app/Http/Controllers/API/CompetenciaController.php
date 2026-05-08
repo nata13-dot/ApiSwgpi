@@ -11,7 +11,7 @@ class CompetenciaController extends Controller
 {
     public function index()
     {
-        return response()->json(Competencia::where('activo', true)->with('asignatura')->paginate(15));
+        return response()->json(Competencia::with('asignatura')->orderBy('nombre')->paginate(15));
     }
 
     public function store(Request $request)
@@ -19,8 +19,9 @@ class CompetenciaController extends Controller
         try {
             $validated = $request->validate([
                 'nombre' => 'required|string|max:255',
-                'descripcion' => 'nullable|string',
                 'asignatura_id' => 'nullable|exists:asignaturas,id',
+                'fecha_inicio' => 'nullable|date',
+                'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
             ]);
 
             $competencia = Competencia::create($validated);
@@ -48,10 +49,10 @@ class CompetenciaController extends Controller
             }
 
             $validated = $request->validate([
-                'nombre' => 'nullable|string|max:255',
-                'descripcion' => 'nullable|string',
+                'nombre' => 'required|string|max:255',
                 'asignatura_id' => 'nullable|exists:asignaturas,id',
-                'activo' => 'nullable|boolean',
+                'fecha_inicio' => 'nullable|date',
+                'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
             ]);
 
             $competencia->update($validated);

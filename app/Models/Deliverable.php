@@ -17,11 +17,14 @@ class Deliverable extends Model
 
     protected $fillable = [
         'project_id', 'competencia_id', 'nombre', 'descripcion', 'autores',
-        'tipo_documento', 'rama_asociada', 'estado', 'archivo_path', 'submitted_by', 'activo'
+        'tipo_documento', 'rama_asociada', 'estado', 'archivo_path', 'submitted_by', 'activo',
+        'calificacion', 'fecha_calificacion', 'calificado_por'
     ];
 
     protected $casts = [
         'activo' => 'boolean',
+        'calificacion' => 'float',
+        'fecha_calificacion' => 'datetime',
     ];
 
     // RELACIONES
@@ -38,6 +41,11 @@ class Deliverable extends Model
     public function submittedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'submitted_by', 'id');
+    }
+
+    public function calificadoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'calificado_por', 'id');
     }
 
     public function tags(): BelongsToMany

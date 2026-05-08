@@ -10,9 +10,19 @@ use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(User::paginate(15));
+        $query = User::query();
+
+        if ($request->query('status') === 'active') {
+            $query->where('activo', true);
+        }
+
+        if ($request->query('status') === 'inactive') {
+            $query->where('activo', false);
+        }
+
+        return response()->json($query->orderByDesc('activo')->orderBy('nombres')->paginate(15));
     }
 
     public function store(Request $request)

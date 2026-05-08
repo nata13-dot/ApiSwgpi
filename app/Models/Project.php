@@ -16,11 +16,12 @@ class Project extends Model
     public $timestamps = true;
     const UPDATED_AT = null;
 
-    protected $fillable = ['title', 'description', 'created_by', 'activo'];
+    protected $fillable = ['title', 'description', 'created_by', 'activo', 'year', 'file_path', 'authors'];
 
     protected $casts = [
         'activo' => 'boolean',
         'created_at' => 'datetime',
+        'year' => 'integer',
     ];
 
     // RELACIONES
@@ -62,6 +63,46 @@ class Project extends Model
 
     // MÉTODOS
     public function isActive(): bool { return $this->activo === true; }
+    
+    /**
+     * Obtener solo los estudiantes del proyecto (sin rol_asesor)
+     */
+    public function students(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'project_user', 'project_id', 'user_id')
+                    ->whereNull('rol_asesor')
+                    ->withPivot('rol_asesor');
+    }
+    
+    /**
+     * Obtener solo los asesores del proyecto (con rol_asesor)
+     */
+    public function onlyAdvisors(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'project_user', 'project_id', 'user_id')
+                    ->whereNotNull('rol_asesor')
+                    ->withPivot('rol_asesor');
+    }
+    
+    /**
+     * Obtener asesor primario
+     */
+    public function getAsesorPrimario()
+    {
+        return $this->advisors()
+            ->where('rol_asesor', 'primario')
+            ->first();
+    }
+    
+    /**
+     * Obtener asesor secundario
+     */
+    public function getAsesorSecundario()
+    {
+        return $this->advisors()
+            ->where('rol_asesor', 'secundario')
+            ->first();
+    }
     
     public function getProgress(): float
     {

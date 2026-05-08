@@ -5,23 +5,23 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\Asignatura;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class AsignaturaController extends Controller
 {
     public function index()
     {
-        return response()->json(Asignatura::where('activo', true)->paginate(15));
+        return response()->json(Asignatura::orderBy('nombre')->paginate(15));
     }
 
     public function store(Request $request)
     {
         try {
             $validated = $request->validate([
+                'clave' => 'nullable|string|max:50|unique:asignaturas,clave',
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'nullable|string',
-                'numero_creditos' => 'nullable|integer',
-                'codigo' => 'nullable|string|unique:asignaturas',
             ]);
 
             $asignatura = Asignatura::create($validated);
@@ -49,10 +49,9 @@ class AsignaturaController extends Controller
             }
 
             $validated = $request->validate([
-                'nombre' => 'nullable|string|max:255',
+                'clave' => ['nullable', 'string', 'max:50', Rule::unique('asignaturas', 'clave')->ignore($asignatura->id)],
+                'nombre' => 'required|string|max:255',
                 'descripcion' => 'nullable|string',
-                'numero_creditos' => 'nullable|integer',
-                'activo' => 'nullable|boolean',
             ]);
 
             $asignatura->update($validated);

@@ -9,6 +9,7 @@ use App\Http\Controllers\API\RepositoryController;
 use App\Http\Controllers\API\AsignaturaController;
 use App\Http\Controllers\API\CompetenciaController;
 use App\Http\Controllers\API\DocumentTagController;
+use App\Http\Controllers\API\DashboardController;
 
 // ========================
 // AUTENTICACIÓN (sin protección)
@@ -31,6 +32,11 @@ Route::prefix('repositorio')->group(function () {
 // ========================
 Route::middleware('auth:api')->group(function () {
     
+    // Dashboard
+    Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+    Route::get('/dashboard/teacher', [DashboardController::class, 'teacher']);
+    Route::get('/dashboard/student', [DashboardController::class, 'student']);
+
     // Auth
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -56,12 +62,17 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/projects/{id}/advisors', [ProjectController::class, 'addAdvisor']);
     Route::delete('/projects/{projectId}/advisors/{userId}', [ProjectController::class, 'removeAdvisor']);
 
-    // Deliverables (CRUD)
+    // Deliverables (CRUD + Calificación + Upload + Descarga)
     Route::get('/deliverables', [DeliverableController::class, 'index']);
     Route::post('/deliverables', [DeliverableController::class, 'store']);
     Route::get('/deliverables/{id}', [DeliverableController::class, 'show']);
     Route::put('/deliverables/{id}', [DeliverableController::class, 'update']);
     Route::delete('/deliverables/{id}', [DeliverableController::class, 'destroy']);
+    
+    // Endpoints adicionales de entregas
+    Route::post('/deliverables/{id}/calificar', [DeliverableController::class, 'calificar']);
+    Route::post('/deliverables/{id}/upload', [DeliverableController::class, 'upload']);
+    Route::get('/deliverables/{id}/download', [DeliverableController::class, 'download']);
 
     // Asignaturas (solo Admin puede crear/editar)
     Route::get('/asignaturas', [AsignaturaController::class, 'index']);

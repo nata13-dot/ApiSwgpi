@@ -14,10 +14,11 @@ class Competencia extends Model
     protected $table = 'competencias';
     public $timestamps = false;
 
-    protected $fillable = ['nombre', 'descripcion', 'asignatura_id', 'activo'];
+    protected $fillable = ['nombre', 'asignatura_id', 'fecha_inicio', 'fecha_fin'];
 
     protected $casts = [
-        'activo' => 'boolean',
+        'fecha_inicio' => 'date',
+        'fecha_fin' => 'date',
     ];
 
     // RELACIONES
@@ -32,5 +33,5 @@ class Competencia extends Model
     }
 
     // SCOPES
-    public function scopeActivas($query) { return $query->where('activo', true); }
+
 }

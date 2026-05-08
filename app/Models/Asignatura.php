@@ -14,12 +14,8 @@ class Asignatura extends Model
     protected $table = 'asignaturas';
     public $timestamps = false;
 
-    protected $fillable = ['nombre', 'descripcion', 'numero_creditos', 'codigo', 'activo'];
+    protected $fillable = ['clave', 'nombre', 'descripcion'];
 
-    protected $casts = [
-        'activo' => 'boolean',
-        'numero_creditos' => 'integer',
-    ];
 
     // RELACIONES
     public function competencias(): HasMany
@@ -33,5 +29,5 @@ class Asignatura extends Model
     }
 
     // SCOPES
-    public function scopeActivas($query) { return $query->where('activo', true); }
+
 }
