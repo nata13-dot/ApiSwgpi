@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Evaluation extends Model
 {
     protected $fillable = [
-        'project_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
+        'project_id', 'evaluation_room_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
         'estado', 'resultado', 'created_by',
     ];
 
@@ -23,6 +23,11 @@ class Evaluation extends Model
         return $this->belongsTo(Project::class, 'project_id');
     }
 
+    public function room(): BelongsTo
+    {
+        return $this->belongsTo(EvaluationRoom::class, 'evaluation_room_id');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by', 'id');
@@ -31,6 +36,11 @@ class Evaluation extends Model
     public function scores(): HasMany
     {
         return $this->hasMany(EvaluationScore::class, 'evaluation_id');
+    }
+
+    public function attempts(): HasMany
+    {
+        return $this->hasMany(EvaluationAttempt::class, 'evaluation_id');
     }
 
     public function getAverageAttribute(): float

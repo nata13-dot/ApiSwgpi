@@ -45,6 +45,10 @@ Route::middleware('auth:api')->group(function () {
         Route::put('/evaluations/rubric-criteria/{id}', [EvaluationController::class, 'updateCriterion']);
         Route::delete('/evaluations/rubric-criteria/{id}', [EvaluationController::class, 'destroyCriterion']);
         Route::get('/evaluations/projects', [EvaluationController::class, 'projects']);
+        Route::get('/evaluations/rooms', [EvaluationController::class, 'rooms']);
+        Route::post('/evaluations/rooms', [EvaluationController::class, 'storeRoom']);
+        Route::put('/evaluations/rooms/{id}', [EvaluationController::class, 'updateRoom']);
+        Route::delete('/evaluations/rooms/{id}', [EvaluationController::class, 'destroyRoom']);
         Route::get('/evaluations', [EvaluationController::class, 'index']);
         Route::post('/evaluations', [EvaluationController::class, 'store']);
         Route::get('/evaluations/{id}', [EvaluationController::class, 'show']);
@@ -70,6 +74,7 @@ Route::middleware('auth:api')->group(function () {
 
     // Flujo de propuestas
     Route::get('/proposal/student-status', [ProposalWorkflowController::class, 'studentStatus']);
+    Route::get('/student/evaluation-schedule', [EvaluationController::class, 'studentSchedule']);
     Route::get('/proposal/students/search', [ProposalWorkflowController::class, 'searchStudents']);
     Route::get('/proposal/teacher-projects', [ProposalWorkflowController::class, 'teacherProjects']);
     Route::post('/proposal/projects/{id}/review', [ProposalWorkflowController::class, 'review']);
