@@ -34,7 +34,7 @@ class AuthController extends Controller
             return response()->json([
                 'access_token' => $token,
                 'token_type' => 'bearer',
-                'user' => $user->only(['id', 'nombres', 'email', 'perfil_id']),
+                'user' => $user->only(['id', 'nombres', 'apa', 'ama', 'email', 'perfil_id', 'semestre', 'grupo', 'photo_path', 'profile_completed_at']),
             ]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);

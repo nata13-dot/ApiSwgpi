@@ -22,7 +22,7 @@ class User extends Authenticatable implements JWTSubject
 
     protected $fillable = [
         'id', 'nombres', 'apa', 'ama', 'email', 'password', 
-        'curp', 'direccion', 'telefonos', 'perfil_id', 'activo',
+        'curp', 'direccion', 'telefonos', 'perfil_id', 'semestre', 'grupo', 'photo_path', 'profile_completed_at', 'activo',
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -33,6 +33,8 @@ class User extends Authenticatable implements JWTSubject
         'password' => 'hashed',
         'created_at' => 'datetime',
         'perfil_id' => 'integer',
+        'semestre' => 'integer',
+        'profile_completed_at' => 'datetime',
     ];
 
     // JWT SUBJECT METHODS
@@ -54,6 +56,11 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->belongsToMany(Project::class, 'project_user', 'user_id', 'project_id')
                     ->withPivot('rol_asesor');
+    }
+
+    public function teacherGroupAssignments(): HasMany
+    {
+        return $this->hasMany(TeacherGroupAssignment::class, 'teacher_id', 'id');
     }
 
     public function projectsCreated(): HasMany

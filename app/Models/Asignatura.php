@@ -28,6 +28,11 @@ class Asignatura extends Model
         return $this->belongsToMany(Project::class, 'project_asignatura', 'asignatura_id', 'project_id');
     }
 
+    public function subjectGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(SubjectGroup::class, 'subject_group_asignatura', 'asignatura_id', 'subject_group_id');
+    }
+
     // SCOPES
 
 }

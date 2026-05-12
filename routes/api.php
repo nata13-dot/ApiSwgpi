@@ -10,11 +10,17 @@ use App\Http\Controllers\API\AsignaturaController;
 use App\Http\Controllers\API\CompetenciaController;
 use App\Http\Controllers\API\DocumentTagController;
 use App\Http\Controllers\API\DashboardController;
+use App\Http\Controllers\API\EvaluationController;
+use App\Http\Controllers\API\SubjectGroupController;
+use App\Http\Controllers\API\ProfileController;
+use App\Http\Controllers\API\ProposalWorkflowController;
+use App\Http\Controllers\API\SystemSettingController;
 
 // ========================
 // AUTENTICACIÓN (sin protección)
 // ========================
 Route::post('/auth/login', [AuthController::class, 'login']);
+Route::get('/settings/public', [SystemSettingController::class, 'public']);
 
 // ========================
 // RUTAS PÚBLICAS (sin JWT)
@@ -32,6 +38,21 @@ Route::prefix('repositorio')->group(function () {
 // ========================
 Route::middleware('auth:api')->group(function () {
     
+    // Evaluaciones (solo docentes y administradores)
+    Route::middleware('role:admin,teacher')->group(function () {
+        Route::get('/evaluations/criteria', [EvaluationController::class, 'criteria']);
+        Route::post('/evaluations/rubric-criteria', [EvaluationController::class, 'storeCriterion']);
+        Route::put('/evaluations/rubric-criteria/{id}', [EvaluationController::class, 'updateCriterion']);
+        Route::delete('/evaluations/rubric-criteria/{id}', [EvaluationController::class, 'destroyCriterion']);
+        Route::get('/evaluations/projects', [EvaluationController::class, 'projects']);
+        Route::get('/evaluations', [EvaluationController::class, 'index']);
+        Route::post('/evaluations', [EvaluationController::class, 'store']);
+        Route::get('/evaluations/{id}', [EvaluationController::class, 'show']);
+        Route::put('/evaluations/{id}', [EvaluationController::class, 'update']);
+        Route::delete('/evaluations/{id}', [EvaluationController::class, 'destroy']);
+        Route::post('/evaluations/{id}/score', [EvaluationController::class, 'score']);
+    });
+
     // Dashboard
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
     Route::get('/dashboard/teacher', [DashboardController::class, 'teacher']);
@@ -42,8 +63,29 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
 
+    // Perfil propio
+    Route::get('/profile', [ProfileController::class, 'show']);
+    Route::post('/profile', [ProfileController::class, 'update']);
+    Route::post('/profile/complete-initial', [ProfileController::class, 'completeInitial']);
+
+    // Flujo de propuestas
+    Route::get('/proposal/student-status', [ProposalWorkflowController::class, 'studentStatus']);
+    Route::get('/proposal/students/search', [ProposalWorkflowController::class, 'searchStudents']);
+    Route::get('/proposal/teacher-projects', [ProposalWorkflowController::class, 'teacherProjects']);
+    Route::post('/proposal/projects/{id}/review', [ProposalWorkflowController::class, 'review']);
+
     // Users (solo Admin)
     Route::middleware('role:admin')->group(function () {
+        Route::get('/proposal/config', [ProposalWorkflowController::class, 'configIndex']);
+        Route::post('/proposal/windows', [ProposalWorkflowController::class, 'storeWindow']);
+        Route::put('/proposal/windows/{id}', [ProposalWorkflowController::class, 'updateWindow']);
+        Route::delete('/proposal/windows/{id}', [ProposalWorkflowController::class, 'destroyWindow']);
+        Route::post('/proposal/assignments', [ProposalWorkflowController::class, 'storeAssignment']);
+        Route::delete('/proposal/assignments/{id}', [ProposalWorkflowController::class, 'destroyAssignment']);
+        Route::get('/settings', [SystemSettingController::class, 'index']);
+        Route::put('/settings', [SystemSettingController::class, 'update']);
+        Route::get('/settings/semester-preview', [SystemSettingController::class, 'semesterPreview']);
+        Route::post('/settings/apply-semester-change', [SystemSettingController::class, 'applySemesterChange']);
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);
         Route::get('/users/{id}', [UserController::class, 'show']);
@@ -53,7 +95,19 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/users-inactive', [UserController::class, 'getInactive']);
     });
 
+    // Cargas de asignaturas por semestre/grupo
+    Route::get('/subject-groups', [SubjectGroupController::class, 'index']);
+    Route::get('/subject-groups/{id}', [SubjectGroupController::class, 'show']);
+    Route::middleware('role:admin')->group(function () {
+        Route::post('/subject-groups', [SubjectGroupController::class, 'store']);
+        Route::put('/subject-groups/{id}', [SubjectGroupController::class, 'update']);
+        Route::delete('/subject-groups/{id}', [SubjectGroupController::class, 'destroy']);
+        Route::get('/subject-groups/{id}/students', [SubjectGroupController::class, 'students']);
+        Route::post('/subject-groups/{id}/students', [SubjectGroupController::class, 'syncStudents']);
+    });
+
     // Projects (CRUD)
+    Route::get('/my-projects', [ProjectController::class, 'myProjects']);
     Route::get('/projects', [ProjectController::class, 'index']);
     Route::post('/projects', [ProjectController::class, 'store']);
     Route::get('/projects/{id}', [ProjectController::class, 'show']);

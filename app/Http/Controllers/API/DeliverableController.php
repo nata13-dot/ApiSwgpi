@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Deliverable;
 use App\Services\BusinessValidationService;
 use App\Services\FileService;
+use App\Models\SystemSetting;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Exception;
@@ -40,12 +41,12 @@ class DeliverableController extends Controller
         try {
             $validated = $request->validate([
                 'project_id' => 'required|exists:projects,id',
-                'nombre' => 'required|string',
-                'descripcion' => 'nullable|string',
+                'nombre' => 'required|string|max:255',
+                'descripcion' => 'nullable|string|max:5000',
                 'tipo_documento' => 'nullable|in:reporte,video,presentacion,codigo,documento,otro',
-                'rama_asociada' => 'nullable|string',
+                'rama_asociada' => 'nullable|string|max:255',
                 'competencia_id' => 'nullable|exists:competencias,id',
-                'autores' => 'nullable|string',
+                'autores' => 'nullable|string|max:1000',
             ]);
 
             $validated['submitted_by'] = auth('api')->id();
@@ -78,12 +79,12 @@ class DeliverableController extends Controller
             $validated = $request->validate([
                 'project_id' => 'nullable|exists:projects,id',
                 'competencia_id' => 'nullable|exists:competencias,id',
-                'nombre' => 'nullable|string',
-                'descripcion' => 'nullable|string',
+                'nombre' => 'nullable|string|max:255',
+                'descripcion' => 'nullable|string|max:5000',
                 'estado' => 'nullable|in:pendiente,enviado,revisado,aprobado',
-                'autores' => 'nullable|string',
+                'autores' => 'nullable|string|max:1000',
                 'tipo_documento' => 'nullable|in:reporte,video,presentacion,codigo,documento,otro',
-                'rama_asociada' => 'nullable|string',
+                'rama_asociada' => 'nullable|string|max:255',
                 'activo' => 'nullable|boolean',
             ]);
 
@@ -209,8 +210,9 @@ class DeliverableController extends Controller
             }
 
             // Validar que haya archivo
+            $maxFileSizeKb = ((int) SystemSetting::valueFor('max_file_size_mb', 50)) * 1024;
             $request->validate([
-                'archivo' => 'required|file|max:51200',
+                'archivo' => 'required|file|max:' . $maxFileSizeKb,
             ]);
 
             // Guardar archivo

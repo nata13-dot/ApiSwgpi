@@ -18,9 +18,9 @@ class DocumentTagController extends Controller
     {
         try {
             $validated = $request->validate([
-                'nombre' => 'required|string|unique:document_tags',
-                'color' => 'nullable|string|size:7',
-                'descripcion' => 'nullable|string',
+                'nombre' => 'required|string|max:100|unique:document_tags,nombre',
+                'color' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+                'descripcion' => 'nullable|string|max:1000',
             ]);
 
             $tag = DocumentTag::create($validated);
@@ -48,9 +48,9 @@ class DocumentTagController extends Controller
             }
 
             $validated = $request->validate([
-                'nombre' => 'nullable|string|unique:document_tags,nombre,' . $tag->id,
-                'color' => 'nullable|string|size:7',
-                'descripcion' => 'nullable|string',
+                'nombre' => 'nullable|string|max:100|unique:document_tags,nombre,' . $tag->id,
+                'color' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+                'descripcion' => 'nullable|string|max:1000',
                 'activo' => 'nullable|boolean',
             ]);
 

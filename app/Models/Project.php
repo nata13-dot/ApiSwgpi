@@ -16,12 +16,16 @@ class Project extends Model
     public $timestamps = true;
     const UPDATED_AT = null;
 
-    protected $fillable = ['title', 'description', 'created_by', 'activo', 'year', 'file_path', 'authors'];
+    protected $fillable = ['title', 'description', 'created_by', 'activo', 'semestre', 'subject_group_id', 'year', 'file_path', 'authors', 'company_name', 'company_contact_name', 'company_contact_position', 'company_address', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
 
     protected $casts = [
         'activo' => 'boolean',
         'created_at' => 'datetime',
         'year' => 'integer',
+        'semestre' => 'integer',
+        'subject_group_id' => 'integer',
+        'proposal_reviewed_at' => 'datetime',
+        'revision_allowed_until' => 'datetime',
     ];
 
     // RELACIONES
@@ -33,7 +37,18 @@ class Project extends Model
     public function advisors(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'project_user', 'project_id', 'user_id')
+                    ->wherePivotNotNull('rol_asesor')
                     ->withPivot('rol_asesor');
+    }
+
+    public function proposalReviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'proposal_reviewed_by', 'id');
+    }
+
+    public function subjectGroup(): BelongsTo
+    {
+        return $this->belongsTo(SubjectGroup::class, 'subject_group_id');
     }
 
     public function asignaturas(): BelongsToMany
@@ -80,7 +95,7 @@ class Project extends Model
     public function onlyAdvisors(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'project_user', 'project_id', 'user_id')
-                    ->whereNotNull('rol_asesor')
+                    ->wherePivotNotNull('rol_asesor')
                     ->withPivot('rol_asesor');
     }
     

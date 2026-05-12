@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Deliverable;
+use App\Models\SystemSetting;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Exception;
@@ -31,6 +32,18 @@ class FileService
     ];
     
     const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+    const MIME_BY_EXTENSION = [
+        'pdf' => ['application/pdf'],
+        'doc' => ['application/msword'],
+        'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        'xls' => ['application/vnd.ms-excel'],
+        'xlsx' => ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        'txt' => ['text/plain'],
+        'zip' => ['application/zip', 'application/x-zip-compressed'],
+        'jpg' => ['image/jpeg'],
+        'jpeg' => ['image/jpeg'],
+        'png' => ['image/png'],
+    ];
     
     /**
      * Validar que un archivo es seguro para almacenar
@@ -46,19 +59,27 @@ class FileService
         }
         
         // Validar tamaño
-        if ($file->getSize() > self::MAX_FILE_SIZE) {
+        $maxSizeMb = (int) SystemSetting::valueFor('max_file_size_mb', 50);
+        $maxSizeBytes = $maxSizeMb * 1024 * 1024;
+        if ($file->getSize() > $maxSizeBytes) {
             return [
                 'valid' => false,
-                'error' => 'El archivo excede el tamaño máximo de 50MB'
+                'error' => "El archivo excede el tamaño máximo de {$maxSizeMb}MB"
             ];
         }
         
         // Validar MIME type
+        $allowedExtensions = SystemSetting::valueFor('allowed_file_types', ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip']);
+        $allowedMimes = collect($allowedExtensions)
+            ->flatMap(fn ($extension) => self::MIME_BY_EXTENSION[$extension] ?? [])
+            ->unique()
+            ->values()
+            ->all();
         $mime = $file->getMimeType();
-        if (!in_array($mime, self::ALLOWED_MIMES)) {
+        if (!in_array($mime, $allowedMimes, true)) {
             return [
                 'valid' => false,
-                'error' => "Tipo de archivo no permitido. MIME: {$mime}"
+                'error' => 'Tipo de archivo no permitido. Permitidos: ' . strtoupper(implode(', ', $allowedExtensions))
             ];
         }
         
