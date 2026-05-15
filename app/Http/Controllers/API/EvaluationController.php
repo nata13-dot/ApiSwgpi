@@ -17,6 +17,8 @@ use Illuminate\Validation\ValidationException;
 
 class EvaluationController extends Controller
 {
+    private array $criteriaLabelCache = [];
+
     private array $levels = [
         'nada' => 0,
         'poco' => 1,
@@ -132,6 +134,7 @@ class EvaluationController extends Controller
                 'fecha_exposicion' => 'nullable|date',
                 'estado' => 'nullable|in:programada,en_evaluacion,finalizada',
                 'resultado' => 'nullable|in:pendiente,viable,no_viable',
+                'apto_titulacion' => 'nullable|boolean',
             ]);
 
             $validated['etapa'] = $this->stageForSemester((int) $validated['semestre']);
@@ -182,6 +185,7 @@ class EvaluationController extends Controller
                 'fecha_exposicion' => 'nullable|date',
                 'estado' => 'nullable|in:programada,en_evaluacion,finalizada',
                 'resultado' => 'nullable|in:pendiente,viable,no_viable',
+                'apto_titulacion' => 'nullable|boolean',
             ]);
 
             if (isset($validated['semestre'])) {
@@ -230,6 +234,7 @@ class EvaluationController extends Controller
                 'scores.*.nivel' => 'required|string|in:nada,poco,bastante,mucho',
                 'scores.*.comentario' => 'nullable|string',
                 'confirm_update' => 'nullable|boolean',
+                'apto_titulacion' => 'nullable|boolean',
             ]);
 
             DB::transaction(function () use ($validated, $evaluation, $user) {
@@ -270,6 +275,10 @@ class EvaluationController extends Controller
                 ]);
             });
 
+            if ((int) $evaluation->semestre === 8 && $request->has('apto_titulacion')) {
+                $evaluation->update(['apto_titulacion' => $request->boolean('apto_titulacion')]);
+            }
+
             return response()->json([
                 'message' => 'Rubrica guardada',
                 'evaluation' => $this->shapeEvaluation($evaluation->fresh(['project.students', 'room.teachers', 'scores.teacher', 'attempts'])),
@@ -281,7 +290,9 @@ class EvaluationController extends Controller
 
     public function projects()
     {
-        $query = Project::where('activo', true)->orderBy('title');
+        $query = Project::with('students:id,nombres,apa,ama')
+            ->where('activo', true)
+            ->orderBy('title');
         if (request()->filled('semestre')) {
             $query->where('semestre', request('semestre'));
         }
@@ -374,7 +385,11 @@ class EvaluationController extends Controller
 
     private function criteriaLabelsForSemester(int $semester): array
     {
-        return RubricCriterion::where('semestre', $semester)
+        if (isset($this->criteriaLabelCache[$semester])) {
+            return $this->criteriaLabelCache[$semester];
+        }
+
+        return $this->criteriaLabelCache[$semester] = RubricCriterion::where('semestre', $semester)
             ->pluck('pregunta', 'clave')
             ->all();
     }
@@ -416,6 +431,7 @@ class EvaluationController extends Controller
             'fecha_exposicion' => optional($evaluation->fecha_exposicion)->toDateTimeString(),
             'estado' => $evaluation->estado,
             'resultado' => $evaluation->resultado,
+            'apto_titulacion' => $evaluation->apto_titulacion,
             'global_average' => $globalAverage,
             'evaluators_count' => $teacherBreakdown->count(),
             'teacher_breakdown' => $teacherBreakdown,
@@ -427,19 +443,53 @@ class EvaluationController extends Controller
 
     private function roomRules(Request $request): array
     {
-        return $request->validate([
+        $validated = $request->validate([
             'nombre' => 'required|string|max:80',
             'salon' => 'nullable|string|max:120',
             'semestre' => 'required|integer|in:5,6,7,8',
-            'fecha_evaluacion' => 'required|date',
+            'fecha_evaluacion' => 'required|date|after:now',
             'teacher_evaluation_minutes' => 'required|integer|min:1|max:240',
             'project_presentation_minutes' => 'required|integer|min:1|max:240',
             'max_attempts' => 'required|integer|min:1|max:10',
             'teacher_ids' => 'nullable|array',
-            'teacher_ids.*' => 'string|exists:users,id',
+            'teacher_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
             'project_ids' => 'nullable|array',
             'project_ids.*' => 'integer|exists:projects,id',
         ]);
+
+        $ignoreId = $request->route('id');
+        $duplicateName = EvaluationRoom::where('activo', true)
+            ->whereRaw('LOWER(nombre) = ?', [mb_strtolower($validated['nombre'])])
+            ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+            ->exists();
+        if ($duplicateName) {
+            throw ValidationException::withMessages(['nombre' => ['Ya existe una sala activa con ese nombre.']]);
+        }
+
+        $conflictingRooms = EvaluationRoom::where('activo', true)
+            ->whereDate('fecha_evaluacion', \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion'])->toDateString())
+            ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+            ->where(function ($query) use ($validated) {
+                $teacherIds = $validated['teacher_ids'] ?? [];
+                $projectIds = $validated['project_ids'] ?? [];
+                if ($teacherIds) {
+                    $query->whereHas('teachers', fn ($q) => $q->whereIn('users.id', $teacherIds));
+                }
+                if ($projectIds) {
+                    $method = $teacherIds ? 'orWhereHas' : 'whereHas';
+                    $query->{$method}('projects', fn ($q) => $q->whereIn('projects.id', $projectIds));
+                }
+            })
+            ->with(['teachers:id,nombres,apa', 'projects:id,title'])
+            ->get();
+
+        if ($conflictingRooms->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'fecha_evaluacion' => ['Hay docentes o proyectos ya asignados en otra sala para la misma fecha.'],
+            ]);
+        }
+
+        return $validated;
     }
 
     private function syncRoomEvaluations(EvaluationRoom $room): void

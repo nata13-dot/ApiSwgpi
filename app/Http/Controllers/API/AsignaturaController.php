@@ -10,9 +10,10 @@ use Illuminate\Validation\ValidationException;
 
 class AsignaturaController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Asignatura::orderBy('nombre')->paginate(15));
+        $perPage = min((int) $request->query('per_page', 15), 100);
+        return response()->json(Asignatura::withCount('competencias')->orderBy('nombre')->paginate($perPage));
     }
 
     public function store(Request $request)
@@ -33,7 +34,7 @@ class AsignaturaController extends Controller
 
     public function show($id)
     {
-        $asignatura = Asignatura::with('competencias')->find($id);
+        $asignatura = Asignatura::with(['competencias.deliverables'])->withCount('competencias')->find($id);
         if (!$asignatura) {
             return response()->json(['error' => 'Asignatura no encontrada'], 404);
         }

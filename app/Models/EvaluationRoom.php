@@ -25,7 +25,9 @@ class EvaluationRoom extends Model
 
     public function teachers(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'evaluation_room_teacher', 'evaluation_room_id', 'teacher_id')->withTimestamps();
+        return $this->belongsToMany(User::class, 'evaluation_room_teacher', 'evaluation_room_id', 'teacher_id')
+            ->where('users.activo', true)
+            ->withTimestamps();
     }
 
     public function projects(): BelongsToMany

@@ -23,7 +23,7 @@ class Feedback extends Model
 
     public function commentedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'comentado_por', 'id');
+        return $this->belongsTo(User::class, 'comentado_por', 'id')->where('activo', true);
     }
 
     // SCOPES

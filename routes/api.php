@@ -30,13 +30,15 @@ Route::prefix('repositorio')->group(function () {
     Route::get('/buscar', [RepositoryController::class, 'search']);
     Route::get('/proyecto/{projectId}', [RepositoryController::class, 'byProject']);
     Route::get('/etiqueta/{tagId}', [RepositoryController::class, 'byTag']);
+    Route::get('/{id}/download', [RepositoryController::class, 'download']);
+    Route::get('/{id}/view', [RepositoryController::class, 'view']);
     Route::get('/{id}', [RepositoryController::class, 'show']);
 });
 
 // ========================
 // RUTAS PROTEGIDAS (con JWT)
 // ========================
-Route::middleware('auth:api')->group(function () {
+Route::middleware(['auth:api', 'active'])->group(function () {
     
     // Evaluaciones (solo docentes y administradores)
     Route::middleware('role:admin,teacher')->group(function () {
@@ -89,9 +91,13 @@ Route::middleware('auth:api')->group(function () {
         Route::delete('/proposal/assignments/{id}', [ProposalWorkflowController::class, 'destroyAssignment']);
         Route::get('/settings', [SystemSettingController::class, 'index']);
         Route::put('/settings', [SystemSettingController::class, 'update']);
+        Route::get('/notices', [SystemSettingController::class, 'notices']);
+        Route::put('/notices', [SystemSettingController::class, 'updateNotices']);
         Route::get('/settings/semester-preview', [SystemSettingController::class, 'semesterPreview']);
         Route::post('/settings/apply-semester-change', [SystemSettingController::class, 'applySemesterChange']);
+        Route::post('/repositorio', [RepositoryController::class, 'store']);
         Route::get('/users', [UserController::class, 'index']);
+        Route::get('/users-template.csv', [UserController::class, 'blankCsvTemplate']);
         Route::post('/users', [UserController::class, 'store']);
         Route::get('/users/{id}', [UserController::class, 'show']);
         Route::put('/users/{id}', [UserController::class, 'update']);
@@ -119,6 +125,7 @@ Route::middleware('auth:api')->group(function () {
     Route::put('/projects/{id}', [ProjectController::class, 'update']);
     Route::delete('/projects/{id}', [ProjectController::class, 'destroy']);
     Route::post('/projects/{id}/advisors', [ProjectController::class, 'addAdvisor']);
+    Route::post('/projects/{id}/asignaturas', [ProjectController::class, 'syncAsignaturas']);
     Route::delete('/projects/{projectId}/advisors/{userId}', [ProjectController::class, 'removeAdvisor']);
 
     // Deliverables (CRUD + Calificación + Upload + Descarga)

@@ -23,6 +23,6 @@ class DocumentVersion extends Model
 
     public function uploadedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'uploaded_by', 'id');
+        return $this->belongsTo(User::class, 'uploaded_by', 'id')->where('activo', true);
     }
 }

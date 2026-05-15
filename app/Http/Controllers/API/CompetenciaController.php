@@ -9,9 +9,15 @@ use Illuminate\Validation\ValidationException;
 
 class CompetenciaController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Competencia::with('asignatura')->orderBy('nombre')->paginate(15));
+        $query = Competencia::with('asignatura')->withCount('deliverables');
+
+        if ($request->filled('asignatura_id')) {
+            $query->where('asignatura_id', $request->asignatura_id);
+        }
+
+        return response()->json($query->orderBy('nombre')->paginate(15));
     }
 
     public function store(Request $request)

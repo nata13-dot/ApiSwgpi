@@ -16,7 +16,7 @@ class Project extends Model
     public $timestamps = true;
     const UPDATED_AT = null;
 
-    protected $fillable = ['title', 'description', 'created_by', 'activo', 'semestre', 'subject_group_id', 'year', 'file_path', 'authors', 'company_name', 'company_contact_name', 'company_contact_position', 'company_address', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
+    protected $fillable = ['title', 'description', 'created_by', 'activo', 'semestre', 'subject_group_id', 'year', 'file_path', 'authors', 'company_name', 'company_giro', 'company_contact_name', 'company_contact_position', 'company_address', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
 
     protected $casts = [
         'activo' => 'boolean',
@@ -31,19 +31,20 @@ class Project extends Model
     // RELACIONES
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by', 'id');
+        return $this->belongsTo(User::class, 'created_by', 'id')->where('activo', true);
     }
 
     public function advisors(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'project_user', 'project_id', 'user_id')
+                    ->where('users.activo', true)
                     ->wherePivotNotNull('rol_asesor')
                     ->withPivot('rol_asesor');
     }
 
     public function proposalReviewer(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'proposal_reviewed_by', 'id');
+        return $this->belongsTo(User::class, 'proposal_reviewed_by', 'id')->where('activo', true);
     }
 
     public function subjectGroup(): BelongsTo
@@ -85,6 +86,7 @@ class Project extends Model
     public function students(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'project_user', 'project_id', 'user_id')
+                    ->where('users.activo', true)
                     ->whereNull('rol_asesor')
                     ->withPivot('rol_asesor');
     }
@@ -95,6 +97,7 @@ class Project extends Model
     public function onlyAdvisors(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'project_user', 'project_id', 'user_id')
+                    ->where('users.activo', true)
                     ->wherePivotNotNull('rol_asesor')
                     ->withPivot('rol_asesor');
     }

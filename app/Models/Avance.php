@@ -27,6 +27,6 @@ class Avance extends Model
 
     public function reportedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'reportado_por', 'id');
+        return $this->belongsTo(User::class, 'reportado_por', 'id')->where('activo', true);
     }
 }

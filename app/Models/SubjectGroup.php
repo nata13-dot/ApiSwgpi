@@ -31,7 +31,9 @@ class SubjectGroup extends Model
 
     public function teacherAssignments(): HasMany
     {
-        return $this->hasMany(TeacherGroupAssignment::class);
+        return $this->hasMany(TeacherGroupAssignment::class)
+            ->where('activo', true)
+            ->whereHas('teacher');
     }
 
     public function projects(): HasMany

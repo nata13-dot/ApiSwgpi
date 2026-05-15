@@ -10,12 +10,13 @@ class Evaluation extends Model
 {
     protected $fillable = [
         'project_id', 'evaluation_room_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
-        'estado', 'resultado', 'created_by',
+        'estado', 'resultado', 'apto_titulacion', 'created_by',
     ];
 
     protected $casts = [
         'semestre' => 'integer',
         'fecha_exposicion' => 'datetime',
+        'apto_titulacion' => 'boolean',
     ];
 
     public function project(): BelongsTo
@@ -30,7 +31,7 @@ class Evaluation extends Model
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by', 'id');
+        return $this->belongsTo(User::class, 'created_by', 'id')->where('activo', true);
     }
 
     public function scores(): HasMany

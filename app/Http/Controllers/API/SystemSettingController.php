@@ -6,15 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\SubjectGroup;
 use App\Models\SystemSetting;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class SystemSettingController extends Controller
 {
     public function public()
     {
+        $this->purgeExpiredNotices();
         $settings = SystemSetting::allWithDefaults();
+        $today = now()->toDateString();
 
         return response()->json([
             'session_timeout_minutes' => $settings['session_timeout_minutes'],
@@ -25,6 +29,10 @@ class SystemSettingController extends Controller
             'active_academic_period' => $settings['active_academic_period'],
             'max_file_size_mb' => $settings['max_file_size_mb'],
             'allowed_file_types' => $settings['allowed_file_types'],
+            'grayscale_mode' => $settings['grayscale_mode'],
+            'system_notices' => collect($settings['system_notices'] ?? [])
+                ->filter(fn ($notice) => ($notice['active'] ?? true) && !empty($notice['message']) && $this->noticeIsVisible($notice, $today))
+                ->values(),
         ]);
     }
 
@@ -46,6 +54,7 @@ class SystemSettingController extends Controller
             'global_notice' => 'nullable|string|max:1000',
             'proposal_registration_enabled' => 'required|boolean',
             'font_scale' => 'required|integer|min:85|max:125',
+            'grayscale_mode' => 'required|boolean',
         ]);
 
         foreach ($validated as $key => $value) {
@@ -59,6 +68,87 @@ class SystemSettingController extends Controller
         }
 
         return response()->json(['message' => 'Ajustes guardados', 'settings' => SystemSetting::allWithDefaults()]);
+    }
+
+    public function notices()
+    {
+        $this->purgeExpiredNotices();
+        return response()->json(['data' => SystemSetting::valueFor('system_notices', [])]);
+    }
+
+    public function updateNotices(Request $request)
+    {
+        $validated = $request->validate([
+            'notices' => 'present|array',
+            'notices.*.id' => 'nullable|string|max:80',
+            'notices.*.title' => 'nullable|string|max:90',
+            'notices.*.message' => 'required|string|max:500',
+            'notices.*.audience' => ['required', Rule::in(['all', 'index', 'authenticated', 'academic', 'teacher', 'student', 'admin'])],
+            'notices.*.type' => ['required', Rule::in(['info', 'success', 'warning', 'danger'])],
+            'notices.*.duration_seconds' => 'nullable|integer|min:2|max:30',
+            'notices.*.starts_at' => 'nullable|date',
+            'notices.*.ends_at' => 'nullable|date',
+            'notices.*.active' => 'required|boolean',
+        ]);
+
+        foreach ($validated['notices'] as $index => $notice) {
+            if (!empty($notice['starts_at']) && !empty($notice['ends_at']) && Carbon::parse($notice['ends_at'])->lt(Carbon::parse($notice['starts_at']))) {
+                throw ValidationException::withMessages([
+                    "notices.{$index}.ends_at" => ['La fecha final del aviso debe ser igual o posterior a la fecha inicial.'],
+                ]);
+            }
+        }
+
+        $notices = collect($validated['notices'])
+            ->map(fn ($notice) => [
+                'id' => $notice['id'] ?? uniqid('notice_', true),
+                'title' => trim($notice['title'] ?? ''),
+                'message' => trim($notice['message']),
+                'audience' => $notice['audience'],
+                'type' => $notice['type'],
+                'duration_seconds' => (int) ($notice['duration_seconds'] ?? 4),
+                'starts_at' => $notice['starts_at'] ?? null,
+                'ends_at' => $notice['ends_at'] ?? null,
+                'active' => (bool) $notice['active'],
+            ])
+            ->filter(fn ($notice) => !$this->noticeExpired($notice, now()->toDateString()))
+            ->values()
+            ->all();
+
+        SystemSetting::setValue('system_notices', $notices, 'array');
+
+        return response()->json([
+            'message' => 'Avisos guardados',
+            'data' => $notices,
+        ]);
+    }
+
+    private function purgeExpiredNotices(): void
+    {
+        $today = now()->toDateString();
+        $notices = SystemSetting::valueFor('system_notices', []);
+        $active = collect($notices)
+            ->filter(fn ($notice) => !$this->noticeExpired($notice, $today))
+            ->values()
+            ->all();
+
+        if (count($active) !== count($notices)) {
+            SystemSetting::setValue('system_notices', $active, 'array');
+        }
+    }
+
+    private function noticeExpired(array $notice, string $today): bool
+    {
+        return !empty($notice['ends_at']) && Carbon::parse($notice['ends_at'])->lt(Carbon::parse($today));
+    }
+
+    private function noticeIsVisible(array $notice, string $today): bool
+    {
+        if (!empty($notice['starts_at']) && Carbon::parse($notice['starts_at'])->gt(Carbon::parse($today))) {
+            return false;
+        }
+
+        return !$this->noticeExpired($notice, $today);
     }
 
     public function semesterPreview(Request $request)
@@ -88,7 +178,7 @@ class SystemSettingController extends Controller
             'to_group' => 'nullable|string|max:20',
             'update_subject_groups' => 'nullable|boolean',
             'exceptions' => 'nullable|array',
-            'exceptions.*.user_id' => 'required|string|exists:users,id',
+            'exceptions.*.user_id' => ['required', 'string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
             'exceptions.*.semester' => 'required|integer|in:5,6,7,8',
         ]);
 

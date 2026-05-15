@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class SystemSetting extends Model
 {
+    private static ?array $memoizedSettings = null;
+
     protected $primaryKey = 'key';
     public $incrementing = false;
     protected $keyType = 'string';
@@ -26,12 +28,19 @@ class SystemSetting extends Model
         'global_notice' => '',
         'proposal_registration_enabled' => true,
         'font_scale' => 100,
+        'grayscale_mode' => false,
+        'system_notices' => [],
     ];
 
     public static function allWithDefaults(): array
     {
+        if (self::$memoizedSettings !== null) {
+            return self::$memoizedSettings;
+        }
+
         $settings = static::query()->get()->mapWithKeys(fn ($item) => [$item->key => $item->value['data'] ?? null])->all();
-        return array_replace(static::DEFAULTS, array_filter($settings, fn ($value) => $value !== null));
+        self::$memoizedSettings = array_replace(static::DEFAULTS, array_filter($settings, fn ($value) => $value !== null));
+        return self::$memoizedSettings;
     }
 
     public static function valueFor(string $key, mixed $default = null): mixed
@@ -45,5 +54,6 @@ class SystemSetting extends Model
             ['key' => $key],
             ['value' => ['data' => $value], 'type' => $type, 'description' => $description]
         );
+        self::$memoizedSettings = null;
     }
 }

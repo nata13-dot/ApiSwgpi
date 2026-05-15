@@ -20,6 +20,10 @@ class DeliverableController extends Controller
         if ($request->filled('project_id')) {
             $query->where('project_id', $request->project_id);
         }
+
+        if ($request->filled('competencia_id')) {
+            $query->where('competencia_id', $request->competencia_id);
+        }
         
         if ($request->filled('estado')) {
             $query->where('estado', $request->estado);
@@ -40,12 +44,12 @@ class DeliverableController extends Controller
     {
         try {
             $validated = $request->validate([
-                'project_id' => 'required|exists:projects,id',
+                'project_id' => 'nullable|exists:projects,id',
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'nullable|string|max:5000',
                 'tipo_documento' => 'nullable|in:reporte,video,presentacion,codigo,documento,otro',
                 'rama_asociada' => 'nullable|string|max:255',
-                'competencia_id' => 'nullable|exists:competencias,id',
+                'competencia_id' => 'required|exists:competencias,id',
                 'autores' => 'nullable|string|max:1000',
             ]);
 

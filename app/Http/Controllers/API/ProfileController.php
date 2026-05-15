@@ -45,10 +45,15 @@ class ProfileController extends Controller
     public function update(Request $request)
     {
         $user = auth('api')->user();
+        $request->merge([
+            'semestre' => $request->input('semestre') === '' ? null : $request->input('semestre'),
+            'grupo' => $request->input('grupo') === '' ? null : $request->input('grupo'),
+            'direccion' => $request->filled('direccion') ? $this->normalizeAddress($request->input('direccion')) : null,
+        ]);
 
         $validated = $request->validate([
             'telefonos' => 'nullable|string|max:200',
-            'direccion' => 'nullable|string|max:1000',
+            'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
             'semestre' => [(int) $user->perfil_id === 3 ? 'nullable' : 'prohibited', 'integer', Rule::in([5, 6, 7, 8])],
             'grupo' => [(int) $user->perfil_id === 3 ? 'nullable' : 'prohibited', 'string', 'max:20'],
             'photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
@@ -77,5 +82,14 @@ class ProfileController extends Controller
         $user->update($validated);
 
         return response()->json(['message' => 'Perfil actualizado', 'user' => $user->fresh()]);
+    }
+
+    private function normalizeAddress(?string $address): ?string
+    {
+        if (!$address) {
+            return null;
+        }
+
+        return preg_replace('/\s+/', ' ', trim($address));
     }
 }

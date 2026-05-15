@@ -11,6 +11,7 @@ use App\Models\TeacherGroupAssignment;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class ProposalWorkflowController extends Controller
@@ -62,7 +63,7 @@ class ProposalWorkflowController extends Controller
         $validated = $request->validate([
             'subject_group_id' => 'required|exists:subject_groups,id',
             'asignatura_id' => 'required|integer|exists:asignaturas,id',
-            'teacher_id' => 'required|exists:users,id',
+            'teacher_id' => ['required', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
             'labor' => 'nullable|string|max:120',
             'activo' => 'nullable|boolean',
         ]);

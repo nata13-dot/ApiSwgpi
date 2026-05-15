@@ -25,6 +25,11 @@ class DocumentTag extends Model
         return $this->belongsToMany(Deliverable::class, 'deliverable_document_tag', 'document_tag_id', 'deliverable_id');
     }
 
+    public function repositoryDocuments(): BelongsToMany
+    {
+        return $this->belongsToMany(RepositoryDocument::class, 'repository_document_tag', 'document_tag_id', 'repository_document_id');
+    }
+
     // SCOPES
     public function scopeActivas($query) { return $query->where('activo', true); }
 }

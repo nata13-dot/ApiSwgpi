@@ -29,6 +29,6 @@ class TeacherGroupAssignment extends Model
 
     public function teacher(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'teacher_id', 'id');
+        return $this->belongsTo(User::class, 'teacher_id', 'id')->where('activo', true);
     }
 }

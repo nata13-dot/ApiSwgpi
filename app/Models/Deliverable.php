@@ -40,12 +40,12 @@ class Deliverable extends Model
 
     public function submittedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'submitted_by', 'id');
+        return $this->belongsTo(User::class, 'submitted_by', 'id')->where('activo', true);
     }
 
     public function calificadoPor(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'calificado_por', 'id');
+        return $this->belongsTo(User::class, 'calificado_por', 'id')->where('activo', true);
     }
 
     public function tags(): BelongsToMany

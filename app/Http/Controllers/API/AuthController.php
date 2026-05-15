@@ -47,6 +47,9 @@ class AuthController extends Controller
         if (!$user) {
             return response()->json(['error' => 'No autenticado'], 401);
         }
+        if (!$user->activo) {
+            return response()->json(['error' => 'Cuenta desactivada'], 403);
+        }
         return response()->json(['user' => $user]);
     }
 

@@ -11,13 +11,29 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class ProjectController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Project::with(['creator', 'advisors', 'students', 'asignaturas', 'subjectGroup.asignaturas', 'proposalReviewer'])
+        $query = Project::query()
+            ->select([
+                'id', 'title', 'description', 'created_by', 'created_at', 'activo',
+                'semestre', 'subject_group_id', 'year', 'authors',
+                'company_name', 'company_giro', 'company_contact_name',
+                'company_contact_position', 'company_address',
+                'proposal_status', 'proposal_reviewed_by',
+            ])
+            ->with([
+                'creator:id,nombres,apa,ama',
+                'advisors:id,nombres,apa,ama,perfil_id',
+                'students:id,nombres,apa,ama,semestre,grupo',
+                'subjectGroup:id,nombre,semestre,grupo,periodo',
+                'asignaturas:id,nombre,clave',
+                'proposalReviewer:id,nombres,apa,ama',
+            ])
             ->withCount('students')
             ->where('activo', true);
 
@@ -45,7 +61,20 @@ class ProjectController extends Controller
     public function myProjects()
     {
         $user = auth('api')->user();
-        $query = Project::with(['creator', 'advisors', 'students', 'asignaturas', 'subjectGroup.asignaturas', 'proposalReviewer'])
+        $query = Project::query()
+            ->select([
+                'id', 'title', 'description', 'created_by', 'created_at', 'activo',
+                'semestre', 'subject_group_id', 'year', 'authors',
+                'company_name', 'company_contact_name', 'company_contact_position',
+                'proposal_status', 'proposal_reviewed_by',
+            ])
+            ->with([
+                'creator:id,nombres,apa,ama',
+                'advisors:id,nombres,apa,ama,perfil_id',
+                'students:id,nombres,apa,ama',
+                'subjectGroup:id,nombre,semestre,grupo,periodo',
+                'proposalReviewer:id,nombres,apa,ama',
+            ])
             ->withCount('students')
             ->where('activo', true);
 
@@ -89,6 +118,7 @@ class ProjectController extends Controller
                 'subject_group_id' => $validated['subject_group_id'] ?? null,
                 'year' => $validated['year'] ?? null,
                 'company_name' => $validated['company_name'] ?? null,
+                'company_giro' => $validated['company_giro'] ?? null,
                 'company_contact_name' => $validated['company_contact_name'] ?? null,
                 'company_contact_position' => $validated['company_contact_position'] ?? null,
                 'company_address' => $validated['company_address'] ?? null,
@@ -138,9 +168,12 @@ class ProjectController extends Controller
                 $validated['revision_allowed_until'] = null;
             }
 
+            $previousGroupId = $project->subject_group_id;
             $projectData = collect($validated)->except('student_ids')->toArray();
             $project->update($projectData);
-            $this->syncSubjectsFromGroup($project);
+            if (array_key_exists('subject_group_id', $projectData) && (int) $previousGroupId !== (int) $project->subject_group_id) {
+                $this->syncSubjectsFromGroup($project);
+            }
 
             if ((int) $user->perfil_id === 1 && array_key_exists('student_ids', $validated)) {
                 $this->syncStudents($project, $validated['student_ids'] ?? []);
@@ -177,7 +210,7 @@ class ProjectController extends Controller
             }
 
             $validated = $request->validate([
-                'user_id' => 'required|string|exists:users,id',
+                'user_id' => ['required', 'string', Rule::exists('users', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
                 'rol_asesor' => 'required|in:primario,secundario',
                 'admin_password' => 'required|string|max:72',
             ]);
@@ -185,15 +218,18 @@ class ProjectController extends Controller
             $guard = $this->guardAdvisorModification($request);
             if ($guard) return $guard;
 
-            $teacher = User::where('id', $validated['user_id'])->where('perfil_id', 2)->where('activo', true)->first();
-            if (!$teacher) {
-                return response()->json(['message' => 'El asesor seleccionado debe ser un docente activo.'], 422);
+            $advisor = User::where('id', $validated['user_id'])
+                ->whereIn('perfil_id', [1, 2])
+                ->where('activo', true)
+                ->first();
+            if (!$advisor) {
+                return response()->json(['message' => 'El asesor seleccionado debe ser un docente o administrador activo.'], 422);
             }
 
             $oppositeRole = $validated['rol_asesor'] === 'primario' ? 'secundario' : 'primario';
             $alreadyInOtherRole = $project->advisors()->where('users.id', $validated['user_id'])->wherePivot('rol_asesor', $oppositeRole)->exists();
             if ($alreadyInOtherRole) {
-                return response()->json(['message' => 'El mismo docente no puede ser asesor primario y secundario del proyecto.'], 422);
+                return response()->json(['message' => 'La misma persona no puede ser asesor primario y secundario del proyecto.'], 422);
             }
 
             $project->advisors()->wherePivot('rol_asesor', $validated['rol_asesor'])->detach();
@@ -219,22 +255,47 @@ class ProjectController extends Controller
         return response()->json(['message' => 'Asesor removido']);
     }
 
+    public function syncAsignaturas(Request $request, $id)
+    {
+        $project = Project::find($id);
+        if (!$project) {
+            return response()->json(['error' => 'Proyecto no encontrado'], 404);
+        }
+
+        if ((int) auth('api')->user()->perfil_id !== 1) {
+            return response()->json(['error' => 'Solo administradores pueden ajustar materias del proyecto'], 403);
+        }
+
+        $validated = $request->validate([
+            'asignatura_ids' => 'nullable|array',
+            'asignatura_ids.*' => 'integer|exists:asignaturas,id',
+        ]);
+
+        $project->asignaturas()->sync($validated['asignatura_ids'] ?? []);
+
+        return response()->json([
+            'message' => 'Materias del proyecto actualizadas',
+            'project' => $project->load(['asignaturas', 'subjectGroup.asignaturas']),
+        ]);
+    }
+
     private function projectRules(bool $creating): array
     {
         return [
             'title' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
-            'description' => 'nullable|string|max:5000',
-            'descripcion' => 'nullable|string|max:5000',
-            'semestre' => 'nullable|integer|in:5,6,7,8',
+            'description' => [$creating ? 'required_without:descripcion' : 'nullable', 'string', 'max:5000'],
+            'descripcion' => [$creating ? 'required_without:description' : 'nullable', 'string', 'max:5000'],
+            'semestre' => [$creating ? 'required' : 'nullable', 'integer', 'in:5,6,7,8'],
             'subject_group_id' => [$creating ? 'required' : 'nullable', 'exists:subject_groups,id'],
-            'year' => 'nullable|integer|min:2000|max:2100',
+            'year' => [$creating ? 'required' : 'nullable', 'integer', 'min:2000', 'max:2100'],
             'activo' => 'nullable|boolean',
-            'student_ids' => 'nullable|array',
-            'student_ids.*' => 'string|exists:users,id',
-            'company_name' => 'nullable|string|max:255',
-            'company_contact_name' => 'nullable|string|max:255',
-            'company_contact_position' => 'nullable|string|max:255',
-            'company_address' => 'nullable|string|max:1000',
+            'student_ids' => [$creating ? 'required' : 'nullable', 'array', 'min:1'],
+            'student_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
+            'company_name' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
+            'company_giro' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
+            'company_contact_name' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
+            'company_contact_position' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
+            'company_address' => [$creating ? 'required' : 'nullable', 'string', 'max:1000'],
         ];
     }
 
