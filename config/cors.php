@@ -1,5 +1,10 @@
 <?php
 
+$frontendOrigins = array_filter(array_map(
+    'trim',
+    explode(',', env('FRONTEND_URLS', ''))
+));
+
 return [
 
     /*
@@ -20,7 +25,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [
+    'allowed_origins' => array_values(array_unique(array_merge([
         'http://127.0.0.1:3000',
         'http://localhost:3000',
         'http://127.0.0.1:3004',
@@ -30,10 +35,12 @@ return [
         'http://localhost:8000',
         'http://localhost:8001',
         'http://frontend_swgpi.test',
-        'http://127.0.0.1:8000'
-    ],
+        'http://127.0.0.1:8000',
+    ], $frontendOrigins))),
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => [
+        '#^https://[a-z0-9-]+\.up\.railway\.app$#i',
+    ],
 
     'allowed_headers' => ['*'],
 
