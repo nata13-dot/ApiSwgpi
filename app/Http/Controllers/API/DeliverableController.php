@@ -24,6 +24,10 @@ class DeliverableController extends Controller
         if ($request->filled('competencia_id')) {
             $query->where('competencia_id', $request->competencia_id);
         }
+
+        if ($request->filled('asignatura_id')) {
+            $query->whereHas('competencia', fn ($q) => $q->where('asignatura_id', $request->asignatura_id));
+        }
         
         if ($request->filled('estado')) {
             $query->where('estado', $request->estado);

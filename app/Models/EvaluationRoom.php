@@ -9,9 +9,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class EvaluationRoom extends Model
 {
     protected $fillable = [
-        'nombre', 'salon', 'semestre', 'fecha_evaluacion',
+        'nombre', 'salon', 'semestre', 'responsible_teacher_id', 'fecha_evaluacion',
         'teacher_evaluation_minutes', 'project_presentation_minutes',
-        'max_attempts', 'activo',
+        'max_attempts', 'sequence_locked', 'current_order', 'completed_at', 'activo',
     ];
 
     protected $casts = [
@@ -20,6 +20,9 @@ class EvaluationRoom extends Model
         'teacher_evaluation_minutes' => 'integer',
         'project_presentation_minutes' => 'integer',
         'max_attempts' => 'integer',
+        'sequence_locked' => 'boolean',
+        'current_order' => 'integer',
+        'completed_at' => 'datetime',
         'activo' => 'boolean',
     ];
 
@@ -32,11 +35,20 @@ class EvaluationRoom extends Model
 
     public function projects(): BelongsToMany
     {
-        return $this->belongsToMany(Project::class, 'evaluation_room_project')->withTimestamps();
+        return $this->belongsToMany(Project::class, 'evaluation_room_project')
+            ->withPivot(['presentation_order', 'status'])
+            ->withTimestamps()
+            ->orderBy('evaluation_room_project.presentation_order')
+            ->orderBy('projects.title');
     }
 
     public function evaluations(): HasMany
     {
         return $this->hasMany(Evaluation::class);
+    }
+
+    public function responsibleTeacher()
+    {
+        return $this->belongsTo(User::class, 'responsible_teacher_id', 'id')->where('activo', true);
     }
 }

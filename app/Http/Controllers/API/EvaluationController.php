@@ -11,6 +11,7 @@ use App\Models\Project;
 use App\Models\RubricCriterion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -106,7 +107,10 @@ class EvaluationController extends Controller
 
     public function index(Request $request)
     {
-        $query = Evaluation::with(['project.students', 'room.teachers', 'scores.teacher', 'attempts'])->orderByDesc('created_at');
+        $query = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher'])
+            ->orderBy('evaluation_room_id')
+            ->orderBy('presentation_order')
+            ->orderByDesc('created_at');
 
         if ($request->filled('project_id')) {
             $query->where('project_id', $request->project_id);
@@ -132,7 +136,8 @@ class EvaluationController extends Controller
                 'semestre' => 'required|integer|in:5,6,7,8',
                 'sala' => 'nullable|string|max:50',
                 'fecha_exposicion' => 'nullable|date',
-                'estado' => 'nullable|in:programada,en_evaluacion,finalizada',
+            'estado' => 'nullable|in:programada,en_evaluacion,finalizada',
+            'presentation_order' => 'nullable|integer|min:0',
                 'resultado' => 'nullable|in:pendiente,viable,no_viable',
                 'apto_titulacion' => 'nullable|boolean',
             ]);
@@ -162,7 +167,7 @@ class EvaluationController extends Controller
 
     public function show($id)
     {
-        $evaluation = Evaluation::with(['project.students', 'room.teachers', 'scores.teacher', 'attempts'])->find($id);
+        $evaluation = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher'])->find($id);
         if (!$evaluation) {
             return response()->json(['error' => 'Evaluacion no encontrada'], 404);
         }
@@ -193,7 +198,7 @@ class EvaluationController extends Controller
             }
 
             $evaluation->update($validated);
-            return response()->json(['message' => 'Evaluacion actualizada', 'evaluation' => $this->shapeEvaluation($evaluation->load(['project.students', 'room.teachers', 'scores.teacher', 'attempts']))]);
+            return response()->json(['message' => 'Evaluacion actualizada', 'evaluation' => $this->shapeEvaluation($evaluation->load(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher']))]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }
@@ -204,6 +209,10 @@ class EvaluationController extends Controller
         $evaluation = Evaluation::find($id);
         if (!$evaluation) {
             return response()->json(['error' => 'Evaluacion no encontrada'], 404);
+        }
+
+        if (!$this->canScoreEvaluation($evaluation, $user)) {
+            return response()->json(['error' => 'La evaluacion de este proyecto esta bloqueada hasta que sea su turno en la sala.'], 403);
         }
 
         $evaluation->delete();
@@ -233,6 +242,7 @@ class EvaluationController extends Controller
                 'scores.*.criterio' => ['required', 'string', Rule::in($validCriteria)],
                 'scores.*.nivel' => 'required|string|in:nada,poco,bastante,mucho',
                 'scores.*.comentario' => 'nullable|string',
+                'general_comment' => 'nullable|string|max:3000',
                 'confirm_update' => 'nullable|boolean',
                 'apto_titulacion' => 'nullable|boolean',
             ]);
@@ -271,6 +281,7 @@ class EvaluationController extends Controller
                 }
                 $attempt->update([
                     'attempts_count' => $attempt->attempts_count + 1,
+                    'general_comment' => $validated['general_comment'] ?? $attempt->general_comment,
                     'last_submitted_at' => now(),
                 ]);
             });
@@ -281,11 +292,32 @@ class EvaluationController extends Controller
 
             return response()->json([
                 'message' => 'Rubrica guardada',
-                'evaluation' => $this->shapeEvaluation($evaluation->fresh(['project.students', 'room.teachers', 'scores.teacher', 'attempts'])),
+                'evaluation' => $this->shapeEvaluation($evaluation->fresh(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher'])),
             ]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }
+    }
+
+    public function feedback(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        $evaluation = Evaluation::with('room')->findOrFail($id);
+        if (!$this->isRoomResponsible($evaluation->room, $user) && (int) $user->perfil_id !== 1) {
+            return response()->json(['error' => 'Solo el responsable de la sala o administracion puede registrar retroalimentacion.'], 403);
+        }
+
+        $validated = $request->validate([
+            'room_feedback' => 'required|string|max:5000',
+        ]);
+
+        $evaluation->update([
+            'room_feedback' => $validated['room_feedback'],
+            'feedback_by' => $user->id,
+            'feedback_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Retroalimentacion guardada', 'evaluation' => $this->shapeEvaluation($evaluation->fresh(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher']))]);
     }
 
     public function projects()
@@ -301,7 +333,7 @@ class EvaluationController extends Controller
 
     public function rooms(Request $request)
     {
-        $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama', 'projects:id,title,semestre'])
+        $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama', 'responsibleTeacher:id,nombres,apa,ama', 'projects:id,title,semestre'])
             ->where('activo', true)
             ->orderByDesc('fecha_evaluacion')
             ->orderBy('nombre');
@@ -316,9 +348,9 @@ class EvaluationController extends Controller
     public function storeRoom(Request $request)
     {
         $validated = $this->roomRules($request);
-        $room = EvaluationRoom::create(collect($validated)->except(['teacher_ids', 'project_ids'])->toArray());
+        $room = EvaluationRoom::create(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
         $room->teachers()->sync($validated['teacher_ids'] ?? []);
-        $room->projects()->sync($validated['project_ids'] ?? []);
+        $room->projects()->sync($this->projectSyncPayload($validated['project_ids'] ?? [], $validated['project_order'] ?? []));
         $this->syncRoomEvaluations($room);
 
         return response()->json(['message' => 'Sala creada', 'room' => $this->shapeRoom($room->load(['teachers', 'projects']))], 201);
@@ -328,9 +360,9 @@ class EvaluationController extends Controller
     {
         $room = EvaluationRoom::findOrFail($id);
         $validated = $this->roomRules($request);
-        $room->update(collect($validated)->except(['teacher_ids', 'project_ids'])->toArray());
+        $room->update(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
         $room->teachers()->sync($validated['teacher_ids'] ?? []);
-        $room->projects()->sync($validated['project_ids'] ?? []);
+        $room->projects()->sync($this->projectSyncPayload($validated['project_ids'] ?? [], $validated['project_order'] ?? []));
         $this->syncRoomEvaluations($room);
 
         return response()->json(['message' => 'Sala actualizada', 'room' => $this->shapeRoom($room->load(['teachers', 'projects']))]);
@@ -340,6 +372,112 @@ class EvaluationController extends Controller
     {
         EvaluationRoom::findOrFail($id)->update(['activo' => false]);
         return response()->json(['message' => 'Sala desactivada']);
+    }
+
+    public function lockRoomSequence($id)
+    {
+        $room = EvaluationRoom::with('projects')->findOrFail($id);
+        $ordered = $room->projects->sortBy(fn ($project) => (int) ($project->pivot->presentation_order ?: 9999))->values();
+        if ($ordered->isEmpty()) {
+            throw ValidationException::withMessages(['project_ids' => ['La sala no tiene proyectos asignados.']]);
+        }
+
+        $firstOrder = (int) ($ordered->first()->pivot->presentation_order ?: 1);
+        DB::transaction(function () use ($room, $ordered, $firstOrder) {
+            $room->update([
+                'sequence_locked' => true,
+                'current_order' => $firstOrder,
+                'completed_at' => null,
+            ]);
+
+            foreach ($ordered as $project) {
+                $order = (int) ($project->pivot->presentation_order ?: 0);
+                $status = $order === $firstOrder ? 'activo' : 'pendiente';
+                DB::table('evaluation_room_project')
+                    ->where('evaluation_room_id', $room->id)
+                    ->where('project_id', $project->id)
+                    ->update(['status' => $status]);
+                Evaluation::where('evaluation_room_id', $room->id)
+                    ->where('project_id', $project->id)
+                    ->update([
+                        'presentation_order' => $order,
+                        'sequence_status' => $status,
+                        'estado' => $status === 'activo' ? 'en_evaluacion' : 'programada',
+                    ]);
+            }
+        });
+
+        return response()->json(['message' => 'Orden bloqueado. El primer proyecto ya puede evaluarse.', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
+    }
+
+    public function advanceRoom(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        $room = EvaluationRoom::with('projects')->findOrFail($id);
+        if (!$this->isRoomResponsible($room, $user) && (int) $user->perfil_id !== 1) {
+            return response()->json(['error' => 'Solo el responsable de la sala puede avanzar el turno.'], 403);
+        }
+
+        $validated = $request->validate([
+            'continue_next' => 'required|boolean',
+        ]);
+        if (!$validated['continue_next']) {
+            return response()->json(['message' => 'La sala permanece en el proyecto actual.', 'room' => $this->shapeRoom($room->load(['teachers', 'responsibleTeacher', 'projects']))]);
+        }
+
+        DB::transaction(function () use ($room) {
+            $currentOrder = (int) $room->current_order;
+            $ordered = $room->projects->sortBy(fn ($project) => (int) ($project->pivot->presentation_order ?: 9999))->values();
+            $next = $ordered->first(fn ($project) => (int) $project->pivot->presentation_order > $currentOrder);
+
+            DB::table('evaluation_room_project')
+                ->where('evaluation_room_id', $room->id)
+                ->where('presentation_order', $currentOrder)
+                ->update(['status' => 'evaluado']);
+            Evaluation::where('evaluation_room_id', $room->id)
+                ->where('presentation_order', $currentOrder)
+                ->update(['sequence_status' => 'evaluado', 'estado' => 'finalizada', 'finalized_at' => now()]);
+
+            if ($next) {
+                $nextOrder = (int) $next->pivot->presentation_order;
+                DB::table('evaluation_room_project')
+                    ->where('evaluation_room_id', $room->id)
+                    ->where('project_id', $next->id)
+                    ->update(['status' => 'activo']);
+                Evaluation::where('evaluation_room_id', $room->id)
+                    ->where('project_id', $next->id)
+                    ->update(['sequence_status' => 'activo', 'estado' => 'en_evaluacion']);
+                $room->update(['current_order' => $nextOrder]);
+            } else {
+                $room->update(['current_order' => null, 'completed_at' => now()]);
+            }
+        });
+
+        return response()->json(['message' => 'Turno actualizado', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
+    }
+
+    public function exportRoom($id): StreamedResponse
+    {
+        $room = EvaluationRoom::with(['evaluations.project.students', 'evaluations.scores.teacher', 'evaluations.attempts.teacher'])->findOrFail($id);
+        $filename = 'evaluaciones_sala_' . $room->id . '.csv';
+
+        return response()->streamDownload(function () use ($room) {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['Sala', 'Salon', 'Orden', 'Proyecto', 'Autores', 'Estado', 'Promedio global', 'Docente', 'Promedio docente', 'Comentarios generales', 'Retroalimentacion sala']);
+            foreach ($room->evaluations->sortBy('presentation_order') as $evaluation) {
+                $scoresByTeacher = $evaluation->scores->groupBy('teacher_id');
+                if ($scoresByTeacher->isEmpty()) {
+                    fputcsv($handle, [$room->nombre, $room->salon, $evaluation->presentation_order, $evaluation->project?->title, $evaluation->project?->students->map(fn ($s) => trim($s->nombres . ' ' . $s->apa))->join(', '), $evaluation->sequence_status, $evaluation->average, '', '', '', $evaluation->room_feedback]);
+                    continue;
+                }
+                foreach ($scoresByTeacher as $teacherId => $scores) {
+                    $teacher = $scores->first()->teacher;
+                    $attempt = $evaluation->attempts->firstWhere('teacher_id', $teacherId);
+                    fputcsv($handle, [$room->nombre, $room->salon, $evaluation->presentation_order, $evaluation->project?->title, $evaluation->project?->students->map(fn ($s) => trim($s->nombres . ' ' . $s->apa))->join(', '), $evaluation->sequence_status, $evaluation->average, trim(($teacher?->nombres ?? '') . ' ' . ($teacher?->apa ?? '')), round(($scores->avg('puntaje') / 3) * 100, 2), $attempt?->general_comment, $evaluation->room_feedback]);
+                }
+            }
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     public function studentSchedule()
@@ -402,12 +540,14 @@ class EvaluationController extends Controller
 
         $teacherBreakdown = $scores
             ->groupBy('teacher_id')
-            ->map(function ($teacherScores) use ($labels) {
+            ->map(function ($teacherScores) use ($labels, $evaluation) {
                 $teacher = $teacherScores->first()->teacher;
+                $attempt = $evaluation->attempts?->firstWhere('teacher_id', $teacher?->id);
                 return [
                     'teacher_id' => $teacher?->id,
                     'teacher_name' => trim(($teacher?->nombres ?? '') . ' ' . ($teacher?->apa ?? '') . ' ' . ($teacher?->ama ?? '')) ?: 'Docente',
                     'average' => round(($teacherScores->avg('puntaje') / 3) * 100, 2),
+                    'general_comment' => $attempt?->general_comment,
                     'scores' => $teacherScores->map(fn ($score) => [
                         'criterio' => $score->criterio,
                         'criterio_label' => $labels[$score->criterio] ?? $score->criterio,
@@ -429,15 +569,22 @@ class EvaluationController extends Controller
             'sala' => $evaluation->sala,
             'room' => $evaluation->room ? $this->shapeRoom($evaluation->room) : null,
             'fecha_exposicion' => optional($evaluation->fecha_exposicion)->toDateTimeString(),
+            'presentation_order' => $evaluation->presentation_order,
+            'sequence_status' => $evaluation->sequence_status,
             'estado' => $evaluation->estado,
             'resultado' => $evaluation->resultado,
+            'room_feedback' => $evaluation->room_feedback,
+            'feedback_at' => optional($evaluation->feedback_at)->toDateTimeString(),
             'apto_titulacion' => $evaluation->apto_titulacion,
             'global_average' => $globalAverage,
+            'global_average_color' => $globalAverage < 70 ? 'danger' : ($globalAverage <= 85 ? 'warning' : 'success'),
             'evaluators_count' => $teacherBreakdown->count(),
             'teacher_breakdown' => $teacherBreakdown,
             'current_teacher_attempts' => optional($evaluation->attempts->firstWhere('teacher_id', auth('api')->id()))->attempts_count ?? 0,
             'current_teacher_has_scores' => $scores->where('teacher_id', auth('api')->id())->isNotEmpty(),
             'max_attempts' => $evaluation->room?->max_attempts ?? 1,
+            'can_score_now' => $this->canScoreEvaluation($evaluation, auth('api')->user()),
+            'is_room_responsible' => $this->isRoomResponsible($evaluation->room, auth('api')->user()),
         ];
     }
 
@@ -447,6 +594,7 @@ class EvaluationController extends Controller
             'nombre' => 'required|string|max:80',
             'salon' => 'nullable|string|max:120',
             'semestre' => 'required|integer|in:5,6,7,8',
+            'responsible_teacher_id' => ['nullable', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
             'fecha_evaluacion' => 'required|date|after:now',
             'teacher_evaluation_minutes' => 'required|integer|min:1|max:240',
             'project_presentation_minutes' => 'required|integer|min:1|max:240',
@@ -455,6 +603,8 @@ class EvaluationController extends Controller
             'teacher_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
             'project_ids' => 'nullable|array',
             'project_ids.*' => 'integer|exists:projects,id',
+            'project_order' => 'nullable|array',
+            'project_order.*' => 'integer|min:1',
         ]);
 
         $ignoreId = $request->route('id');
@@ -492,6 +642,22 @@ class EvaluationController extends Controller
         return $validated;
     }
 
+    private function projectSyncPayload(array $projectIds, array $projectOrder): array
+    {
+        $payload = [];
+        $fallbackOrder = 1;
+        foreach ($projectIds as $projectId) {
+            $id = (int) $projectId;
+            $payload[$id] = [
+                'presentation_order' => (int) ($projectOrder[$id] ?? $projectOrder[(string) $id] ?? $fallbackOrder),
+                'status' => 'pendiente',
+            ];
+            $fallbackOrder++;
+        }
+        uasort($payload, fn ($a, $b) => $a['presentation_order'] <=> $b['presentation_order']);
+        return $payload;
+    }
+
     private function syncRoomEvaluations(EvaluationRoom $room): void
     {
         $room->load('projects');
@@ -503,6 +669,10 @@ class EvaluationController extends Controller
                     'etapa' => $this->stageForSemester($room->semestre),
                     'sala' => $room->nombre,
                     'fecha_exposicion' => $room->fecha_evaluacion,
+                    'presentation_order' => (int) ($project->pivot->presentation_order ?: 0),
+                    'sequence_status' => $room->sequence_locked
+                        ? ((int) $project->pivot->presentation_order === (int) $room->current_order ? 'activo' : ($project->pivot->status ?: 'pendiente'))
+                        : 'pendiente',
                     'estado' => 'programada',
                     'resultado' => 'pendiente',
                     'created_by' => auth('api')->id(),
@@ -518,12 +688,36 @@ class EvaluationController extends Controller
             'nombre' => $room->nombre,
             'salon' => $room->salon,
             'semestre' => $room->semestre,
+            'responsible_teacher_id' => $room->responsible_teacher_id,
+            'responsible_teacher' => $room->responsibleTeacher,
             'fecha_evaluacion' => optional($room->fecha_evaluacion)->toDateTimeString(),
             'teacher_evaluation_minutes' => $room->teacher_evaluation_minutes,
             'project_presentation_minutes' => $room->project_presentation_minutes,
             'max_attempts' => $room->max_attempts,
+            'sequence_locked' => $room->sequence_locked,
+            'current_order' => $room->current_order,
+            'completed_at' => optional($room->completed_at)->toDateTimeString(),
             'teachers' => $room->teachers ?? collect(),
-            'projects' => $room->projects ?? collect(),
+            'projects' => ($room->projects ?? collect())->map(function ($project) {
+                $project->presentation_order = (int) ($project->pivot->presentation_order ?? 0);
+                $project->sequence_status = $project->pivot->status ?? 'pendiente';
+                return $project;
+            })->values(),
         ];
+    }
+
+    private function canScoreEvaluation(Evaluation $evaluation, $user): bool
+    {
+        $room = $evaluation->room;
+        if (!$room || !$room->sequence_locked) {
+            return true;
+        }
+
+        return $evaluation->sequence_status === 'activo';
+    }
+
+    private function isRoomResponsible(?EvaluationRoom $room, $user): bool
+    {
+        return $room && $room->responsible_teacher_id && (string) $room->responsible_teacher_id === (string) $user->id;
     }
 }

@@ -51,12 +51,16 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::post('/evaluations/rooms', [EvaluationController::class, 'storeRoom']);
         Route::put('/evaluations/rooms/{id}', [EvaluationController::class, 'updateRoom']);
         Route::delete('/evaluations/rooms/{id}', [EvaluationController::class, 'destroyRoom']);
+        Route::post('/evaluations/rooms/{id}/lock-sequence', [EvaluationController::class, 'lockRoomSequence']);
+        Route::post('/evaluations/rooms/{id}/advance', [EvaluationController::class, 'advanceRoom']);
+        Route::get('/evaluations/rooms/{id}/export', [EvaluationController::class, 'exportRoom']);
         Route::get('/evaluations', [EvaluationController::class, 'index']);
         Route::post('/evaluations', [EvaluationController::class, 'store']);
         Route::get('/evaluations/{id}', [EvaluationController::class, 'show']);
         Route::put('/evaluations/{id}', [EvaluationController::class, 'update']);
         Route::delete('/evaluations/{id}', [EvaluationController::class, 'destroy']);
         Route::post('/evaluations/{id}/score', [EvaluationController::class, 'score']);
+        Route::post('/evaluations/{id}/feedback', [EvaluationController::class, 'feedback']);
     });
 
     // Dashboard
@@ -89,6 +93,8 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::delete('/proposal/windows/{id}', [ProposalWorkflowController::class, 'destroyWindow']);
         Route::post('/proposal/assignments', [ProposalWorkflowController::class, 'storeAssignment']);
         Route::delete('/proposal/assignments/{id}', [ProposalWorkflowController::class, 'destroyAssignment']);
+        Route::post('/proposal/exceptions', [ProposalWorkflowController::class, 'storeException']);
+        Route::delete('/proposal/exceptions/{id}', [ProposalWorkflowController::class, 'destroyException']);
         Route::get('/settings', [SystemSettingController::class, 'index']);
         Route::put('/settings', [SystemSettingController::class, 'update']);
         Route::get('/notices', [SystemSettingController::class, 'notices']);

@@ -12,6 +12,8 @@ use Illuminate\Validation\ValidationException;
 
 class RepositoryController extends Controller
 {
+    private const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'epub'];
+
     public function index(Request $request)
     {
         $query = RepositoryDocument::with(['tags', 'uploader'])
@@ -79,14 +81,14 @@ class RepositoryController extends Controller
                 'autores' => 'required|string|max:1000',
                 'tag_ids' => 'nullable|array',
                 'tag_ids.*' => 'integer|exists:document_tags,id',
-                'archivo' => 'required|file|mimes:pdf,doc,docx,epub|max:' . $maxFileSizeKb,
+                'archivo' => 'required|file|mimes:' . implode(',', self::ALLOWED_EXTENSIONS) . '|max:' . $maxFileSizeKb,
             ]);
 
             $file = $request->file('archivo');
             $extension = strtolower($file->getClientOriginalExtension());
-            if (!in_array($extension, ['pdf', 'doc', 'docx', 'epub'], true)) {
+            if (!in_array($extension, self::ALLOWED_EXTENSIONS, true)) {
                 throw ValidationException::withMessages([
-                    'archivo' => ['Solo se permiten archivos PDF, Word o EPUB.'],
+                    'archivo' => ['Tipo de archivo no permitido. Permitidos: ' . strtoupper(implode(', ', self::ALLOWED_EXTENSIONS)) . '.'],
                 ]);
             }
 
@@ -145,6 +147,13 @@ class RepositoryController extends Controller
             'pdf' => 'application/pdf',
             'doc' => 'application/msword',
             'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls' => 'application/vnd.ms-excel',
+            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'zip' => 'application/zip',
+            'txt' => 'text/plain',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
             'epub' => 'application/epub+zip',
         ];
         $type = strtolower($document->archivo_tipo ?: pathinfo($document->archivo_path, PATHINFO_EXTENSION));

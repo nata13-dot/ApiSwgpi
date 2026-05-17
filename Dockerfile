@@ -111,6 +111,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=build /usr/local/lib/php/extensions /usr/local/lib/php/extensions
 COPY --from=build /usr/local/etc/php/conf.d /usr/local/etc/php/conf.d
 
+# Upload limits for repository and deliverable documents
+RUN { \
+    echo "upload_max_filesize=100M"; \
+    echo "post_max_size=100M"; \
+    echo "max_file_uploads=20"; \
+    echo "memory_limit=256M"; \
+    echo "max_execution_time=120"; \
+    echo "max_input_time=120"; \
+    } > /usr/local/etc/php/conf.d/uploads.ini
+
 WORKDIR /app
 
 # Copy compiled application from build stage
@@ -145,8 +155,24 @@ set -e
 
 echo "🚀 Starting Laravel application..."
 
+# Ensure runtime directories exist after Railway volumes are mounted
+mkdir -p \
+    /app/storage/app/public \
+    /app/storage/framework/cache/data \
+    /app/storage/framework/sessions \
+    /app/storage/framework/views \
+    /app/storage/logs \
+    /app/bootstrap/cache
+
 # Ensure permissions on storage and cache directories
 chown -R www-data:www-data /app/storage /app/bootstrap/cache
+chmod -R ug+rwX /app/storage /app/bootstrap/cache
+
+# Railway injects PORT at runtime; keep Nginx aligned with it.
+sed -i "s/listen 8000;/listen ${PORT:-8000};/" /etc/nginx/sites-available/default
+
+# Public storage symlink for Laravel files
+php artisan storage:link || true
 
 # Run database migrations (allow to fail if DB not ready on first attempt)
 echo "📊 Running database migrations..."
@@ -157,6 +183,12 @@ echo "⚡ Caching configurations..."
 php artisan config:cache || true
 php artisan route:cache || true
 php artisan view:cache || true
+
+echo "PHP upload_max_filesize=$(php -r 'echo ini_get(\"upload_max_filesize\");')"
+echo "PHP post_max_size=$(php -r 'echo ini_get(\"post_max_size\");')"
+echo "PHP file_uploads=$(php -r 'echo ini_get(\"file_uploads\");')"
+echo "Storage writable=$(php -r 'echo is_writable(\"/app/storage/app/public\") ? \"yes\" : \"no\";')"
+echo "Nginx port=${PORT:-8000}"
 
 echo "✅ Application ready!"
 
@@ -180,6 +212,6 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/up || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/up || exit 1
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]

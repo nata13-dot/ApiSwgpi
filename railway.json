@@ -1,9 +1,6 @@
 {
-  "deploy": {
-    "startCommand": "sh -c \"php -S 0.0.0.0:${PORT:-8080} -t public\""
-  }
-,
+  "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "builder": "dockerfile"
+    "builder": "DOCKERFILE"
   }
 }

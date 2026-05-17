@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\Asignatura;
 use App\Models\ProjectRegistrationWindow;
+use App\Models\ProposalReviewException;
 use App\Models\SubjectGroup;
 use App\Models\TeacherGroupAssignment;
 use App\Models\User;
@@ -22,6 +23,10 @@ class ProposalWorkflowController extends Controller
             'subject_groups' => SubjectGroup::with(['asignaturas', 'registrationWindows', 'teacherAssignments.teacher', 'teacherAssignments.asignatura'])->orderBy('semestre')->orderBy('nombre')->get(),
             'teachers' => User::where('perfil_id', 2)->where('activo', true)->orderBy('nombres')->get(['id', 'nombres', 'apa', 'ama']),
             'asignaturas' => Asignatura::orderBy('nombre')->get(['id', 'clave', 'nombre']),
+            'exceptions' => ProposalReviewException::with(['asignatura:id,nombre', 'subjectGroup:id,nombre,semestre,grupo', 'teacher:id,nombres,apa,ama', 'student:id,nombres,apa,ama,semestre,grupo'])
+                ->where('activo', true)
+                ->orderByDesc('created_at')
+                ->get(),
         ]);
     }
 
@@ -90,10 +95,10 @@ class ProposalWorkflowController extends Controller
         $assignment = TeacherGroupAssignment::updateOrCreate(
             [
                 'subject_group_id' => $validated['subject_group_id'],
+                'asignatura_id' => $validated['asignatura_id'],
                 'teacher_id' => $validated['teacher_id'],
             ],
             [
-                'asignatura_id' => $validated['asignatura_id'],
                 'labor' => $labor,
                 'activo' => $validated['activo'] ?? true,
             ]
@@ -106,6 +111,38 @@ class ProposalWorkflowController extends Controller
     {
         TeacherGroupAssignment::findOrFail($id)->delete();
         return response()->json(['message' => 'Responsable removido']);
+    }
+
+    public function storeException(Request $request)
+    {
+        $validated = $request->validate([
+            'asignatura_id' => 'required|exists:asignaturas,id',
+            'subject_group_id' => 'nullable|exists:subject_groups,id',
+            'teacher_id' => ['required', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
+            'student_id' => ['required', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $exception = ProposalReviewException::updateOrCreate(
+            [
+                'asignatura_id' => $validated['asignatura_id'],
+                'teacher_id' => $validated['teacher_id'],
+                'student_id' => $validated['student_id'],
+            ],
+            [
+                'subject_group_id' => $validated['subject_group_id'] ?? null,
+                'notes' => $validated['notes'] ?? null,
+                'activo' => true,
+            ]
+        );
+
+        return response()->json(['message' => 'Excepcion de alumno registrada', 'exception' => $exception->load(['teacher', 'student', 'asignatura', 'subjectGroup'])], 201);
+    }
+
+    public function destroyException($id)
+    {
+        ProposalReviewException::findOrFail($id)->update(['activo' => false]);
+        return response()->json(['message' => 'Excepcion desactivada']);
     }
 
     public function studentStatus()
@@ -151,16 +188,14 @@ class ProposalWorkflowController extends Controller
     public function searchStudents(Request $request)
     {
         $user = auth('api')->user();
-        if ((int) $user->perfil_id !== 3) {
-            return response()->json(['message' => 'Solo estudiantes.'], 403);
+        if (!in_array((int) $user->perfil_id, [1, 2, 3], true)) {
+            return response()->json(['message' => 'No autorizado.'], 403);
         }
 
         $term = trim((string) $request->query('q', ''));
         $query = User::where('perfil_id', 3)->where('activo', true)
-            ->where('id', '!=', $user->id)
-            ->whereDoesntHave('projectsAsAdvisor', function ($q) {
-                $q->whereNull('project_user.rol_asesor');
-            });
+            ->when((int) $user->perfil_id === 3, fn ($q) => $q->where('id', '!=', $user->id))
+            ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->whereNull('project_user.rol_asesor'));
 
         if ($term !== '') {
             $query->where(function ($q) use ($term) {
@@ -179,9 +214,21 @@ class ProposalWorkflowController extends Controller
             return response()->json(['message' => 'Solo docentes.'], 403);
         }
 
-        $groupIds = TeacherGroupAssignment::where('teacher_id', $teacher->id)->where('activo', true)->pluck('subject_group_id');
+        $assignments = TeacherGroupAssignment::where('teacher_id', $teacher->id)->where('activo', true)->get();
+        $groupIds = $assignments->pluck('subject_group_id');
+        $subjectIds = $assignments->pluck('asignatura_id')->filter();
+        $exceptionStudentIds = ProposalReviewException::where('teacher_id', $teacher->id)
+            ->where('activo', true)
+            ->when($subjectIds->isNotEmpty(), fn ($query) => $query->whereIn('asignatura_id', $subjectIds))
+            ->pluck('student_id');
+
         $projects = Project::with(['students', 'subjectGroup', 'creator', 'proposalReviewer'])
-            ->whereIn('subject_group_id', $groupIds)
+            ->where(function ($query) use ($groupIds, $exceptionStudentIds) {
+                $query->whereIn('subject_group_id', $groupIds);
+                if ($exceptionStudentIds->isNotEmpty()) {
+                    $query->orWhereHas('students', fn ($studentQuery) => $studentQuery->whereIn('users.id', $exceptionStudentIds));
+                }
+            })
             ->orderByRaw("FIELD(proposal_status, 'pendiente', 'requiere_cambios', 'aprobado', 'rechazado')")
             ->orderByDesc('created_at')
             ->get();
@@ -202,6 +249,13 @@ class ProposalWorkflowController extends Controller
                 ->where('subject_group_id', $project->subject_group_id)
                 ->where('activo', true)
                 ->exists();
+            if (!$allowed) {
+                $studentIds = $project->students()->pluck('users.id');
+                $allowed = ProposalReviewException::where('teacher_id', $teacher->id)
+                    ->where('activo', true)
+                    ->whereIn('student_id', $studentIds)
+                    ->exists();
+            }
             if (!$allowed) {
                 return response()->json(['message' => 'Este proyecto no pertenece a tus grupos asignados.'], 403);
             }
