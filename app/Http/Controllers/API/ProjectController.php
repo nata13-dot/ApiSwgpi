@@ -282,18 +282,22 @@ class ProjectController extends Controller
 
     public function projectsExcelTemplate()
     {
-        return $this->excelTemplateResponse('plantilla_proyectos.xls', [
-            'title',
-            'description',
+        return $this->excelTemplateResponse('plantilla_proyectos.xls', 'Plantilla para carga masiva de proyectos', [
+            'titulo',
+            'descripcion',
             'semestre',
-            'subject_group_id',
-            'year',
-            'student_ids',
-            'company_name',
-            'company_giro',
-            'company_contact_name',
-            'company_contact_position',
-            'company_address',
+            'carga_id',
+            'anio',
+            'matriculas_estudiantes',
+            'empresa',
+            'giro',
+            'responsable_empresa',
+            'puesto_responsable',
+            'direccion_empresa',
+        ], [
+            'carga_id corresponde al ID de la carga/grupo de asignaturas.',
+            'matriculas_estudiantes acepta matriculas separadas por coma, punto y coma o barra vertical.',
+            'No cambies el formato del archivo a .xlsx; usa la plantilla .xls generada por el sistema.',
         ]);
     }
 
@@ -495,10 +499,16 @@ class ProjectController extends Controller
         $project->asignaturas()->sync($group->asignaturas->pluck('id')->all());
     }
 
-    private function excelTemplateResponse(string $filename, array $headers)
+    private function excelTemplateResponse(string $filename, string $title, array $headers, array $notes = [])
     {
         $cells = collect($headers)->map(fn ($header) => '<th>' . htmlspecialchars($header, ENT_QUOTES, 'UTF-8') . '</th>')->implode('');
-        $html = '<html><head><meta charset="UTF-8"></head><body><table><tr>' . $cells . '</tr></table></body></html>';
+        $blankRows = collect(range(1, 20))->map(fn () => '<tr>' . str_repeat('<td></td>', count($headers)) . '</tr>')->implode('');
+        $noteHtml = collect($notes)->map(fn ($note) => '<p>' . htmlspecialchars($note, ENT_QUOTES, 'UTF-8') . '</p>')->implode('');
+        $html = '<html><head><meta charset="UTF-8"></head><body>'
+            . '<h3>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h3>'
+            . $noteHtml
+            . '<table border="1"><tr>' . $cells . '</tr>' . $blankRows . '</table>'
+            . '</body></html>';
 
         return response($html, 200, [
             'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
@@ -520,7 +530,7 @@ class ProjectController extends Controller
 
         $handle = fopen($path, 'r');
         $headers = fgetcsv($handle) ?: [];
-        $headers = array_map(fn ($value) => trim((string) $value), $headers);
+        $headers = array_map(fn ($value) => $this->normalizeImportHeader($value), $headers);
         $rows = [];
         while (($values = fgetcsv($handle)) !== false) {
             if (!array_filter($values, fn ($value) => trim((string) $value) !== '')) continue;
@@ -557,7 +567,7 @@ class ProjectController extends Controller
                 }
             }
             if ($rowIndex === 0) {
-                $headers = $cells;
+                $headers = array_map(fn ($value) => $this->normalizeImportHeader($value), $cells);
                 continue;
             }
             if (!array_filter($cells, fn ($value) => trim((string) $value) !== '')) continue;
@@ -565,5 +575,28 @@ class ProjectController extends Controller
         }
 
         return $rows;
+    }
+
+    private function normalizeImportHeader($header): string
+    {
+        $key = strtolower(trim((string) $header));
+        $key = str_replace([' ', '-', '/', '.'], '_', $key);
+        $aliases = [
+            'titulo' => 'title',
+            'descripcion' => 'description',
+            'carga_id' => 'subject_group_id',
+            'grupo_carga_id' => 'subject_group_id',
+            'anio' => 'year',
+            'ano' => 'year',
+            'matriculas_estudiantes' => 'student_ids',
+            'estudiantes' => 'student_ids',
+            'empresa' => 'company_name',
+            'giro' => 'company_giro',
+            'responsable_empresa' => 'company_contact_name',
+            'puesto_responsable' => 'company_contact_position',
+            'direccion_empresa' => 'company_address',
+        ];
+
+        return $aliases[$key] ?? $key;
     }
 }

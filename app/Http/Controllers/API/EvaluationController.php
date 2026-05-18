@@ -9,6 +9,8 @@ use App\Models\EvaluationRoom;
 use App\Models\EvaluationScore;
 use App\Models\Project;
 use App\Models\RubricCriterion;
+use App\Models\SystemSetting;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -44,6 +46,8 @@ class EvaluationController extends Controller
 
     public function storeCriterion(Request $request)
     {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
         try {
             $validated = $request->validate([
                 'semestre' => 'required|integer|in:5,6,7,8',
@@ -75,6 +79,8 @@ class EvaluationController extends Controller
 
     public function updateCriterion(Request $request, $id)
     {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
         $criterion = RubricCriterion::find($id);
         if (!$criterion) {
             return response()->json(['error' => 'Pregunta no encontrada'], 404);
@@ -96,6 +102,8 @@ class EvaluationController extends Controller
 
     public function destroyCriterion($id)
     {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
         $criterion = RubricCriterion::find($id);
         if (!$criterion) {
             return response()->json(['error' => 'Pregunta no encontrada'], 404);
@@ -125,9 +133,7 @@ class EvaluationController extends Controller
     public function store(Request $request)
     {
         $user = auth('api')->user();
-        if (!in_array($user->perfil_id, [1, 2])) {
-            return response()->json(['error' => 'Solo administradores y docentes pueden crear evaluaciones'], 403);
-        }
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
 
         try {
             $validated = $request->validate([
@@ -177,6 +183,8 @@ class EvaluationController extends Controller
 
     public function update(Request $request, $id)
     {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
         $evaluation = Evaluation::find($id);
         if (!$evaluation) {
             return response()->json(['error' => 'Evaluacion no encontrada'], 404);
@@ -206,6 +214,9 @@ class EvaluationController extends Controller
 
     public function destroy($id)
     {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
         $evaluation = Evaluation::find($id);
         if (!$evaluation) {
             return response()->json(['error' => 'Evaluacion no encontrada'], 404);
@@ -303,7 +314,7 @@ class EvaluationController extends Controller
     {
         $user = auth('api')->user();
         $evaluation = Evaluation::with('room')->findOrFail($id);
-        if (!$this->isRoomResponsible($evaluation->room, $user) && (int) $user->perfil_id !== 1) {
+        if (!$this->isRoomResponsible($evaluation->room, $user) && !$this->isEvaluationManager($user)) {
             return response()->json(['error' => 'Solo el responsable de la sala o administracion puede registrar retroalimentacion.'], 403);
         }
 
@@ -347,6 +358,8 @@ class EvaluationController extends Controller
 
     public function storeRoom(Request $request)
     {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
         $validated = $this->roomRules($request);
         $room = EvaluationRoom::create(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
         $room->teachers()->sync($validated['teacher_ids'] ?? []);
@@ -358,6 +371,8 @@ class EvaluationController extends Controller
 
     public function updateRoom(Request $request, $id)
     {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
         $room = EvaluationRoom::findOrFail($id);
         $validated = $this->roomRules($request);
         $room->update(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
@@ -370,12 +385,16 @@ class EvaluationController extends Controller
 
     public function destroyRoom($id)
     {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
         EvaluationRoom::findOrFail($id)->update(['activo' => false]);
         return response()->json(['message' => 'Sala desactivada']);
     }
 
     public function lockRoomSequence($id)
     {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
         $room = EvaluationRoom::with('projects')->findOrFail($id);
         $ordered = $room->projects->sortBy(fn ($project) => (int) ($project->pivot->presentation_order ?: 9999))->values();
         if ($ordered->isEmpty()) {
@@ -414,7 +433,7 @@ class EvaluationController extends Controller
     {
         $user = auth('api')->user();
         $room = EvaluationRoom::with('projects')->findOrFail($id);
-        if (!$this->isRoomResponsible($room, $user) && (int) $user->perfil_id !== 1) {
+        if (!$this->isRoomResponsible($room, $user) && !$this->isEvaluationManager($user)) {
             return response()->json(['error' => 'Solo el responsable de la sala puede avanzar el turno.'], 403);
         }
 
@@ -458,6 +477,8 @@ class EvaluationController extends Controller
 
     public function exportRoom($id): StreamedResponse
     {
+        if ($guard = $this->guardEvaluationManager()) abort(403, 'No autorizado para exportar evaluaciones.');
+
         $room = EvaluationRoom::with(['evaluations.project.students', 'evaluations.scores.teacher', 'evaluations.attempts.teacher'])->findOrFail($id);
         $filename = 'evaluaciones_sala_' . $room->id . '.csv';
 
@@ -478,6 +499,48 @@ class EvaluationController extends Controller
             }
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function managers()
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        $managerIds = $this->evaluationManagerIds();
+        $teachers = User::where('perfil_id', 2)
+            ->where('activo', true)
+            ->orderBy('nombres')
+            ->get(['id', 'nombres', 'apa', 'ama', 'email']);
+
+        return response()->json([
+            'manager_ids' => $managerIds,
+            'teachers' => $teachers,
+        ]);
+    }
+
+    public function updateManagers(Request $request)
+    {
+        $user = auth('api')->user();
+        if ((int) $user->perfil_id !== 1) {
+            return response()->json(['error' => 'Solo administracion puede asignar responsables de evaluaciones.'], 403);
+        }
+
+        $validated = $request->validate([
+            'teacher_ids' => 'present|array',
+            'teacher_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
+        ]);
+
+        $teacherIds = collect($validated['teacher_ids'])
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        SystemSetting::setValue('evaluation_manager_teacher_ids', $teacherIds, 'array', 'Docentes con acceso completo a gestion de evaluaciones');
+
+        return response()->json([
+            'message' => 'Responsables de evaluaciones actualizados',
+            'manager_ids' => $teacherIds,
+        ]);
     }
 
     public function studentSchedule()
@@ -585,6 +648,7 @@ class EvaluationController extends Controller
             'max_attempts' => $evaluation->room?->max_attempts ?? 1,
             'can_score_now' => $this->canScoreEvaluation($evaluation, auth('api')->user()),
             'is_room_responsible' => $this->isRoomResponsible($evaluation->room, auth('api')->user()),
+            'can_manage_evaluations' => $this->isEvaluationManager(auth('api')->user()),
         ];
     }
 
@@ -719,5 +783,36 @@ class EvaluationController extends Controller
     private function isRoomResponsible(?EvaluationRoom $room, $user): bool
     {
         return $room && $room->responsible_teacher_id && (string) $room->responsible_teacher_id === (string) $user->id;
+    }
+
+    private function evaluationManagerIds(): array
+    {
+        return collect(SystemSetting::valueFor('evaluation_manager_teacher_ids', []))
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function isEvaluationManager($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+        if ((int) $user->perfil_id === 1) {
+            return true;
+        }
+
+        return (int) $user->perfil_id === 2 && in_array((string) $user->id, $this->evaluationManagerIds(), true);
+    }
+
+    private function guardEvaluationManager($user = null)
+    {
+        $user = $user ?: auth('api')->user();
+        if ($this->isEvaluationManager($user)) {
+            return null;
+        }
+
+        return response()->json(['error' => 'No tienes permiso para gestionar evaluaciones.'], 403);
     }
 }

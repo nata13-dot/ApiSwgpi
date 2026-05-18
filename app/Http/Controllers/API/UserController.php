@@ -202,20 +202,26 @@ class UserController extends Controller
 
     public function usersExcelTemplate()
     {
-        return $this->excelTemplateResponse('plantilla_usuarios.xls', [
-            'id',
+        return $this->excelTemplateResponse('plantilla_usuarios.xls', 'Plantilla para carga masiva de usuarios', [
+            'matricula_nomina',
             'nombres',
-            'apa',
-            'ama',
+            'apellido_paterno',
+            'apellido_materno',
             'email',
             'password',
-            'password_confirmation',
-            'telefonos',
+            'confirmar_password',
+            'telefono',
             'direccion',
-            'perfil_id',
+            'perfil',
             'semestre',
             'grupo',
             'curp',
+            'activo',
+        ], [
+            'perfil: usa 1=Administrador, 2=Docente, 3=Estudiante.',
+            'semestre y grupo solo aplican para estudiantes.',
+            'activo: usa 1 para activo o 0 para inactivo.',
+            'No cambies el formato del archivo a .xlsx; usa la plantilla .xls generada por el sistema.',
         ]);
     }
 
@@ -246,6 +252,7 @@ class UserController extends Controller
                 'semestre' => ($row['semestre'] ?? '') !== '' ? (int) $row['semestre'] : null,
                 'grupo' => trim((string) ($row['grupo'] ?? '')) ?: null,
                 'curp' => trim((string) ($row['curp'] ?? '')) ?: null,
+                'activo' => $this->parseBooleanValue($row['activo'] ?? '1'),
             ];
 
             $validator = Validator::make($data, [
@@ -261,6 +268,7 @@ class UserController extends Controller
                 'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:users,curp'],
                 'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
                 'telefonos' => 'nullable|string|max:200',
+                'activo' => 'nullable|boolean',
             ]);
 
             if ($validator->fails()) {
@@ -319,10 +327,16 @@ class UserController extends Controller
         return $address ? preg_replace('/\s+/', ' ', trim($address)) : null;
     }
 
-    private function excelTemplateResponse(string $filename, array $headers)
+    private function excelTemplateResponse(string $filename, string $title, array $headers, array $notes = [])
     {
         $cells = collect($headers)->map(fn ($header) => '<th>' . htmlspecialchars($header, ENT_QUOTES, 'UTF-8') . '</th>')->implode('');
-        $html = '<html><head><meta charset="UTF-8"></head><body><table><tr>' . $cells . '</tr></table></body></html>';
+        $blankRows = collect(range(1, 20))->map(fn () => '<tr>' . str_repeat('<td></td>', count($headers)) . '</tr>')->implode('');
+        $noteHtml = collect($notes)->map(fn ($note) => '<p>' . htmlspecialchars($note, ENT_QUOTES, 'UTF-8') . '</p>')->implode('');
+        $html = '<html><head><meta charset="UTF-8"></head><body>'
+            . '<h3>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h3>'
+            . $noteHtml
+            . '<table border="1"><tr>' . $cells . '</tr>' . $blankRows . '</table>'
+            . '</body></html>';
 
         return response($html, 200, [
             'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
@@ -344,7 +358,7 @@ class UserController extends Controller
 
         $handle = fopen($path, 'r');
         $headers = fgetcsv($handle) ?: [];
-        $headers = array_map(fn ($value) => trim((string) $value), $headers);
+        $headers = array_map(fn ($value) => $this->normalizeImportHeader($value), $headers);
         $rows = [];
         while (($values = fgetcsv($handle)) !== false) {
             if (!array_filter($values, fn ($value) => trim((string) $value) !== '')) continue;
@@ -381,7 +395,7 @@ class UserController extends Controller
                 }
             }
             if ($rowIndex === 0) {
-                $headers = $cells;
+                $headers = array_map(fn ($value) => $this->normalizeImportHeader($value), $cells);
                 continue;
             }
             if (!array_filter($cells, fn ($value) => trim((string) $value) !== '')) continue;
@@ -389,5 +403,36 @@ class UserController extends Controller
         }
 
         return $rows;
+    }
+
+    private function normalizeImportHeader($header): string
+    {
+        $key = strtolower(trim((string) $header));
+        $key = str_replace([' ', '-', '/', '.'], '_', $key);
+        $aliases = [
+            'matricula' => 'id',
+            'nomina' => 'id',
+            'matricula_nomina' => 'id',
+            'apellido_paterno' => 'apa',
+            'apellido_materno' => 'ama',
+            'telefono' => 'telefonos',
+            'telefonos' => 'telefonos',
+            'perfil' => 'perfil_id',
+            'confirmar_password' => 'password_confirmation',
+            'password_confirmacion' => 'password_confirmation',
+            'confirmacion_password' => 'password_confirmation',
+        ];
+
+        return $aliases[$key] ?? $key;
+    }
+
+    private function parseBooleanValue($value): bool
+    {
+        $text = strtolower(trim((string) $value));
+        if (in_array($text, ['0', 'false', 'no', 'inactivo'], true)) {
+            return false;
+        }
+
+        return true;
     }
 }

@@ -21,6 +21,9 @@ use App\Http\Controllers\API\SystemSettingController;
 // ========================
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::get('/settings/public', [SystemSettingController::class, 'public']);
+Route::get('/users-template.csv', [UserController::class, 'blankCsvTemplate']);
+Route::get('/users-template.xls', [UserController::class, 'usersExcelTemplate']);
+Route::get('/projects-template.xls', [ProjectController::class, 'projectsExcelTemplate']);
 
 // ========================
 // RUTAS PÚBLICAS (sin JWT)
@@ -42,6 +45,10 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     
     // Evaluaciones (solo docentes y administradores)
     Route::middleware('role:admin,teacher')->group(function () {
+        Route::get('/evaluation-managers', [EvaluationController::class, 'managers']);
+        Route::put('/evaluation-managers', [EvaluationController::class, 'updateManagers']);
+        Route::get('/evaluations/managers', [EvaluationController::class, 'managers']);
+        Route::put('/evaluations/managers', [EvaluationController::class, 'updateManagers']);
         Route::get('/evaluations/criteria', [EvaluationController::class, 'criteria']);
         Route::post('/evaluations/rubric-criteria', [EvaluationController::class, 'storeCriterion']);
         Route::put('/evaluations/rubric-criteria/{id}', [EvaluationController::class, 'updateCriterion']);
@@ -105,8 +112,6 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::post('/repositorio/{id}', [RepositoryController::class, 'update']);
         Route::delete('/repositorio/{id}', [RepositoryController::class, 'destroy']);
         Route::get('/users', [UserController::class, 'index']);
-        Route::get('/users-template.csv', [UserController::class, 'blankCsvTemplate']);
-        Route::get('/users-template.xls', [UserController::class, 'usersExcelTemplate']);
         Route::post('/users/import-excel', [UserController::class, 'importExcel']);
         Route::post('/users', [UserController::class, 'store']);
         Route::get('/users/{id}', [UserController::class, 'show']);
@@ -131,7 +136,6 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/my-projects', [ProjectController::class, 'myProjects']);
     Route::get('/projects', [ProjectController::class, 'index']);
     Route::middleware('role:admin')->group(function () {
-        Route::get('/projects-template.xls', [ProjectController::class, 'projectsExcelTemplate']);
         Route::post('/projects/import-excel', [ProjectController::class, 'importExcel']);
     });
     Route::post('/projects', [ProjectController::class, 'store']);
