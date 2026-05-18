@@ -147,6 +147,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     Route::delete('/projects/{projectId}/advisors/{userId}', [ProjectController::class, 'removeAdvisor']);
 
     // Deliverables (CRUD + Calificación + Upload + Descarga)
+    Route::get('/teacher/deliverables-matrix', [DeliverableController::class, 'teacherMatrix']);
     Route::get('/deliverables', [DeliverableController::class, 'index']);
     Route::post('/deliverables', [DeliverableController::class, 'store']);
     Route::get('/deliverables/{id}', [DeliverableController::class, 'show']);

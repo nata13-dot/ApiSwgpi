@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\Competencia;
 use App\Models\Deliverable;
+use App\Models\Project;
 use App\Services\BusinessValidationService;
 use App\Services\FileService;
 use App\Models\SystemSetting;
@@ -13,9 +15,116 @@ use Exception;
 
 class DeliverableController extends Controller
 {
+    public function teacherMatrix(Request $request)
+    {
+        $user = auth('api')->user();
+        if ((int) $user->perfil_id !== 2) {
+            return response()->json(['error' => 'Solo docentes pueden consultar esta vista'], 403);
+        }
+
+        $projects = Project::with([
+                'students:id,nombres,apa,ama,semestre,grupo',
+                'advisors:id,nombres,apa,ama',
+                'asignaturas.competencias',
+                'deliverables.competencia.asignatura',
+                'deliverables.submittedBy:id,nombres,apa,ama',
+                'deliverables.calificadoPor:id,nombres,apa,ama',
+            ])
+            ->where('activo', true)
+            ->whereHas('advisors', fn ($query) => $query->where('users.id', $user->id))
+            ->orderBy('title')
+            ->get();
+
+        $studentFilter = trim((string) $request->query('student', ''));
+        $subjectFilter = $request->query('asignatura_id');
+
+        $data = $projects->map(function (Project $project) use ($studentFilter, $subjectFilter) {
+            $competencias = $project->asignaturas
+                ->flatMap(fn ($asignatura) => $asignatura->competencias->map(function (Competencia $competencia) use ($asignatura) {
+                    $competencia->setRelation('asignatura', $asignatura);
+                    return $competencia;
+                }))
+                ->when($subjectFilter, fn ($items) => $items->filter(fn ($competencia) => (int) $competencia->asignatura_id === (int) $subjectFilter))
+                ->sortBy(fn ($competencia) => ($competencia->asignatura?->nombre ?? '') . ' ' . $competencia->nombre)
+                ->values();
+
+            $students = $project->students
+                ->when($studentFilter !== '', function ($items) use ($studentFilter) {
+                    $term = mb_strtolower($studentFilter);
+                    return $items->filter(function ($student) use ($term) {
+                        $haystack = mb_strtolower(trim("{$student->id} {$student->nombres} {$student->apa} {$student->ama}"));
+                        return str_contains($haystack, $term);
+                    });
+                })
+                ->values();
+
+            $rows = $students->map(function ($student) use ($project, $competencias) {
+                $items = $competencias->map(function (Competencia $competencia) use ($project, $student) {
+                    $deliverable = $project->deliverables
+                        ->where('competencia_id', $competencia->id)
+                        ->where('submitted_by', $student->id)
+                        ->sortByDesc('id')
+                        ->first();
+
+                    return $this->shapeTeacherMatrixItem($competencia, $deliverable);
+                })->values();
+
+                $approvedGrades = $items
+                    ->pluck('calificacion')
+                    ->filter(fn ($grade) => $grade !== null && (float) $grade >= 70)
+                    ->values();
+
+                return [
+                    'student' => [
+                        'id' => $student->id,
+                        'nombres' => $student->nombres,
+                        'apa' => $student->apa,
+                        'ama' => $student->ama,
+                        'semestre' => $student->semestre,
+                        'grupo' => $student->grupo,
+                    ],
+                    'items' => $items,
+                    'summary' => [
+                        'total' => $items->count(),
+                        'entregados' => $items->where('status', 'entregado')->count(),
+                        'faltantes' => $items->where('status', 'faltante')->count(),
+                        'aprobados' => $items->where('approved', true)->count(),
+                        'reprobados' => $items->filter(fn ($item) => $item['status'] === 'entregado' && $item['calificacion'] !== null && !$item['approved'])->count(),
+                        'promedio' => $approvedGrades->count() ? round($approvedGrades->avg(), 2) : null,
+                    ],
+                ];
+            })->values();
+
+            return [
+                'project' => [
+                    'id' => $project->id,
+                    'title' => $project->title,
+                    'semestre' => $project->semestre,
+                    'year' => $project->year,
+                    'subject_group_id' => $project->subject_group_id,
+                ],
+                'subjects' => $project->asignaturas->map(fn ($subject) => [
+                    'id' => $subject->id,
+                    'nombre' => $subject->nombre,
+                    'clave' => $subject->clave,
+                ])->values(),
+                'students' => $rows,
+            ];
+        })->filter(fn ($project) => $project['students']->isNotEmpty())->values();
+
+        return response()->json(['data' => $data]);
+    }
+
     public function index(Request $request)
     {
-        $query = Deliverable::with(['project', 'competencia', 'tags', 'submittedBy', 'calificadoPor']);
+        $query = Deliverable::with(['project.advisors', 'competencia.asignatura', 'tags', 'submittedBy', 'calificadoPor']);
+        $user = auth('api')->user();
+
+        if ((int) $user->perfil_id === 2) {
+            $query->whereHas('project.advisors', fn ($q) => $q->where('users.id', $user->id));
+        } elseif ((int) $user->perfil_id === 3) {
+            $query->where('submitted_by', $user->id);
+        }
         
         if ($request->filled('project_id')) {
             $query->where('project_id', $request->project_id);
@@ -154,11 +263,13 @@ class DeliverableController extends Controller
             }
 
             // Actualizar entregable
+            $grade = (float) $validated['calificacion'];
+
             $deliverable->update([
-                'calificacion' => $validated['calificacion'],
+                'calificacion' => $grade,
                 'fecha_calificacion' => now(),
                 'calificado_por' => $user->id,
-                'estado' => 'aprobado',
+                'estado' => $grade >= 70 ? 'aprobado' : 'revisado',
             ]);
 
             return response()->json([
@@ -255,5 +366,39 @@ class DeliverableController extends Controller
         } catch (Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
+    }
+
+    private function shapeTeacherMatrixItem(Competencia $competencia, ?Deliverable $deliverable): array
+    {
+        $grade = $deliverable?->calificacion;
+        $approved = $grade !== null && (float) $grade >= 70;
+
+        return [
+            'competencia' => [
+                'id' => $competencia->id,
+                'nombre' => $competencia->nombre,
+                'fecha_inicio' => optional($competencia->fecha_inicio)->toDateString(),
+                'fecha_fin' => optional($competencia->fecha_fin)->toDateString(),
+            ],
+            'asignatura' => [
+                'id' => $competencia->asignatura?->id,
+                'nombre' => $competencia->asignatura?->nombre,
+                'clave' => $competencia->asignatura?->clave,
+            ],
+            'status' => $deliverable ? 'entregado' : 'faltante',
+            'approved' => $approved,
+            'calificacion' => $grade,
+            'calificacion_efectiva' => $approved ? (float) $grade : 0,
+            'deliverable' => $deliverable ? [
+                'id' => $deliverable->id,
+                'nombre' => $deliverable->nombre,
+                'descripcion' => $deliverable->descripcion,
+                'estado' => $deliverable->estado,
+                'archivo_path' => $deliverable->archivo_path,
+                'tipo_documento' => $deliverable->tipo_documento,
+                'fecha_calificacion' => optional($deliverable->fecha_calificacion)->toDateTimeString(),
+                'calificado_por' => $deliverable->calificadoPor,
+            ] : null,
+        ];
     }
 }

@@ -40,10 +40,8 @@ class ProjectController extends Controller
 
         $user = auth('api')->user();
         if ($user && (int) $user->perfil_id === 2) {
-            $responsibleGroupIds = \App\Models\TeacherGroupAssignment::where('teacher_id', $user->id)->where('activo', true)->pluck('subject_group_id');
-            $query->where(function ($scope) use ($user, $responsibleGroupIds) {
-                $scope->whereHas('advisors', fn ($q) => $q->where('users.id', $user->id))
-                    ->orWhereIn('subject_group_id', $responsibleGroupIds);
+            $query->where(function ($scope) use ($user) {
+                $scope->whereHas('advisors', fn ($q) => $q->where('users.id', $user->id));
             });
         }
 
@@ -85,8 +83,7 @@ class ProjectController extends Controller
 
         if ((int) $user->perfil_id === 2) {
             $query->where(function ($q) use ($user) {
-                $q->whereHas('advisors', fn ($advisorQuery) => $advisorQuery->where('users.id', $user->id))
-                  ->orWhereIn('subject_group_id', \App\Models\TeacherGroupAssignment::where('teacher_id', $user->id)->where('activo', true)->pluck('subject_group_id'));
+                $q->whereHas('advisors', fn ($advisorQuery) => $advisorQuery->where('users.id', $user->id));
             });
         } elseif ((int) $user->perfil_id === 3) {
             $query->whereHas('students', fn ($studentQuery) => $studentQuery->where('users.id', $user->id));
