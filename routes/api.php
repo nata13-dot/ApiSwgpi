@@ -102,8 +102,12 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::get('/settings/semester-preview', [SystemSettingController::class, 'semesterPreview']);
         Route::post('/settings/apply-semester-change', [SystemSettingController::class, 'applySemesterChange']);
         Route::post('/repositorio', [RepositoryController::class, 'store']);
+        Route::post('/repositorio/{id}', [RepositoryController::class, 'update']);
+        Route::delete('/repositorio/{id}', [RepositoryController::class, 'destroy']);
         Route::get('/users', [UserController::class, 'index']);
         Route::get('/users-template.csv', [UserController::class, 'blankCsvTemplate']);
+        Route::get('/users-template.xls', [UserController::class, 'usersExcelTemplate']);
+        Route::post('/users/import-excel', [UserController::class, 'importExcel']);
         Route::post('/users', [UserController::class, 'store']);
         Route::get('/users/{id}', [UserController::class, 'show']);
         Route::put('/users/{id}', [UserController::class, 'update']);
@@ -126,6 +130,10 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     // Projects (CRUD)
     Route::get('/my-projects', [ProjectController::class, 'myProjects']);
     Route::get('/projects', [ProjectController::class, 'index']);
+    Route::middleware('role:admin')->group(function () {
+        Route::get('/projects-template.xls', [ProjectController::class, 'projectsExcelTemplate']);
+        Route::post('/projects/import-excel', [ProjectController::class, 'importExcel']);
+    });
     Route::post('/projects', [ProjectController::class, 'store']);
     Route::get('/projects/{id}', [ProjectController::class, 'show']);
     Route::put('/projects/{id}', [ProjectController::class, 'update']);

@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -279,6 +280,91 @@ class ProjectController extends Controller
         ]);
     }
 
+    public function projectsExcelTemplate()
+    {
+        return $this->excelTemplateResponse('plantilla_proyectos.xls', [
+            'title',
+            'description',
+            'semestre',
+            'subject_group_id',
+            'year',
+            'student_ids',
+            'company_name',
+            'company_giro',
+            'company_contact_name',
+            'company_contact_position',
+            'company_address',
+        ]);
+    }
+
+    public function importExcel(Request $request)
+    {
+        $request->validate([
+            'archivo' => 'required|file|max:10240',
+        ]);
+        $this->guardImportExtension($request->file('archivo')->getClientOriginalExtension());
+
+        $rows = $this->readTabularUpload($request->file('archivo')->getRealPath());
+        $created = 0;
+        $errors = [];
+        $user = auth('api')->user();
+
+        foreach ($rows as $index => $row) {
+            $line = $index + 2;
+            $studentIds = array_values(array_filter(array_map(
+                'trim',
+                preg_split('/[;,|]/', (string) ($row['student_ids'] ?? ''))
+            )));
+            $data = [
+                'title' => trim((string) ($row['title'] ?? '')),
+                'description' => trim((string) ($row['description'] ?? '')),
+                'semestre' => ($row['semestre'] ?? '') !== '' ? (int) $row['semestre'] : null,
+                'subject_group_id' => ($row['subject_group_id'] ?? '') !== '' ? (int) $row['subject_group_id'] : null,
+                'year' => ($row['year'] ?? '') !== '' ? (int) $row['year'] : null,
+                'student_ids' => $studentIds,
+                'company_name' => trim((string) ($row['company_name'] ?? '')),
+                'company_giro' => trim((string) ($row['company_giro'] ?? '')),
+                'company_contact_name' => trim((string) ($row['company_contact_name'] ?? '')),
+                'company_contact_position' => trim((string) ($row['company_contact_position'] ?? '')),
+                'company_address' => trim((string) ($row['company_address'] ?? '')),
+            ];
+
+            $validator = Validator::make($data, $this->projectRules(true));
+            if ($validator->fails()) {
+                $errors[] = ['fila' => $line, 'errores' => $validator->errors()->all()];
+                continue;
+            }
+
+            try {
+                $project = Project::create([
+                    'title' => $data['title'],
+                    'description' => $data['description'],
+                    'semestre' => $data['semestre'],
+                    'subject_group_id' => $data['subject_group_id'],
+                    'year' => $data['year'],
+                    'company_name' => $data['company_name'],
+                    'company_giro' => $data['company_giro'],
+                    'company_contact_name' => $data['company_contact_name'],
+                    'company_contact_position' => $data['company_contact_position'],
+                    'company_address' => $data['company_address'],
+                    'proposal_status' => 'pendiente',
+                    'created_by' => $user->id,
+                ]);
+                $this->syncSubjectsFromGroup($project);
+                $this->syncStudents($project, $data['student_ids']);
+                $created++;
+            } catch (ValidationException $e) {
+                $errors[] = ['fila' => $line, 'errores' => collect($e->errors())->flatten()->all()];
+            }
+        }
+
+        return response()->json([
+            'message' => 'Importacion procesada',
+            'created' => $created,
+            'errors' => $errors,
+        ], $errors ? 207 : 201);
+    }
+
     private function projectRules(bool $creating): array
     {
         return [
@@ -407,5 +493,77 @@ class ProjectController extends Controller
         }
 
         $project->asignaturas()->sync($group->asignaturas->pluck('id')->all());
+    }
+
+    private function excelTemplateResponse(string $filename, array $headers)
+    {
+        $cells = collect($headers)->map(fn ($header) => '<th>' . htmlspecialchars($header, ENT_QUOTES, 'UTF-8') . '</th>')->implode('');
+        $html = '<html><head><meta charset="UTF-8"></head><body><table><tr>' . $cells . '</tr></table></body></html>';
+
+        return response($html, 200, [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
+    }
+
+    private function readTabularUpload(string $path): array
+    {
+        $content = file_get_contents($path);
+        if (str_starts_with($content, 'PK')) {
+            throw ValidationException::withMessages([
+                'archivo' => ['Por ahora importa la plantilla .xls generada por el sistema. No guardes el archivo como .xlsx.'],
+            ]);
+        }
+        if (stripos($content, '<table') !== false) {
+            return $this->readHtmlTable($content);
+        }
+
+        $handle = fopen($path, 'r');
+        $headers = fgetcsv($handle) ?: [];
+        $headers = array_map(fn ($value) => trim((string) $value), $headers);
+        $rows = [];
+        while (($values = fgetcsv($handle)) !== false) {
+            if (!array_filter($values, fn ($value) => trim((string) $value) !== '')) continue;
+            $rows[] = array_combine($headers, array_pad($values, count($headers), ''));
+        }
+        fclose($handle);
+
+        return $rows;
+    }
+
+    private function guardImportExtension(string $extension): void
+    {
+        if (!in_array(strtolower($extension), ['xls', 'xlsx', 'csv', 'txt'], true)) {
+            throw ValidationException::withMessages([
+                'archivo' => ['El archivo debe ser .xls, .xlsx o .csv.'],
+            ]);
+        }
+    }
+
+    private function readHtmlTable(string $html): array
+    {
+        libxml_use_internal_errors(true);
+        $dom = new \DOMDocument();
+        $dom->loadHTML($html);
+        $tableRows = $dom->getElementsByTagName('tr');
+        $headers = [];
+        $rows = [];
+
+        foreach ($tableRows as $rowIndex => $tr) {
+            $cells = [];
+            foreach ($tr->childNodes as $cell) {
+                if (in_array($cell->nodeName, ['th', 'td'], true)) {
+                    $cells[] = trim($cell->textContent);
+                }
+            }
+            if ($rowIndex === 0) {
+                $headers = $cells;
+                continue;
+            }
+            if (!array_filter($cells, fn ($value) => trim((string) $value) !== '')) continue;
+            $rows[] = array_combine($headers, array_pad($cells, count($headers), ''));
+        }
+
+        return $rows;
     }
 }

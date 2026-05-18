@@ -17,7 +17,8 @@ class CompetenciaController extends Controller
             $query->where('asignatura_id', $request->asignatura_id);
         }
 
-        return response()->json($query->orderBy('nombre')->paginate(15));
+        $perPage = min((int) $request->query('per_page', 15), 100);
+        return response()->json($query->orderBy('nombre')->paginate($perPage));
     }
 
     public function store(Request $request)

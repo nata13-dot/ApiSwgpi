@@ -74,26 +74,17 @@ class RepositoryController extends Controller
     public function store(Request $request)
     {
         try {
-            $maxFileSizeKb = ((int) SystemSetting::valueFor('max_file_size_mb', 50)) * 1024;
             $validated = $request->validate([
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'required|string|max:5000',
                 'autores' => 'required|string|max:1000',
                 'tag_ids' => 'nullable|array',
                 'tag_ids.*' => 'integer|exists:document_tags,id',
-                'archivo' => 'required|file|mimes:' . implode(',', self::ALLOWED_EXTENSIONS) . '|max:' . $maxFileSizeKb,
+                'archivo' => $this->fileValidationRule(true),
             ]);
 
             $file = $request->file('archivo');
-            $extension = strtolower($file->getClientOriginalExtension());
-            if (!in_array($extension, self::ALLOWED_EXTENSIONS, true)) {
-                throw ValidationException::withMessages([
-                    'archivo' => ['Tipo de archivo no permitido. Permitidos: ' . strtoupper(implode(', ', self::ALLOWED_EXTENSIONS)) . '.'],
-                ]);
-            }
-
-            $fileName = 'repo_' . auth('api')->id() . '_' . time() . '_' . uniqid() . '.' . $extension;
-            $path = Storage::disk('public')->putFileAs('repositorio', $file, $fileName);
+            [$path, $extension] = $this->storeRepositoryFile($file);
             if (!$path) {
                 return response()->json(['message' => 'No se pudo guardar el archivo.'], 500);
             }
@@ -116,6 +107,72 @@ class RepositoryController extends Controller
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }
+    }
+
+    public function update(Request $request, $id)
+    {
+        try {
+            $document = RepositoryDocument::find($id);
+            if (!$document || !$document->activo) {
+                return response()->json(['error' => 'Documento no encontrado'], 404);
+            }
+
+            $validated = $request->validate([
+                'nombre' => 'required|string|max:255',
+                'descripcion' => 'required|string|max:5000',
+                'autores' => 'required|string|max:1000',
+                'tag_ids' => 'nullable|array',
+                'tag_ids.*' => 'integer|exists:document_tags,id',
+                'archivo' => $this->fileValidationRule(false),
+            ]);
+
+            $updates = [
+                'nombre' => trim($validated['nombre']),
+                'descripcion' => trim($validated['descripcion']),
+                'autores' => trim($validated['autores']),
+            ];
+
+            if ($request->hasFile('archivo')) {
+                [$path, $extension] = $this->storeRepositoryFile($request->file('archivo'));
+                if (!$path) {
+                    return response()->json(['message' => 'No se pudo guardar el archivo.'], 500);
+                }
+
+                if ($document->archivo_path && Storage::disk('public')->exists($document->archivo_path)) {
+                    Storage::disk('public')->delete($document->archivo_path);
+                }
+
+                $updates['archivo_path'] = $path;
+                $updates['archivo_tipo'] = $extension;
+            }
+
+            $document->update($updates);
+            $document->tags()->sync($validated['tag_ids'] ?? []);
+
+            return response()->json([
+                'message' => 'Documento actualizado',
+                'document' => $document->fresh()->load(['tags', 'uploader']),
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
+    }
+
+    public function destroy($id)
+    {
+        $document = RepositoryDocument::find($id);
+        if (!$document || !$document->activo) {
+            return response()->json(['error' => 'Documento no encontrado'], 404);
+        }
+
+        if ($document->archivo_path && Storage::disk('public')->exists($document->archivo_path)) {
+            Storage::disk('public')->delete($document->archivo_path);
+        }
+
+        $document->tags()->detach();
+        $document->update(['activo' => false]);
+
+        return response()->json(['message' => 'Documento eliminado']);
     }
 
     public function download($id)
@@ -162,5 +219,28 @@ class RepositoryController extends Controller
             'Content-Type' => $mimeTypes[$type] ?? 'application/octet-stream',
             'Content-Disposition' => 'inline; filename="' . basename($document->archivo_path) . '"',
         ]);
+    }
+
+    private function fileValidationRule(bool $required): string
+    {
+        $maxFileSizeKb = ((int) SystemSetting::valueFor('max_file_size_mb', 50)) * 1024;
+        $presence = $required ? 'required' : 'nullable';
+
+        return $presence . '|file|mimes:' . implode(',', self::ALLOWED_EXTENSIONS) . '|max:' . $maxFileSizeKb;
+    }
+
+    private function storeRepositoryFile($file): array
+    {
+        $extension = strtolower($file->getClientOriginalExtension());
+        if (!in_array($extension, self::ALLOWED_EXTENSIONS, true)) {
+            throw ValidationException::withMessages([
+                'archivo' => ['Tipo de archivo no permitido. Permitidos: ' . strtoupper(implode(', ', self::ALLOWED_EXTENSIONS)) . '.'],
+            ]);
+        }
+
+        $fileName = 'repo_' . auth('api')->id() . '_' . time() . '_' . uniqid() . '.' . $extension;
+        $path = Storage::disk('public')->putFileAs('repositorio', $file, $fileName);
+
+        return [$path, $extension];
     }
 }
