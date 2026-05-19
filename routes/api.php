@@ -20,6 +20,9 @@ use App\Http\Controllers\API\SystemSettingController;
 // AUTENTICACIÓN (sin protección)
 // ========================
 Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/password/request-token', [AuthController::class, 'requestPasswordReset']);
+Route::post('/auth/password/verify-token', [AuthController::class, 'verifyPasswordResetToken']);
+Route::post('/auth/password/reset', [AuthController::class, 'resetPasswordWithToken']);
 Route::get('/settings/public', [SystemSettingController::class, 'public']);
 Route::get('/users-template.csv', [UserController::class, 'blankCsvTemplate']);
 Route::get('/users-template.xls', [UserController::class, 'usersExcelTemplate']);
