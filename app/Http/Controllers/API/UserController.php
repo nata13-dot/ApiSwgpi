@@ -404,6 +404,7 @@ class UserController extends Controller
         preg_match_all('/<tr\b[^>]*>(.*?)<\/tr>/is', $html, $tableRows);
         $headers = [];
         $rows = [];
+        $headerFound = false;
 
         foreach ($tableRows[1] ?? [] as $rowIndex => $tr) {
             $cells = [];
@@ -411,10 +412,14 @@ class UserController extends Controller
             foreach ($cellMatches[1] ?? [] as $cell) {
                 $cells[] = $this->cleanSpreadsheetCell($cell);
             }
-            if ($rowIndex === 0) {
-                $headers = array_map(fn ($value) => $this->normalizeImportHeader($value), $cells);
+
+            $normalizedCells = array_map(fn ($value) => $this->normalizeImportHeader($value), $cells);
+            if (!$headerFound && $this->looksLikeUserImportHeader($normalizedCells)) {
+                $headers = $normalizedCells;
+                $headerFound = true;
                 continue;
             }
+            if (!$headerFound) continue;
             if (!array_filter($cells, fn ($value) => trim((string) $value) !== '')) continue;
             $rows[] = $this->combineSpreadsheetRow($headers, $cells);
         }
@@ -434,6 +439,14 @@ class UserController extends Controller
         $values = array_slice(array_pad($values, count($headers), ''), 0, count($headers));
 
         return array_combine($headers, $values) ?: [];
+    }
+
+    private function looksLikeUserImportHeader(array $headers): bool
+    {
+        $headers = array_filter($headers);
+        $matches = array_intersect(['id', 'nombres', 'password', 'perfil_id'], $headers);
+
+        return count($matches) >= 3;
     }
 
     private function normalizeImportHeader($header): string
