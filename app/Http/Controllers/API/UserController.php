@@ -245,6 +245,8 @@ class UserController extends Controller
 
             foreach ($rows as $index => $row) {
                 $line = $index + 2;
+                $profileId = (int) $this->normalizeSpreadsheetValue($row['perfil_id'] ?? 0);
+                $semesterValue = $this->normalizeSpreadsheetValue($row['semestre'] ?? '');
                 $data = [
                     'id' => trim((string) ($row['id'] ?? '')),
                     'nombres' => trim((string) ($row['nombres'] ?? '')),
@@ -255,9 +257,9 @@ class UserController extends Controller
                     'password_confirmation' => (string) ($row['password_confirmation'] ?? ''),
                     'telefonos' => trim((string) ($row['telefonos'] ?? '')) ?: null,
                     'direccion' => trim((string) ($row['direccion'] ?? '')) ?: null,
-                    'perfil_id' => (int) ($row['perfil_id'] ?? 0),
-                    'semestre' => ($row['semestre'] ?? '') !== '' ? (int) $row['semestre'] : null,
-                    'grupo' => trim((string) ($row['grupo'] ?? '')) ?: null,
+                    'perfil_id' => $profileId,
+                    'semestre' => $profileId === 3 && $semesterValue !== '' ? (int) $semesterValue : null,
+                    'grupo' => $profileId === 3 ? (trim((string) ($row['grupo'] ?? '')) ?: null) : null,
                     'curp' => trim((string) ($row['curp'] ?? '')) ?: null,
                     'activo' => $this->parseBooleanValue($row['activo'] ?? '1'),
                 ];
