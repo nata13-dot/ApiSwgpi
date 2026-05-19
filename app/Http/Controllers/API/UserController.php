@@ -227,76 +227,92 @@ class UserController extends Controller
 
     public function importExcel(Request $request)
     {
-        $request->validate([
-            'archivo' => 'required|file|max:10240',
-        ]);
-        $this->guardImportExtension($request->file('archivo')->getClientOriginalExtension());
-
-        $rows = $this->readTabularUpload($request->file('archivo')->getRealPath());
-        $created = 0;
-        $errors = [];
-
-        foreach ($rows as $index => $row) {
-            $line = $index + 2;
-            $data = [
-                'id' => trim((string) ($row['id'] ?? '')),
-                'nombres' => trim((string) ($row['nombres'] ?? '')),
-                'apa' => trim((string) ($row['apa'] ?? '')) ?: null,
-                'ama' => trim((string) ($row['ama'] ?? '')) ?: null,
-                'email' => trim((string) ($row['email'] ?? '')) ?: null,
-                'password' => (string) ($row['password'] ?? ''),
-                'password_confirmation' => (string) ($row['password_confirmation'] ?? ''),
-                'telefonos' => trim((string) ($row['telefonos'] ?? '')) ?: null,
-                'direccion' => trim((string) ($row['direccion'] ?? '')) ?: null,
-                'perfil_id' => (int) ($row['perfil_id'] ?? 0),
-                'semestre' => ($row['semestre'] ?? '') !== '' ? (int) $row['semestre'] : null,
-                'grupo' => trim((string) ($row['grupo'] ?? '')) ?: null,
-                'curp' => trim((string) ($row['curp'] ?? '')) ?: null,
-                'activo' => $this->parseBooleanValue($row['activo'] ?? '1'),
-            ];
-
-            $validator = Validator::make($data, [
-                'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:users,id'],
-                'nombres' => 'required|string|max:200',
-                'email' => 'nullable|email|unique:users,email',
-                'password' => 'required|string|min:6|max:72|confirmed',
-                'perfil_id' => 'required|integer|in:1,2,3',
-                'semestre' => 'nullable|integer|in:5,6,7,8',
-                'grupo' => 'nullable|string|max:20',
-                'apa' => 'nullable|string|max:100',
-                'ama' => 'nullable|string|max:100',
-                'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:users,curp'],
-                'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
-                'telefonos' => 'nullable|string|max:200',
-                'activo' => 'nullable|boolean',
+        try {
+            $request->validate([
+                'archivo' => 'required|file|max:10240',
             ]);
+            $this->guardImportExtension($request->file('archivo')->getClientOriginalExtension());
 
-            if ($validator->fails()) {
-                $errors[] = ['fila' => $line, 'errores' => $validator->errors()->all()];
-                continue;
+            $rows = $this->readTabularUpload($request->file('archivo')->getRealPath());
+            $created = 0;
+            $errors = [];
+
+            if (empty($rows)) {
+                throw ValidationException::withMessages([
+                    'archivo' => ['El archivo no contiene filas para importar.'],
+                ]);
             }
 
-            if ($data['perfil_id'] !== 3) {
-                $data['semestre'] = null;
-                $data['grupo'] = null;
-            } elseif (!empty($data['grupo'])) {
-                $data['grupo'] = strtoupper(trim($data['grupo']));
-            }
-            if (!empty($data['direccion'])) {
-                $data['direccion'] = $this->normalizeAddress($data['direccion']);
-            }
-            $data['password'] = Hash::make($data['password']);
-            unset($data['password_confirmation']);
+            foreach ($rows as $index => $row) {
+                $line = $index + 2;
+                $data = [
+                    'id' => trim((string) ($row['id'] ?? '')),
+                    'nombres' => trim((string) ($row['nombres'] ?? '')),
+                    'apa' => trim((string) ($row['apa'] ?? '')) ?: null,
+                    'ama' => trim((string) ($row['ama'] ?? '')) ?: null,
+                    'email' => trim((string) ($row['email'] ?? '')) ?: null,
+                    'password' => (string) ($row['password'] ?? ''),
+                    'password_confirmation' => (string) ($row['password_confirmation'] ?? ''),
+                    'telefonos' => trim((string) ($row['telefonos'] ?? '')) ?: null,
+                    'direccion' => trim((string) ($row['direccion'] ?? '')) ?: null,
+                    'perfil_id' => (int) ($row['perfil_id'] ?? 0),
+                    'semestre' => ($row['semestre'] ?? '') !== '' ? (int) $row['semestre'] : null,
+                    'grupo' => trim((string) ($row['grupo'] ?? '')) ?: null,
+                    'curp' => trim((string) ($row['curp'] ?? '')) ?: null,
+                    'activo' => $this->parseBooleanValue($row['activo'] ?? '1'),
+                ];
 
-            User::create($data);
-            $created++;
+                $validator = Validator::make($data, [
+                    'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:users,id'],
+                    'nombres' => 'required|string|max:200',
+                    'email' => 'nullable|email|unique:users,email',
+                    'password' => 'required|string|min:6|max:72|confirmed',
+                    'perfil_id' => 'required|integer|in:1,2,3',
+                    'semestre' => 'nullable|integer|in:5,6,7,8',
+                    'grupo' => 'nullable|string|max:20',
+                    'apa' => 'nullable|string|max:100',
+                    'ama' => 'nullable|string|max:100',
+                    'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:users,curp'],
+                    'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
+                    'telefonos' => 'nullable|string|max:200',
+                    'activo' => 'nullable|boolean',
+                ]);
+
+                if ($validator->fails()) {
+                    $errors[] = ['fila' => $line, 'errores' => $validator->errors()->all()];
+                    continue;
+                }
+
+                if ($data['perfil_id'] !== 3) {
+                    $data['semestre'] = null;
+                    $data['grupo'] = null;
+                } elseif (!empty($data['grupo'])) {
+                    $data['grupo'] = strtoupper(trim($data['grupo']));
+                }
+                if (!empty($data['direccion'])) {
+                    $data['direccion'] = $this->normalizeAddress($data['direccion']);
+                }
+                $data['password'] = Hash::make($data['password']);
+                unset($data['password_confirmation']);
+
+                User::create($data);
+                $created++;
+            }
+
+            return response()->json([
+                'message' => 'Importacion procesada',
+                'created' => $created,
+                'errors' => $errors,
+            ], $errors ? 207 : 201);
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'No se pudo importar el archivo', 'errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json([
+                'message' => 'No se pudo procesar el archivo. Descarga nuevamente la plantilla .xls e intenta otra vez.',
+                'errors' => ['archivo' => [$e->getMessage()]],
+            ], 422);
         }
-
-        return response()->json([
-            'message' => 'Importacion procesada',
-            'created' => $created,
-            'errors' => $errors,
-        ], $errors ? 207 : 201);
     }
 
     private function guardAdminSensitiveAction(Request $request, User $target)
@@ -362,7 +378,7 @@ class UserController extends Controller
         $rows = [];
         while (($values = fgetcsv($handle)) !== false) {
             if (!array_filter($values, fn ($value) => trim((string) $value) !== '')) continue;
-            $rows[] = array_combine($headers, array_pad($values, count($headers), ''));
+            $rows[] = $this->combineSpreadsheetRow($headers, $values);
         }
         fclose($handle);
 
@@ -380,29 +396,39 @@ class UserController extends Controller
 
     private function readHtmlTable(string $html): array
     {
-        libxml_use_internal_errors(true);
-        $dom = new \DOMDocument();
-        $dom->loadHTML($html);
-        $tableRows = $dom->getElementsByTagName('tr');
+        preg_match_all('/<tr\b[^>]*>(.*?)<\/tr>/is', $html, $tableRows);
         $headers = [];
         $rows = [];
 
-        foreach ($tableRows as $rowIndex => $tr) {
+        foreach ($tableRows[1] ?? [] as $rowIndex => $tr) {
             $cells = [];
-            foreach ($tr->childNodes as $cell) {
-                if (in_array($cell->nodeName, ['th', 'td'], true)) {
-                    $cells[] = trim($cell->textContent);
-                }
+            preg_match_all('/<t[hd]\b[^>]*>(.*?)<\/t[hd]>/is', $tr, $cellMatches);
+            foreach ($cellMatches[1] ?? [] as $cell) {
+                $cells[] = $this->cleanSpreadsheetCell($cell);
             }
             if ($rowIndex === 0) {
                 $headers = array_map(fn ($value) => $this->normalizeImportHeader($value), $cells);
                 continue;
             }
             if (!array_filter($cells, fn ($value) => trim((string) $value) !== '')) continue;
-            $rows[] = array_combine($headers, array_pad($cells, count($headers), ''));
+            $rows[] = $this->combineSpreadsheetRow($headers, $cells);
         }
 
         return $rows;
+    }
+
+    private function cleanSpreadsheetCell(string $cell): string
+    {
+        $cell = preg_replace('/<br\s*\/?>/i', "\n", $cell);
+        return trim(html_entity_decode(strip_tags($cell), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
+    private function combineSpreadsheetRow(array $headers, array $values): array
+    {
+        $headers = array_values(array_filter($headers, fn ($header) => trim((string) $header) !== ''));
+        $values = array_slice(array_pad($values, count($headers), ''), 0, count($headers));
+
+        return array_combine($headers, $values) ?: [];
     }
 
     private function normalizeImportHeader($header): string

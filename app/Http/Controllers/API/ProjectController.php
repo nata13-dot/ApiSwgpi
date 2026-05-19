@@ -300,70 +300,85 @@ class ProjectController extends Controller
 
     public function importExcel(Request $request)
     {
-        $request->validate([
-            'archivo' => 'required|file|max:10240',
-        ]);
-        $this->guardImportExtension($request->file('archivo')->getClientOriginalExtension());
+        try {
+            $request->validate([
+                'archivo' => 'required|file|max:10240',
+            ]);
+            $this->guardImportExtension($request->file('archivo')->getClientOriginalExtension());
 
-        $rows = $this->readTabularUpload($request->file('archivo')->getRealPath());
-        $created = 0;
-        $errors = [];
-        $user = auth('api')->user();
-
-        foreach ($rows as $index => $row) {
-            $line = $index + 2;
-            $studentIds = array_values(array_filter(array_map(
-                'trim',
-                preg_split('/[;,|]/', (string) ($row['student_ids'] ?? ''))
-            )));
-            $data = [
-                'title' => trim((string) ($row['title'] ?? '')),
-                'description' => trim((string) ($row['description'] ?? '')),
-                'semestre' => ($row['semestre'] ?? '') !== '' ? (int) $row['semestre'] : null,
-                'subject_group_id' => ($row['subject_group_id'] ?? '') !== '' ? (int) $row['subject_group_id'] : null,
-                'year' => ($row['year'] ?? '') !== '' ? (int) $row['year'] : null,
-                'student_ids' => $studentIds,
-                'company_name' => trim((string) ($row['company_name'] ?? '')),
-                'company_giro' => trim((string) ($row['company_giro'] ?? '')),
-                'company_contact_name' => trim((string) ($row['company_contact_name'] ?? '')),
-                'company_contact_position' => trim((string) ($row['company_contact_position'] ?? '')),
-                'company_address' => trim((string) ($row['company_address'] ?? '')),
-            ];
-
-            $validator = Validator::make($data, $this->projectRules(true));
-            if ($validator->fails()) {
-                $errors[] = ['fila' => $line, 'errores' => $validator->errors()->all()];
-                continue;
-            }
-
-            try {
-                $project = Project::create([
-                    'title' => $data['title'],
-                    'description' => $data['description'],
-                    'semestre' => $data['semestre'],
-                    'subject_group_id' => $data['subject_group_id'],
-                    'year' => $data['year'],
-                    'company_name' => $data['company_name'],
-                    'company_giro' => $data['company_giro'],
-                    'company_contact_name' => $data['company_contact_name'],
-                    'company_contact_position' => $data['company_contact_position'],
-                    'company_address' => $data['company_address'],
-                    'proposal_status' => 'pendiente',
-                    'created_by' => $user->id,
+            $rows = $this->readTabularUpload($request->file('archivo')->getRealPath());
+            if (empty($rows)) {
+                throw ValidationException::withMessages([
+                    'archivo' => ['El archivo no contiene filas para importar.'],
                 ]);
-                $this->syncSubjectsFromGroup($project);
-                $this->syncStudents($project, $data['student_ids']);
-                $created++;
-            } catch (ValidationException $e) {
-                $errors[] = ['fila' => $line, 'errores' => collect($e->errors())->flatten()->all()];
             }
-        }
+            $created = 0;
+            $errors = [];
+            $user = auth('api')->user();
 
-        return response()->json([
-            'message' => 'Importacion procesada',
-            'created' => $created,
-            'errors' => $errors,
-        ], $errors ? 207 : 201);
+            foreach ($rows as $index => $row) {
+                $line = $index + 2;
+                $studentIds = array_values(array_filter(array_map(
+                    'trim',
+                    preg_split('/[;,|]/', (string) ($row['student_ids'] ?? ''))
+                )));
+                $data = [
+                    'title' => trim((string) ($row['title'] ?? '')),
+                    'description' => trim((string) ($row['description'] ?? '')),
+                    'semestre' => ($row['semestre'] ?? '') !== '' ? (int) $row['semestre'] : null,
+                    'subject_group_id' => ($row['subject_group_id'] ?? '') !== '' ? (int) $row['subject_group_id'] : null,
+                    'year' => ($row['year'] ?? '') !== '' ? (int) $row['year'] : null,
+                    'student_ids' => $studentIds,
+                    'company_name' => trim((string) ($row['company_name'] ?? '')),
+                    'company_giro' => trim((string) ($row['company_giro'] ?? '')),
+                    'company_contact_name' => trim((string) ($row['company_contact_name'] ?? '')),
+                    'company_contact_position' => trim((string) ($row['company_contact_position'] ?? '')),
+                    'company_address' => trim((string) ($row['company_address'] ?? '')),
+                ];
+
+                $validator = Validator::make($data, $this->projectRules(true));
+                if ($validator->fails()) {
+                    $errors[] = ['fila' => $line, 'errores' => $validator->errors()->all()];
+                    continue;
+                }
+
+                try {
+                    $project = Project::create([
+                        'title' => $data['title'],
+                        'description' => $data['description'],
+                        'semestre' => $data['semestre'],
+                        'subject_group_id' => $data['subject_group_id'],
+                        'year' => $data['year'],
+                        'company_name' => $data['company_name'],
+                        'company_giro' => $data['company_giro'],
+                        'company_contact_name' => $data['company_contact_name'],
+                        'company_contact_position' => $data['company_contact_position'],
+                        'company_address' => $data['company_address'],
+                        'proposal_status' => 'pendiente',
+                        'created_by' => $user->id,
+                    ]);
+                    $this->syncSubjectsFromGroup($project);
+                    $this->syncStudents($project, $data['student_ids']);
+                    $created++;
+                } catch (ValidationException $e) {
+                    $errors[] = ['fila' => $line, 'errores' => collect($e->errors())->flatten()->all()];
+                }
+            }
+
+            return response()->json([
+                'message' => 'Importacion procesada',
+                'created' => $created,
+                'errors' => $errors,
+            ], $errors ? 207 : 201);
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'No se pudo importar el archivo', 'errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json([
+                'message' => 'No se pudo procesar el archivo. Descarga nuevamente la plantilla .xls e intenta otra vez.',
+                'errors' => ['archivo' => [$e->getMessage()]],
+            ], 422);
+        }
     }
 
     private function projectRules(bool $creating): array
@@ -531,7 +546,7 @@ class ProjectController extends Controller
         $rows = [];
         while (($values = fgetcsv($handle)) !== false) {
             if (!array_filter($values, fn ($value) => trim((string) $value) !== '')) continue;
-            $rows[] = array_combine($headers, array_pad($values, count($headers), ''));
+            $rows[] = $this->combineSpreadsheetRow($headers, $values);
         }
         fclose($handle);
 
@@ -549,29 +564,39 @@ class ProjectController extends Controller
 
     private function readHtmlTable(string $html): array
     {
-        libxml_use_internal_errors(true);
-        $dom = new \DOMDocument();
-        $dom->loadHTML($html);
-        $tableRows = $dom->getElementsByTagName('tr');
+        preg_match_all('/<tr\b[^>]*>(.*?)<\/tr>/is', $html, $tableRows);
         $headers = [];
         $rows = [];
 
-        foreach ($tableRows as $rowIndex => $tr) {
+        foreach ($tableRows[1] ?? [] as $rowIndex => $tr) {
             $cells = [];
-            foreach ($tr->childNodes as $cell) {
-                if (in_array($cell->nodeName, ['th', 'td'], true)) {
-                    $cells[] = trim($cell->textContent);
-                }
+            preg_match_all('/<t[hd]\b[^>]*>(.*?)<\/t[hd]>/is', $tr, $cellMatches);
+            foreach ($cellMatches[1] ?? [] as $cell) {
+                $cells[] = $this->cleanSpreadsheetCell($cell);
             }
             if ($rowIndex === 0) {
                 $headers = array_map(fn ($value) => $this->normalizeImportHeader($value), $cells);
                 continue;
             }
             if (!array_filter($cells, fn ($value) => trim((string) $value) !== '')) continue;
-            $rows[] = array_combine($headers, array_pad($cells, count($headers), ''));
+            $rows[] = $this->combineSpreadsheetRow($headers, $cells);
         }
 
         return $rows;
+    }
+
+    private function cleanSpreadsheetCell(string $cell): string
+    {
+        $cell = preg_replace('/<br\s*\/?>/i', "\n", $cell);
+        return trim(html_entity_decode(strip_tags($cell), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
+    private function combineSpreadsheetRow(array $headers, array $values): array
+    {
+        $headers = array_values(array_filter($headers, fn ($header) => trim((string) $header) !== ''));
+        $values = array_slice(array_pad($values, count($headers), ''), 0, count($headers));
+
+        return array_combine($headers, $values) ?: [];
     }
 
     private function normalizeImportHeader($header): string
