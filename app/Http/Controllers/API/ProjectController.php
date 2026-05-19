@@ -287,6 +287,7 @@ class ProjectController extends Controller
             'matriculas_estudiantes',
         ], [
             'matriculas_estudiantes acepta una o mas matriculas separadas por coma. Ejemplo: e000001, 0222222',
+            'anio es opcional; si queda vacio se usara el año actual.',
             'Puedes usar la plantilla descargada o guardarla como .xlsx antes de importarla.',
         ]);
     }
@@ -316,7 +317,7 @@ class ProjectController extends Controller
                     'title' => trim((string) ($row['title'] ?? '')),
                     'description' => trim((string) ($row['description'] ?? '')),
                     'semestre' => ($row['semestre'] ?? '') !== '' ? (int) $row['semestre'] : null,
-                    'year' => ($row['year'] ?? '') !== '' ? (int) $row['year'] : null,
+                    'year' => ($row['year'] ?? '') !== '' ? (int) $row['year'] : now()->year,
                     'student_ids' => $studentIds,
                 ];
 
@@ -326,7 +327,7 @@ class ProjectController extends Controller
                         'title' => 'required|string|max:255',
                         'description' => 'required|string|max:5000',
                         'semestre' => 'required|integer|in:5,6,7,8',
-                        'year' => 'required|integer|min:2000|max:2100',
+                        'year' => 'nullable|integer|min:2000|max:2100',
                         'student_ids' => 'required|array|min:1',
                         'student_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
                     ],
@@ -755,16 +756,33 @@ class ProjectController extends Controller
 
     private function normalizeImportHeader($header): string
     {
-        $key = strtolower(trim((string) $header));
+        $key = trim((string) $header);
+        $key = preg_replace('/^\xEF\xBB\xBF/u', '', $key);
+        $key = strtolower($key);
+        $key = strtr($key, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+        ]);
         $key = str_replace([' ', '-', '/', '.'], '_', $key);
         $aliases = [
             'titulo' => 'title',
             'descripcion' => 'description',
             'anio' => 'year',
             'ano' => 'year',
+            'year' => 'year',
             'matriculas_estudiantes' => 'student_ids',
+            'matricula_estudiantes' => 'student_ids',
             'matriculas' => 'student_ids',
+            'matricula' => 'student_ids',
             'estudiantes' => 'student_ids',
+            'ids_estudiantes' => 'student_ids',
+            'id_estudiantes' => 'student_ids',
+            'student_ids' => 'student_ids',
         ];
 
         return $aliases[$key] ?? $key;
