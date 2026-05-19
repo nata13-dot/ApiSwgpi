@@ -102,6 +102,7 @@ FROM php:8.4-fpm
 # Install only runtime tools and minimal dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libzip4 \
     nginx \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
@@ -187,6 +188,7 @@ php artisan view:cache || true
 echo "PHP upload_max_filesize=$(php -r 'echo ini_get(\"upload_max_filesize\");')"
 echo "PHP post_max_size=$(php -r 'echo ini_get(\"post_max_size\");')"
 echo "PHP file_uploads=$(php -r 'echo ini_get(\"file_uploads\");')"
+echo "PHP zip_extension=$(php -r 'echo class_exists(\"ZipArchive\") ? \"yes\" : \"no\";')"
 echo "Storage writable=$(php -r 'echo is_writable(\"/app/storage/app/public\") ? \"yes\" : \"no\";')"
 echo "Nginx port=${PORT:-8000}"
 
