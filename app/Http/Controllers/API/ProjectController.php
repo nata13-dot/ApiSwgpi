@@ -283,18 +283,11 @@ class ProjectController extends Controller
             'titulo',
             'descripcion',
             'semestre',
-            'carga_id',
             'anio',
             'matriculas_estudiantes',
-            'empresa',
-            'giro',
-            'responsable_empresa',
-            'puesto_responsable',
-            'direccion_empresa',
         ], [
-            'carga_id corresponde al ID de la carga/grupo de asignaturas.',
-            'matriculas_estudiantes acepta matriculas separadas por coma, punto y coma o barra vertical.',
-            'No cambies el formato del archivo a .xlsx; usa la plantilla .xls generada por el sistema.',
+            'matriculas_estudiantes acepta una o mas matriculas separadas por coma. Ejemplo: e000001, 0222222',
+            'Puedes usar la plantilla descargada o guardarla como .xlsx antes de importarla.',
         ]);
     }
 
@@ -318,25 +311,28 @@ class ProjectController extends Controller
 
             foreach ($rows as $index => $row) {
                 $line = $index + 2;
-                $studentIds = array_values(array_filter(array_map(
-                    'trim',
-                    preg_split('/[;,|]/', (string) ($row['student_ids'] ?? ''))
-                )));
+                $studentIds = $this->parseStudentIds($row['student_ids'] ?? '');
                 $data = [
                     'title' => trim((string) ($row['title'] ?? '')),
                     'description' => trim((string) ($row['description'] ?? '')),
                     'semestre' => ($row['semestre'] ?? '') !== '' ? (int) $row['semestre'] : null,
-                    'subject_group_id' => ($row['subject_group_id'] ?? '') !== '' ? (int) $row['subject_group_id'] : null,
                     'year' => ($row['year'] ?? '') !== '' ? (int) $row['year'] : null,
                     'student_ids' => $studentIds,
-                    'company_name' => trim((string) ($row['company_name'] ?? '')),
-                    'company_giro' => trim((string) ($row['company_giro'] ?? '')),
-                    'company_contact_name' => trim((string) ($row['company_contact_name'] ?? '')),
-                    'company_contact_position' => trim((string) ($row['company_contact_position'] ?? '')),
-                    'company_address' => trim((string) ($row['company_address'] ?? '')),
                 ];
 
-                $validator = Validator::make($data, $this->projectRules(true));
+                $validator = Validator::make(
+                    $data,
+                    [
+                        'title' => 'required|string|max:255',
+                        'description' => 'required|string|max:5000',
+                        'semestre' => 'required|integer|in:5,6,7,8',
+                        'year' => 'required|integer|min:2000|max:2100',
+                        'student_ids' => 'required|array|min:1',
+                        'student_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
+                    ],
+                    $this->importValidationMessages(),
+                    $this->importValidationAttributes()
+                );
                 if ($validator->fails()) {
                     $errors[] = ['fila' => $line, 'errores' => $validator->errors()->all()];
                     continue;
@@ -347,13 +343,13 @@ class ProjectController extends Controller
                         'title' => $data['title'],
                         'description' => $data['description'],
                         'semestre' => $data['semestre'],
-                        'subject_group_id' => $data['subject_group_id'],
+                        'subject_group_id' => null,
                         'year' => $data['year'],
-                        'company_name' => $data['company_name'],
-                        'company_giro' => $data['company_giro'],
-                        'company_contact_name' => $data['company_contact_name'],
-                        'company_contact_position' => $data['company_contact_position'],
-                        'company_address' => $data['company_address'],
+                        'company_name' => null,
+                        'company_giro' => null,
+                        'company_contact_name' => null,
+                        'company_contact_position' => null,
+                        'company_address' => null,
                         'proposal_status' => 'pendiente',
                         'created_by' => $user->id,
                     ]);
@@ -532,8 +528,11 @@ class ProjectController extends Controller
     {
         $content = file_get_contents($path);
         if (str_starts_with($content, 'PK')) {
+            return $this->readXlsx($path);
+        }
+        if (str_starts_with($content, "\xD0\xCF\x11\xE0")) {
             throw ValidationException::withMessages([
-                'archivo' => ['Por ahora importa la plantilla .xls generada por el sistema. No guardes el archivo como .xlsx.'],
+                'archivo' => ['El archivo esta guardado como Excel 97-2003 binario (.xls). Abre la plantilla y guardala como .xlsx antes de importarla.'],
             ]);
         }
         if (stripos($content, '<table') !== false) {
@@ -552,6 +551,117 @@ class ProjectController extends Controller
         fclose($handle);
 
         return $rows;
+    }
+
+    private function readXlsx(string $path): array
+    {
+        if (!class_exists(\ZipArchive::class)) {
+            throw ValidationException::withMessages([
+                'archivo' => ['El servidor no tiene habilitado soporte para leer .xlsx. Usa la plantilla .xls sin cambiar su formato.'],
+            ]);
+        }
+
+        $zip = new \ZipArchive();
+        if ($zip->open($path) !== true) {
+            throw ValidationException::withMessages([
+                'archivo' => ['No se pudo abrir el archivo .xlsx.'],
+            ]);
+        }
+
+        $sharedStrings = $this->xlsxSharedStrings($zip);
+        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+
+        if (!$sheetXml) {
+            throw ValidationException::withMessages([
+                'archivo' => ['No se encontro la primera hoja del archivo .xlsx.'],
+            ]);
+        }
+
+        return $this->readXlsxSheet($sheetXml, $sharedStrings);
+    }
+
+    private function xlsxSharedStrings(\ZipArchive $zip): array
+    {
+        $xml = $zip->getFromName('xl/sharedStrings.xml');
+        if (!$xml) return [];
+
+        preg_match_all('/<si\b[^>]*>(.*?)<\/si>/is', $xml, $matches);
+        return collect($matches[1] ?? [])->map(function ($si) {
+            preg_match_all('/<t\b[^>]*>(.*?)<\/t>/is', $si, $textMatches);
+            return $this->cleanSpreadsheetCell(implode('', $textMatches[1] ?? []));
+        })->all();
+    }
+
+    private function readXlsxSheet(string $xml, array $sharedStrings): array
+    {
+        preg_match_all('/<row\b[^>]*>(.*?)<\/row>/is', $xml, $rowMatches);
+        $headers = [];
+        $rows = [];
+        $headerFound = false;
+
+        foreach ($rowMatches[1] ?? [] as $rowXml) {
+            $cells = [];
+            preg_match_all('/<c\b([^>]*)>(.*?)<\/c>/is', $rowXml, $cellMatches, PREG_SET_ORDER);
+            foreach ($cellMatches as $cellMatch) {
+                $attributes = $cellMatch[1] ?? '';
+                $cellXml = $cellMatch[2] ?? '';
+                $index = $this->xlsxColumnIndex($attributes);
+                $cells[$index] = $this->xlsxCellValue($cellXml, $attributes, $sharedStrings);
+            }
+
+            if (!$cells) continue;
+            $maxIndex = max(array_keys($cells));
+            $orderedCells = [];
+            for ($i = 0; $i <= $maxIndex; $i++) {
+                $orderedCells[] = $cells[$i] ?? '';
+            }
+
+            $normalizedCells = array_map(fn ($value) => $this->normalizeImportHeader($value), $orderedCells);
+            if (!$headerFound && $this->looksLikeProjectImportHeader($normalizedCells)) {
+                $headers = $normalizedCells;
+                $headerFound = true;
+                continue;
+            }
+            if (!$headerFound) continue;
+
+            $row = $this->combineSpreadsheetRow($headers, $orderedCells);
+            if (!$this->spreadsheetRowHasImportData($row)) continue;
+            $rows[] = $row;
+        }
+
+        return $rows;
+    }
+
+    private function xlsxColumnIndex(string $attributes): int
+    {
+        if (!preg_match('/\br="([A-Z]+)\d+"/i', $attributes, $match)) {
+            return 0;
+        }
+
+        $letters = strtoupper($match[1]);
+        $index = 0;
+        for ($i = 0; $i < strlen($letters); $i++) {
+            $index = $index * 26 + (ord($letters[$i]) - 64);
+        }
+
+        return $index - 1;
+    }
+
+    private function xlsxCellValue(string $cellXml, string $attributes, array $sharedStrings): string
+    {
+        $type = preg_match('/\bt="([^"]+)"/i', $attributes, $match) ? $match[1] : '';
+        preg_match('/<v\b[^>]*>(.*?)<\/v>/is', $cellXml, $valueMatch);
+        $value = $valueMatch[1] ?? '';
+
+        if ($type === 's') {
+            return $sharedStrings[(int) $value] ?? '';
+        }
+        if ($type === 'inlineStr' && preg_match('/<t\b[^>]*>(.*?)<\/t>/is', $cellXml, $inlineMatch)) {
+            return $this->cleanSpreadsheetCell($inlineMatch[1]);
+        }
+
+        return $this->normalizeSpreadsheetValue(html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     }
 
     private function guardImportExtension(string $extension): void
@@ -626,7 +736,7 @@ class ProjectController extends Controller
 
     private function spreadsheetRowHasImportData(array $row): bool
     {
-        foreach (['title', 'description', 'subject_group_id', 'student_ids'] as $key) {
+        foreach (['title', 'description', 'semestre', 'year', 'student_ids'] as $key) {
             if ($this->normalizeSpreadsheetValue($row[$key] ?? '') !== '') {
                 return true;
             }
@@ -638,9 +748,9 @@ class ProjectController extends Controller
     private function looksLikeProjectImportHeader(array $headers): bool
     {
         $headers = array_filter($headers);
-        $matches = array_intersect(['title', 'description', 'subject_group_id', 'student_ids'], $headers);
+        $matches = array_intersect(['title', 'description', 'semestre', 'year', 'student_ids'], $headers);
 
-        return count($matches) >= 3;
+        return count($matches) >= 4;
     }
 
     private function normalizeImportHeader($header): string
@@ -650,19 +760,49 @@ class ProjectController extends Controller
         $aliases = [
             'titulo' => 'title',
             'descripcion' => 'description',
-            'carga_id' => 'subject_group_id',
-            'grupo_carga_id' => 'subject_group_id',
             'anio' => 'year',
             'ano' => 'year',
             'matriculas_estudiantes' => 'student_ids',
+            'matriculas' => 'student_ids',
             'estudiantes' => 'student_ids',
-            'empresa' => 'company_name',
-            'giro' => 'company_giro',
-            'responsable_empresa' => 'company_contact_name',
-            'puesto_responsable' => 'company_contact_position',
-            'direccion_empresa' => 'company_address',
         ];
 
         return $aliases[$key] ?? $key;
+    }
+
+    private function parseStudentIds($value): array
+    {
+        return collect(preg_split('/\s*,\s*/', (string) $value))
+            ->map(fn ($id) => trim($id))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function importValidationMessages(): array
+    {
+        return [
+            'required' => 'El campo :attribute es obligatorio.',
+            'string' => 'El campo :attribute debe ser texto.',
+            'integer' => 'El campo :attribute debe ser un numero valido.',
+            'max' => 'El campo :attribute no debe exceder :max caracteres.',
+            'min' => 'El campo :attribute debe ser al menos :min.',
+            'in' => 'El valor seleccionado para :attribute no es valido.',
+            'array' => 'El campo :attribute debe contener una lista valida.',
+            'exists' => 'El valor de :attribute no existe o no corresponde a un estudiante activo.',
+        ];
+    }
+
+    private function importValidationAttributes(): array
+    {
+        return [
+            'title' => 'titulo',
+            'description' => 'descripcion',
+            'semestre' => 'semestre',
+            'year' => 'anio',
+            'student_ids' => 'matriculas de estudiantes',
+            'student_ids.*' => 'matricula de estudiante',
+        ];
     }
 }
