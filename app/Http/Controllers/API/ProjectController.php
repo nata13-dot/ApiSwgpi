@@ -545,8 +545,9 @@ class ProjectController extends Controller
         $headers = array_map(fn ($value) => $this->normalizeImportHeader($value), $headers);
         $rows = [];
         while (($values = fgetcsv($handle)) !== false) {
-            if (!array_filter($values, fn ($value) => trim((string) $value) !== '')) continue;
-            $rows[] = $this->combineSpreadsheetRow($headers, $values);
+            $row = $this->combineSpreadsheetRow($headers, $values);
+            if (!$this->spreadsheetRowHasData($row)) continue;
+            $rows[] = $row;
         }
         fclose($handle);
 
@@ -583,8 +584,9 @@ class ProjectController extends Controller
                 continue;
             }
             if (!$headerFound) continue;
-            if (!array_filter($cells, fn ($value) => trim((string) $value) !== '')) continue;
-            $rows[] = $this->combineSpreadsheetRow($headers, $cells);
+            $row = $this->combineSpreadsheetRow($headers, $cells);
+            if (!$this->spreadsheetRowHasData($row)) continue;
+            $rows[] = $row;
         }
 
         return $rows;
@@ -593,15 +595,33 @@ class ProjectController extends Controller
     private function cleanSpreadsheetCell(string $cell): string
     {
         $cell = preg_replace('/<br\s*\/?>/i', "\n", $cell);
-        return trim(html_entity_decode(strip_tags($cell), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $cell = html_entity_decode(strip_tags($cell), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $cell = str_replace("\xc2\xa0", ' ', $cell);
+        $cell = preg_replace('/\s+/u', ' ', $cell);
+
+        return trim($cell);
     }
 
     private function combineSpreadsheetRow(array $headers, array $values): array
     {
         $headers = array_values(array_filter($headers, fn ($header) => trim((string) $header) !== ''));
+        $values = array_map(fn ($value) => $this->normalizeSpreadsheetValue($value), $values);
         $values = array_slice(array_pad($values, count($headers), ''), 0, count($headers));
 
         return array_combine($headers, $values) ?: [];
+    }
+
+    private function normalizeSpreadsheetValue($value): string
+    {
+        $value = str_replace("\xc2\xa0", ' ', (string) $value);
+        $value = preg_replace('/\s+/u', ' ', $value);
+
+        return trim($value);
+    }
+
+    private function spreadsheetRowHasData(array $row): bool
+    {
+        return collect($row)->contains(fn ($value) => $this->normalizeSpreadsheetValue($value) !== '');
     }
 
     private function looksLikeProjectImportHeader(array $headers): bool
