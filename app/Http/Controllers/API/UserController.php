@@ -383,7 +383,7 @@ class UserController extends Controller
         $rows = [];
         while (($values = fgetcsv($handle)) !== false) {
             $row = $this->combineSpreadsheetRow($headers, $values);
-            if (!$this->spreadsheetRowHasData($row)) continue;
+            if (!$this->spreadsheetRowHasImportData($row)) continue;
             $rows[] = $row;
         }
         fclose($handle);
@@ -422,7 +422,7 @@ class UserController extends Controller
             }
             if (!$headerFound) continue;
             $row = $this->combineSpreadsheetRow($headers, $cells);
-            if (!$this->spreadsheetRowHasData($row)) continue;
+            if (!$this->spreadsheetRowHasImportData($row)) continue;
             $rows[] = $row;
         }
 
@@ -441,11 +441,16 @@ class UserController extends Controller
 
     private function combineSpreadsheetRow(array $headers, array $values): array
     {
-        $headers = array_values(array_filter($headers, fn ($header) => trim((string) $header) !== ''));
         $values = array_map(fn ($value) => $this->normalizeSpreadsheetValue($value), $values);
-        $values = array_slice(array_pad($values, count($headers), ''), 0, count($headers));
+        $row = [];
 
-        return array_combine($headers, $values) ?: [];
+        foreach ($headers as $index => $header) {
+            $header = trim((string) $header);
+            if ($header === '') continue;
+            $row[$header] = $values[$index] ?? '';
+        }
+
+        return $row;
     }
 
     private function normalizeSpreadsheetValue($value): string
@@ -456,9 +461,15 @@ class UserController extends Controller
         return trim($value);
     }
 
-    private function spreadsheetRowHasData(array $row): bool
+    private function spreadsheetRowHasImportData(array $row): bool
     {
-        return collect($row)->contains(fn ($value) => $this->normalizeSpreadsheetValue($value) !== '');
+        foreach (['id', 'nombres', 'password', 'perfil_id'] as $key) {
+            if ($this->normalizeSpreadsheetValue($row[$key] ?? '') !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function looksLikeUserImportHeader(array $headers): bool
