@@ -53,6 +53,30 @@ class ProjectController extends Controller
             $query->where('semestre', $request->semestre);
         }
 
+        if ($request->filled('q')) {
+            $search = trim((string) $request->query('q'));
+            $query->where(function ($scope) use ($search) {
+                $scope->where('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhere('authors', 'like', "%{$search}%")
+                    ->orWhere('company_name', 'like', "%{$search}%")
+                    ->orWhere('company_contact_name', 'like', "%{$search}%")
+                    ->orWhere('year', 'like', "%{$search}%")
+                    ->orWhereHas('students', function ($studentQuery) use ($search) {
+                        $studentQuery->where('users.id', 'like', "%{$search}%")
+                            ->orWhere('users.nombres', 'like', "%{$search}%")
+                            ->orWhere('users.apa', 'like', "%{$search}%")
+                            ->orWhere('users.ama', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('advisors', function ($advisorQuery) use ($search) {
+                        $advisorQuery->where('users.id', 'like', "%{$search}%")
+                            ->orWhere('users.nombres', 'like', "%{$search}%")
+                            ->orWhere('users.apa', 'like', "%{$search}%")
+                            ->orWhere('users.ama', 'like', "%{$search}%");
+                    });
+            });
+        }
+
         $perPage = min((int) $request->query('per_page', 15), 100);
         return response()->json($query->orderByDesc('created_at')->paginate($perPage));
     }

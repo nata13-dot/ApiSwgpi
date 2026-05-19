@@ -43,6 +43,19 @@ class UserController extends Controller
             $query->where('grupo', strtoupper($request->grupo));
         }
 
+        if ($request->filled('q')) {
+            $search = trim((string) $request->query('q'));
+            $query->where(function ($scope) use ($search) {
+                $scope->where('id', 'like', "%{$search}%")
+                    ->orWhere('nombres', 'like', "%{$search}%")
+                    ->orWhere('apa', 'like', "%{$search}%")
+                    ->orWhere('ama', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('telefonos', 'like', "%{$search}%")
+                    ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apa, ''), ' ', COALESCE(ama, '')) LIKE ?", ["%{$search}%"]);
+            });
+        }
+
         if ($request->boolean('without_project')) {
             $query->where('perfil_id', 3)
                 ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->whereNull('project_user.rol_asesor'));
