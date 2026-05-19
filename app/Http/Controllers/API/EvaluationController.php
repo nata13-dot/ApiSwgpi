@@ -55,11 +55,11 @@ class EvaluationController extends Controller
                 'orden' => 'nullable|integer|min:0',
             ]);
 
-            $baseKey = Str::slug($validated['pregunta'], '_') ?: 'criterio';
+            $baseKey = Str::limit(Str::slug($validated['pregunta'], '_') ?: 'criterio', 64, '');
             $key = $baseKey;
             $suffix = 2;
             while (RubricCriterion::where('semestre', $validated['semestre'])->where('clave', $key)->exists()) {
-                $key = $baseKey . '_' . $suffix;
+                $key = Str::limit($baseKey, 64 - strlen((string) $suffix) - 1, '') . '_' . $suffix;
                 $suffix++;
             }
 
@@ -67,7 +67,7 @@ class EvaluationController extends Controller
                 'semestre' => $validated['semestre'],
                 'clave' => $key,
                 'pregunta' => $validated['pregunta'],
-                'orden' => $validated['orden'] ?? 0,
+                'orden' => $validated['orden'] ?? ((int) RubricCriterion::where('semestre', $validated['semestre'])->max('orden') + 1),
                 'activo' => true,
             ]);
 
@@ -115,10 +115,18 @@ class EvaluationController extends Controller
 
     public function index(Request $request)
     {
+        $user = auth('api')->user();
         $query = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher'])
             ->orderBy('evaluation_room_id')
             ->orderBy('presentation_order')
             ->orderByDesc('created_at');
+
+        if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
+            $query->where(function ($scope) use ($user) {
+                $scope->whereHas('room.teachers', fn ($teacherQuery) => $teacherQuery->where('users.id', $user->id))
+                    ->orWhereHas('room', fn ($roomQuery) => $roomQuery->where('responsible_teacher_id', $user->id));
+            });
+        }
 
         if ($request->filled('project_id')) {
             $query->where('project_id', $request->project_id);
@@ -339,9 +347,17 @@ class EvaluationController extends Controller
 
     public function projects()
     {
+        $user = auth('api')->user();
         $query = Project::with('students:id,nombres,apa,ama')
             ->where('activo', true)
             ->orderBy('title');
+        if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
+            $projectIds = Evaluation::where(function ($scope) use ($user) {
+                $scope->whereHas('room.teachers', fn ($teacherQuery) => $teacherQuery->where('users.id', $user->id))
+                    ->orWhereHas('room', fn ($roomQuery) => $roomQuery->where('responsible_teacher_id', $user->id));
+            })->pluck('project_id');
+            $query->whereIn('id', $projectIds);
+        }
         if (request()->filled('semestre')) {
             $query->where('semestre', request('semestre'));
         }
@@ -350,10 +366,18 @@ class EvaluationController extends Controller
 
     public function rooms(Request $request)
     {
+        $user = auth('api')->user();
         $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama,perfil_id', 'responsibleTeacher:id,nombres,apa,ama,perfil_id', 'projects:id,title,semestre'])
             ->where('activo', true)
             ->orderByDesc('fecha_evaluacion')
             ->orderBy('nombre');
+
+        if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
+            $query->where(function ($scope) use ($user) {
+                $scope->whereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('users.id', $user->id))
+                    ->orWhere('responsible_teacher_id', $user->id);
+            });
+        }
 
         if ($request->filled('semestre')) {
             $query->where('semestre', $request->semestre);
@@ -695,8 +719,9 @@ class EvaluationController extends Controller
             throw ValidationException::withMessages(['nombre' => ['Ya existe una sala activa con ese nombre.']]);
         }
 
+        $selectedHour = \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion'])->startOfHour();
         $conflictingRooms = EvaluationRoom::where('activo', true)
-            ->whereDate('fecha_evaluacion', \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion'])->toDateString())
+            ->whereBetween('fecha_evaluacion', [$selectedHour, $selectedHour->copy()->endOfHour()])
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->where(function ($query) use ($validated) {
                 $teacherIds = $validated['teacher_ids'] ?? [];
@@ -714,7 +739,7 @@ class EvaluationController extends Controller
 
         if ($conflictingRooms->isNotEmpty()) {
             throw ValidationException::withMessages([
-                'fecha_evaluacion' => ['Hay docentes o proyectos ya asignados en otra sala para la misma fecha.'],
+                'fecha_evaluacion' => ['Hay docentes o proyectos ya asignados en otra sala para la misma fecha y hora.'],
             ]);
         }
 
