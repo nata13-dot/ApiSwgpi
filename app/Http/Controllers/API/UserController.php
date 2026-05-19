@@ -369,8 +369,11 @@ class UserController extends Controller
     {
         $content = file_get_contents($path);
         if (str_starts_with($content, 'PK')) {
+            return $this->readXlsx($path);
+        }
+        if (str_starts_with($content, "\xD0\xCF\x11\xE0")) {
             throw ValidationException::withMessages([
-                'archivo' => ['Por ahora importa la plantilla .xls generada por el sistema. No guardes el archivo como .xlsx.'],
+                'archivo' => ['El archivo esta guardado como Excel 97-2003 binario (.xls). Abre la plantilla y guardala como .xlsx antes de importarla.'],
             ]);
         }
         if (stripos($content, '<table') !== false) {
@@ -389,6 +392,117 @@ class UserController extends Controller
         fclose($handle);
 
         return $rows;
+    }
+
+    private function readXlsx(string $path): array
+    {
+        if (!class_exists(\ZipArchive::class)) {
+            throw ValidationException::withMessages([
+                'archivo' => ['El servidor no tiene habilitado soporte para leer .xlsx. Usa la plantilla .xls sin cambiar su formato.'],
+            ]);
+        }
+
+        $zip = new \ZipArchive();
+        if ($zip->open($path) !== true) {
+            throw ValidationException::withMessages([
+                'archivo' => ['No se pudo abrir el archivo .xlsx.'],
+            ]);
+        }
+
+        $sharedStrings = $this->xlsxSharedStrings($zip);
+        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+
+        if (!$sheetXml) {
+            throw ValidationException::withMessages([
+                'archivo' => ['No se encontro la primera hoja del archivo .xlsx.'],
+            ]);
+        }
+
+        return $this->readXlsxSheet($sheetXml, $sharedStrings);
+    }
+
+    private function xlsxSharedStrings(\ZipArchive $zip): array
+    {
+        $xml = $zip->getFromName('xl/sharedStrings.xml');
+        if (!$xml) return [];
+
+        preg_match_all('/<si\b[^>]*>(.*?)<\/si>/is', $xml, $matches);
+        return collect($matches[1] ?? [])->map(function ($si) {
+            preg_match_all('/<t\b[^>]*>(.*?)<\/t>/is', $si, $textMatches);
+            return $this->cleanSpreadsheetCell(implode('', $textMatches[1] ?? []));
+        })->all();
+    }
+
+    private function readXlsxSheet(string $xml, array $sharedStrings): array
+    {
+        preg_match_all('/<row\b[^>]*>(.*?)<\/row>/is', $xml, $rowMatches);
+        $headers = [];
+        $rows = [];
+        $headerFound = false;
+
+        foreach ($rowMatches[1] ?? [] as $rowXml) {
+            $cells = [];
+            preg_match_all('/<c\b([^>]*)>(.*?)<\/c>/is', $rowXml, $cellMatches, PREG_SET_ORDER);
+            foreach ($cellMatches as $cellMatch) {
+                $attributes = $cellMatch[1] ?? '';
+                $cellXml = $cellMatch[2] ?? '';
+                $index = $this->xlsxColumnIndex($attributes);
+                $cells[$index] = $this->xlsxCellValue($cellXml, $attributes, $sharedStrings);
+            }
+
+            if (!$cells) continue;
+            $maxIndex = max(array_keys($cells));
+            $orderedCells = [];
+            for ($i = 0; $i <= $maxIndex; $i++) {
+                $orderedCells[] = $cells[$i] ?? '';
+            }
+
+            $normalizedCells = array_map(fn ($value) => $this->normalizeImportHeader($value), $orderedCells);
+            if (!$headerFound && $this->looksLikeUserImportHeader($normalizedCells)) {
+                $headers = $normalizedCells;
+                $headerFound = true;
+                continue;
+            }
+            if (!$headerFound) continue;
+
+            $row = $this->combineSpreadsheetRow($headers, $orderedCells);
+            if (!$this->spreadsheetRowHasImportData($row)) continue;
+            $rows[] = $row;
+        }
+
+        return $rows;
+    }
+
+    private function xlsxColumnIndex(string $attributes): int
+    {
+        if (!preg_match('/\br="([A-Z]+)\d+"/i', $attributes, $match)) {
+            return 0;
+        }
+
+        $letters = strtoupper($match[1]);
+        $index = 0;
+        for ($i = 0; $i < strlen($letters); $i++) {
+            $index = $index * 26 + (ord($letters[$i]) - 64);
+        }
+
+        return $index - 1;
+    }
+
+    private function xlsxCellValue(string $cellXml, string $attributes, array $sharedStrings): string
+    {
+        $type = preg_match('/\bt="([^"]+)"/i', $attributes, $match) ? $match[1] : '';
+        preg_match('/<v\b[^>]*>(.*?)<\/v>/is', $cellXml, $valueMatch);
+        $value = $valueMatch[1] ?? '';
+
+        if ($type === 's') {
+            return $sharedStrings[(int) $value] ?? '';
+        }
+        if ($type === 'inlineStr' && preg_match('/<t\b[^>]*>(.*?)<\/t>/is', $cellXml, $inlineMatch)) {
+            return $this->cleanSpreadsheetCell($inlineMatch[1]);
+        }
+
+        return $this->normalizeSpreadsheetValue(html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     }
 
     private function guardImportExtension(string $extension): void
