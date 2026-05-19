@@ -241,6 +241,12 @@ class EvaluationController extends Controller
         if (!$evaluation) {
             return response()->json(['error' => 'Evaluacion no encontrada'], 404);
         }
+        if (!$this->canScoreEvaluation($evaluation, $user)) {
+            return response()->json(['error' => 'La evaluacion de este proyecto esta bloqueada hasta que sea su turno en la sala.'], 403);
+        }
+        if (!$this->canUserScoreEvaluation($evaluation, $user)) {
+            return response()->json(['error' => 'No estas asignado como evaluador de esta sala.'], 403);
+        }
 
         $validCriteria = RubricCriterion::where('semestre', $evaluation->semestre)
             ->where('activo', true)
@@ -344,7 +350,7 @@ class EvaluationController extends Controller
 
     public function rooms(Request $request)
     {
-        $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama', 'responsibleTeacher:id,nombres,apa,ama', 'projects:id,title,semestre'])
+        $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama,perfil_id', 'responsibleTeacher:id,nombres,apa,ama,perfil_id', 'projects:id,title,semestre'])
             ->where('activo', true)
             ->orderByDesc('fecha_evaluacion')
             ->orderBy('nombre');
@@ -621,6 +627,12 @@ class EvaluationController extends Controller
                 ];
             })
             ->values();
+        $expectedEvaluatorIds = $evaluation->room
+            ? $evaluation->room->teachers->pluck('id')->map(fn ($id) => (string) $id)->unique()->values()
+            : collect();
+        $completedEvaluatorIds = $teacherBreakdown->pluck('teacher_id')->filter()->map(fn ($id) => (string) $id)->unique()->values();
+        $expectedEvaluatorsCount = $expectedEvaluatorIds->count();
+        $evaluatedByAll = $expectedEvaluatorsCount > 0 && $expectedEvaluatorIds->diff($completedEvaluatorIds)->isEmpty();
 
         return [
             'id' => $evaluation->id,
@@ -642,6 +654,9 @@ class EvaluationController extends Controller
             'global_average' => $globalAverage,
             'global_average_color' => $globalAverage < 70 ? 'danger' : ($globalAverage <= 85 ? 'warning' : 'success'),
             'evaluators_count' => $teacherBreakdown->count(),
+            'expected_evaluators_count' => $expectedEvaluatorsCount,
+            'evaluated_by_all' => $evaluatedByAll,
+            'evaluation_badge_color' => $evaluatedByAll ? 'success' : ($evaluation->sequence_status === 'activo' ? 'primary' : 'secondary'),
             'teacher_breakdown' => $teacherBreakdown,
             'current_teacher_attempts' => optional($evaluation->attempts->firstWhere('teacher_id', auth('api')->id()))->attempts_count ?? 0,
             'current_teacher_has_scores' => $scores->where('teacher_id', auth('api')->id())->isNotEmpty(),
@@ -658,13 +673,13 @@ class EvaluationController extends Controller
             'nombre' => 'required|string|max:80',
             'salon' => 'nullable|string|max:120',
             'semestre' => 'required|integer|in:5,6,7,8',
-            'responsible_teacher_id' => ['nullable', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
+            'responsible_teacher_id' => ['nullable', Rule::exists('users', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
             'fecha_evaluacion' => 'required|date|after:now',
             'teacher_evaluation_minutes' => 'required|integer|min:1|max:240',
             'project_presentation_minutes' => 'required|integer|min:1|max:240',
             'max_attempts' => 'required|integer|min:1|max:10',
             'teacher_ids' => 'nullable|array',
-            'teacher_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
+            'teacher_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
             'project_ids' => 'nullable|array',
             'project_ids.*' => 'integer|exists:projects,id',
             'project_order' => 'nullable|array',
@@ -694,7 +709,7 @@ class EvaluationController extends Controller
                     $query->{$method}('projects', fn ($q) => $q->whereIn('projects.id', $projectIds));
                 }
             })
-            ->with(['teachers:id,nombres,apa', 'projects:id,title'])
+            ->with(['teachers:id,nombres,apa,perfil_id', 'projects:id,title'])
             ->get();
 
         if ($conflictingRooms->isNotEmpty()) {
@@ -778,6 +793,23 @@ class EvaluationController extends Controller
         }
 
         return $evaluation->sequence_status === 'activo';
+    }
+
+    private function canUserScoreEvaluation(Evaluation $evaluation, $user): bool
+    {
+        if (!$user || !in_array((int) $user->perfil_id, [1, 2], true)) {
+            return false;
+        }
+
+        $room = $evaluation->room;
+        if (!$room) {
+            return true;
+        }
+
+        $room->loadMissing('teachers');
+        $isAssignedEvaluator = $room->teachers->contains(fn ($teacher) => (string) $teacher->id === (string) $user->id);
+
+        return $isAssignedEvaluator || $this->isEvaluationManager($user);
     }
 
     private function isRoomResponsible(?EvaluationRoom $room, $user): bool

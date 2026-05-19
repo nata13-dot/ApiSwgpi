@@ -19,6 +19,32 @@ class ProjectController extends Controller
 {
     public function index(Request $request)
     {
+        if ($request->boolean('compact')) {
+            $query = Project::query()
+                ->select(['id', 'title', 'semestre', 'year', 'authors', 'subject_group_id', 'activo', 'created_at'])
+                ->with([
+                    'students:id,nombres,apa,ama,semestre,grupo',
+                    'advisors:id,nombres,apa,ama,perfil_id',
+                    'subjectGroup:id,nombre,semestre,grupo,periodo',
+                ])
+                ->withCount('students')
+                ->where('activo', true);
+
+            $user = auth('api')->user();
+            if ($user && (int) $user->perfil_id === 2) {
+                $query->whereHas('advisors', fn ($q) => $q->where('users.id', $user->id));
+            }
+            if ($user && (int) $user->perfil_id === 3) {
+                $query->whereHas('students', fn ($q) => $q->where('users.id', $user->id));
+            }
+            if ($request->filled('semestre')) {
+                $query->where('semestre', $request->semestre);
+            }
+
+            $perPage = min((int) $request->query('per_page', 100), 500);
+            return response()->json($query->orderByDesc('created_at')->paginate($perPage));
+        }
+
         $query = Project::query()
             ->select([
                 'id', 'title', 'description', 'created_by', 'created_at', 'activo',
@@ -311,6 +337,7 @@ class ProjectController extends Controller
             'matriculas_estudiantes',
         ], [
             'matriculas_estudiantes acepta una o mas matriculas separadas por coma. Ejemplo: e000001, 0222222',
+            'semestre puede quedar vacio si las matriculas pertenecen a una carga activa del mismo semestre y grupo.',
             'anio es opcional; si queda vacio se usara el año actual.',
             'Puedes usar la plantilla descargada o guardarla como .xlsx antes de importarla.',
         ]);
@@ -350,7 +377,7 @@ class ProjectController extends Controller
                     [
                         'title' => 'required|string|max:255',
                         'description' => 'required|string|max:5000',
-                        'semestre' => 'required|integer|in:5,6,7,8',
+                        'semestre' => 'nullable|integer|in:5,6,7,8',
                         'year' => 'nullable|integer|min:2000|max:2100',
                         'student_ids' => 'required|array|min:1',
                         'student_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
@@ -364,25 +391,34 @@ class ProjectController extends Controller
                 }
 
                 try {
-                    $project = Project::create([
-                        'title' => $data['title'],
-                        'description' => $data['description'],
-                        'semestre' => $data['semestre'],
-                        'subject_group_id' => null,
-                        'year' => $data['year'],
-                        'company_name' => null,
-                        'company_giro' => null,
-                        'company_contact_name' => null,
-                        'company_contact_position' => null,
-                        'company_address' => null,
-                        'proposal_status' => 'pendiente',
-                        'created_by' => $user->id,
-                    ]);
-                    $this->syncSubjectsFromGroup($project);
-                    $this->syncStudents($project, $data['student_ids']);
+                    DB::transaction(function () use ($data, $user) {
+                        $subjectGroup = $this->inferSubjectGroupForImport($data['student_ids'], $data['semestre']);
+                        $semester = $subjectGroup?->semestre ?? $data['semestre'];
+
+                        $project = Project::create([
+                            'title' => $data['title'],
+                            'description' => $data['description'],
+                            'semestre' => $semester,
+                            'subject_group_id' => $subjectGroup?->id,
+                            'year' => $data['year'],
+                            'company_name' => null,
+                            'company_giro' => null,
+                            'company_contact_name' => null,
+                            'company_contact_position' => null,
+                            'company_address' => null,
+                            'proposal_status' => 'pendiente',
+                            'created_by' => $user->id,
+                        ]);
+
+                        $this->syncStudents($project, $data['student_ids']);
+                        $this->syncSubjectsFromGroup($project);
+                    });
                     $created++;
                 } catch (ValidationException $e) {
                     $errors[] = ['fila' => $line, 'errores' => collect($e->errors())->flatten()->all()];
+                } catch (\Throwable $e) {
+                    report($e);
+                    $errors[] = ['fila' => $line, 'errores' => ['No se pudo crear el proyecto ni sus relaciones: ' . $e->getMessage()]];
                 }
             }
 
@@ -510,6 +546,47 @@ class ProjectController extends Controller
         }
 
         $project->update(['authors' => $students->map(fn ($student) => trim("{$student->nombres} {$student->apa} {$student->ama}"))->implode(', ')]);
+    }
+
+    private function inferSubjectGroupForImport(array $studentIds, ?int $declaredSemester): ?SubjectGroup
+    {
+        $students = User::whereIn('id', $studentIds)
+            ->where('perfil_id', 3)
+            ->where('activo', true)
+            ->get(['id', 'semestre', 'grupo']);
+
+        if ($students->isEmpty()) {
+            throw ValidationException::withMessages(['student_ids' => ['No se encontraron estudiantes activos para relacionar el proyecto.']]);
+        }
+
+        $missingGroup = $students->filter(fn ($student) => !$student->semestre || !$student->grupo);
+        if ($missingGroup->isNotEmpty()) {
+            $ids = $missingGroup->pluck('id')->implode(', ');
+            throw ValidationException::withMessages(['student_ids' => ["Los estudiantes {$ids} no tienen semestre/grupo asignado. Importa o corrige usuarios antes de importar proyectos."]]);
+        }
+
+        $semesters = $students->pluck('semestre')->map(fn ($value) => (int) $value)->unique()->values();
+        $groups = $students->pluck('grupo')->map(fn ($value) => strtoupper(trim((string) $value)))->unique()->values();
+        if ($semesters->count() !== 1 || $groups->count() !== 1) {
+            throw ValidationException::withMessages(['student_ids' => ['Todos los integrantes del proyecto deben pertenecer al mismo semestre y grupo.']]);
+        }
+
+        $semester = (int) $semesters->first();
+        $groupCode = (string) $groups->first();
+        if ($declaredSemester && $declaredSemester !== $semester) {
+            throw ValidationException::withMessages(['semestre' => ["El semestre del Excel ({$declaredSemester}) no coincide con el semestre de los estudiantes ({$semester})."]]);
+        }
+
+        $subjectGroup = SubjectGroup::where('activo', true)
+            ->where('semestre', $semester)
+            ->where('grupo', $groupCode)
+            ->first();
+
+        if (!$subjectGroup) {
+            throw ValidationException::withMessages(['student_ids' => ["No existe una carga activa para {$semester} {$groupCode}. Crea la carga en Gestion de Asignaturas antes de importar proyectos."]]);
+        }
+
+        return $subjectGroup;
     }
 
     private function syncSubjectsFromGroup(Project $project): void

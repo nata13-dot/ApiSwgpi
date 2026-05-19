@@ -61,7 +61,7 @@ class UserController extends Controller
                 ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->whereNull('project_user.rol_asesor'));
         }
 
-        $perPage = min((int) $request->query('per_page', 15), 100);
+        $perPage = min((int) $request->query('per_page', $compact ? 100 : 15), $compact ? 500 : 100);
         return response()->json($query->orderByDesc('activo')->orderBy('perfil_id')->orderBy('nombres')->paginate($perPage));
     }
 
@@ -258,7 +258,7 @@ class UserController extends Controller
 
             foreach ($rows as $index => $row) {
                 $line = $index + 2;
-                $profileId = (int) $this->normalizeSpreadsheetValue($row['perfil_id'] ?? 0);
+                $profileId = $this->parseProfileValue($row['perfil_id'] ?? 0);
                 $semesterValue = $this->normalizeSpreadsheetValue($row['semestre'] ?? '');
                 $data = [
                     'id' => trim((string) ($row['id'] ?? '')),
@@ -315,8 +315,13 @@ class UserController extends Controller
                 $data['password'] = Hash::make($data['password']);
                 unset($data['password_confirmation']);
 
-                User::create($data);
-                $created++;
+                try {
+                    User::create($data);
+                    $created++;
+                } catch (\Throwable $e) {
+                    report($e);
+                    $errors[] = ['fila' => $line, 'errores' => ['No se pudo crear el usuario: ' . $e->getMessage()]];
+                }
             }
 
             return response()->json([
@@ -611,7 +616,18 @@ class UserController extends Controller
 
     private function normalizeImportHeader($header): string
     {
-        $key = strtolower(trim((string) $header));
+        $key = trim((string) $header);
+        $key = preg_replace('/^\xEF\xBB\xBF/u', '', $key);
+        $key = strtolower($key);
+        $key = strtr($key, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+        ]);
         $key = str_replace([' ', '-', '/', '.'], '_', $key);
         $aliases = [
             'matricula' => 'id',
@@ -622,12 +638,46 @@ class UserController extends Controller
             'telefono' => 'telefonos',
             'telefonos' => 'telefonos',
             'perfil' => 'perfil_id',
+            'tipo' => 'perfil_id',
+            'rol' => 'perfil_id',
+            'contrasena' => 'password',
+            'contraseña' => 'password',
             'confirmar_password' => 'password_confirmation',
+            'confirmar_contrasena' => 'password_confirmation',
+            'confirmar_contraseña' => 'password_confirmation',
+            'contrasena_confirmacion' => 'password_confirmation',
+            'contraseña_confirmacion' => 'password_confirmation',
             'password_confirmacion' => 'password_confirmation',
             'confirmacion_password' => 'password_confirmation',
+            'confirmacion_contrasena' => 'password_confirmation',
+            'confirmacion_contraseña' => 'password_confirmation',
         ];
 
         return $aliases[$key] ?? $key;
+    }
+
+    private function parseProfileValue($value): int
+    {
+        $text = strtolower($this->normalizeSpreadsheetValue($value));
+        $text = strtr($text, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+        ]);
+
+        if (is_numeric($text)) {
+            return (int) $text;
+        }
+
+        return match ($text) {
+            'administrador', 'admin', 'administrativo', 'administrativa' => 1,
+            'docente', 'profesor', 'maestro', 'teacher' => 2,
+            'estudiante', 'alumno', 'student' => 3,
+            default => 0,
+        };
     }
 
     private function importValidationMessages(): array
