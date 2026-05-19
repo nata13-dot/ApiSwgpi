@@ -262,21 +262,26 @@ class UserController extends Controller
                     'activo' => $this->parseBooleanValue($row['activo'] ?? '1'),
                 ];
 
-                $validator = Validator::make($data, [
-                    'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:users,id'],
-                    'nombres' => 'required|string|max:200',
-                    'email' => 'nullable|email|unique:users,email',
-                    'password' => 'required|string|min:6|max:72|confirmed',
-                    'perfil_id' => 'required|integer|in:1,2,3',
-                    'semestre' => 'nullable|integer|in:5,6,7,8',
-                    'grupo' => 'nullable|string|max:20',
-                    'apa' => 'nullable|string|max:100',
-                    'ama' => 'nullable|string|max:100',
-                    'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:users,curp'],
-                    'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
-                    'telefonos' => 'nullable|string|max:200',
-                    'activo' => 'nullable|boolean',
-                ]);
+                $validator = Validator::make(
+                    $data,
+                    [
+                        'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:users,id'],
+                        'nombres' => 'required|string|max:200',
+                        'email' => 'nullable|email|unique:users,email',
+                        'password' => 'required|string|min:6|max:72|confirmed',
+                        'perfil_id' => 'required|integer|in:1,2,3',
+                        'semestre' => 'nullable|integer|in:5,6,7,8',
+                        'grupo' => 'nullable|string|max:20',
+                        'apa' => 'nullable|string|max:100',
+                        'ama' => 'nullable|string|max:100',
+                        'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:users,curp'],
+                        'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
+                        'telefonos' => 'nullable|string|max:200',
+                        'activo' => 'nullable|boolean',
+                    ],
+                    $this->importValidationMessages(),
+                    $this->importValidationAttributes()
+                );
 
                 if ($validator->fails()) {
                     $errors[] = ['fila' => $line, 'errores' => $validator->errors()->all()];
@@ -450,6 +455,43 @@ class UserController extends Controller
         ];
 
         return $aliases[$key] ?? $key;
+    }
+
+    private function importValidationMessages(): array
+    {
+        return [
+            'required' => 'El campo :attribute es obligatorio.',
+            'string' => 'El campo :attribute debe ser texto.',
+            'integer' => 'El campo :attribute debe ser un numero valido.',
+            'boolean' => 'El campo :attribute debe ser 1 o 0.',
+            'email' => 'El campo :attribute debe ser un correo valido.',
+            'max' => 'El campo :attribute no debe exceder :max caracteres.',
+            'min' => 'El campo :attribute debe tener al menos :min caracteres.',
+            'in' => 'El valor seleccionado para :attribute no es valido.',
+            'unique' => 'El valor de :attribute ya existe en el sistema.',
+            'confirmed' => 'La confirmacion de :attribute no coincide.',
+            'regex' => 'El campo :attribute tiene un formato invalido.',
+        ];
+    }
+
+    private function importValidationAttributes(): array
+    {
+        return [
+            'id' => 'matricula/nomina',
+            'nombres' => 'nombres',
+            'apa' => 'apellido paterno',
+            'ama' => 'apellido materno',
+            'email' => 'correo',
+            'password' => 'contrasena',
+            'password_confirmation' => 'confirmacion de contrasena',
+            'perfil_id' => 'perfil',
+            'semestre' => 'semestre',
+            'grupo' => 'grupo',
+            'curp' => 'CURP',
+            'direccion' => 'direccion',
+            'telefonos' => 'telefono',
+            'activo' => 'activo',
+        ];
     }
 
     private function parseBooleanValue($value): bool
