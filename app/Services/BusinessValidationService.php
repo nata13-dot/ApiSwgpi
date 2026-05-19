@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Competencia;
 use App\Models\Project;
 use App\Models\Deliverable;
+use App\Models\EvaluationRoom;
 use Illuminate\Database\Eloquent\Collection;
 
 /**
@@ -98,13 +99,22 @@ class BusinessValidationService
         }
         
         $project = $deliverable->project;
+        if (!$project) {
+            return false;
+        }
         
         // Docente: solo sus proyectos (donde es asesor)
         if ($perfil_id === 2) {
             return $project->advisors()
                 ->where('user_id', $user_id)
                 ->where('rol_asesor', '!=', null)
-                ->exists();
+                ->exists()
+                || EvaluationRoom::whereHas('projects', fn ($query) => $query->where('projects.id', $project->id))
+                    ->where(function ($query) use ($user_id) {
+                        $query->where('responsible_teacher_id', $user_id)
+                            ->orWhereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('users.id', $user_id));
+                    })
+                    ->exists();
         }
         
         // Estudiante: solo proyectos donde es miembro

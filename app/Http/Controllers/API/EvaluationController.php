@@ -514,7 +514,7 @@ class EvaluationController extends Controller
 
         return response()->streamDownload(function () use ($room) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Sala', 'Salon', 'Orden', 'Proyecto', 'Autores', 'Estado', 'Promedio global', 'Docente', 'Promedio docente', 'Comentarios generales', 'Retroalimentacion sala']);
+            fputcsv($handle, ['Sala', 'Salon', 'Orden', 'Proyecto', 'Integrantes', 'Estado', 'Promedio global', 'Docente', 'Promedio docente', 'Comentarios generales', 'Retroalimentacion sala']);
             foreach ($room->evaluations->sortBy('presentation_order') as $evaluation) {
                 $scoresByTeacher = $evaluation->scores->groupBy('teacher_id');
                 if ($scoresByTeacher->isEmpty()) {

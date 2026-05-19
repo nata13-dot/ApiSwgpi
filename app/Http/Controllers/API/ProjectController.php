@@ -524,7 +524,7 @@ class ProjectController extends Controller
 
         $students = User::whereIn('id', $studentIds)->where('perfil_id', 3)->where('activo', true)->get(['id', 'nombres', 'apa', 'ama']);
         if (count($studentIds) !== $students->count()) {
-            throw ValidationException::withMessages(['student_ids' => ['Solo se pueden agregar estudiantes activos como autores.']]);
+            throw ValidationException::withMessages(['student_ids' => ['Solo se pueden agregar estudiantes activos como integrantes.']]);
         }
 
         $assignedElsewhere = DB::table('project_user')
@@ -537,7 +537,7 @@ class ProjectController extends Controller
 
         if ($assignedElsewhere->isNotEmpty()) {
             $details = $assignedElsewhere->map(fn ($row) => "{$row->user_id} ya pertenece a {$row->title}")->implode(', ');
-            throw ValidationException::withMessages(['student_ids' => ["Cada estudiante solo puede ser autor de un proyecto. {$details}"]]);
+            throw ValidationException::withMessages(['student_ids' => ["Cada estudiante solo puede ser integrante de un proyecto. {$details}"]]);
         }
 
         DB::table('project_user')->where('project_id', $project->id)->whereNull('rol_asesor')->delete();

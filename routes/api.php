@@ -151,6 +151,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
 
     // Deliverables (CRUD + Calificación + Upload + Descarga)
     Route::get('/teacher/deliverables-matrix', [DeliverableController::class, 'teacherMatrix']);
+    Route::get('/evaluation-documents', [DeliverableController::class, 'evaluationDocuments']);
     Route::get('/deliverables', [DeliverableController::class, 'index']);
     Route::post('/deliverables', [DeliverableController::class, 'store']);
     Route::get('/deliverables/{id}', [DeliverableController::class, 'show']);

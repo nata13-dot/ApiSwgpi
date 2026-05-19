@@ -16,7 +16,7 @@ class Deliverable extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'project_id', 'competencia_id', 'nombre', 'descripcion', 'autores',
+        'project_id', 'competencia_id', 'categoria', 'nombre', 'descripcion', 'autores',
         'tipo_documento', 'rama_asociada', 'estado', 'archivo_path', 'submitted_by', 'activo',
         'calificacion', 'fecha_calificacion', 'calificado_por'
     ];

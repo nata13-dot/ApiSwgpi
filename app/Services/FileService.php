@@ -25,6 +25,8 @@ class FileService
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'application/vnd.ms-excel',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         'text/plain',
         'application/zip',
         'image/jpeg',
@@ -38,6 +40,8 @@ class FileService
         'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
         'xls' => ['application/vnd.ms-excel'],
         'xlsx' => ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        'ppt' => ['application/vnd.ms-powerpoint'],
+        'pptx' => ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
         'txt' => ['text/plain'],
         'zip' => ['application/zip', 'application/x-zip-compressed'],
         'jpg' => ['image/jpeg'],
@@ -51,7 +55,7 @@ class FileService
      * @param \Illuminate\Http\UploadedFile $file Archivo a validar
      * @return array ['valid' => bool, 'error' => string|null]
      */
-    public static function validateFile($file): array
+    public static function validateFile($file, ?array $allowedExtensions = null): array
     {
         // Validar que el archivo existe
         if (!$file || !$file->isValid()) {
@@ -69,7 +73,7 @@ class FileService
         }
         
         // Validar MIME type
-        $allowedExtensions = SystemSetting::valueFor('allowed_file_types', ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip']);
+        $allowedExtensions = $allowedExtensions ?: SystemSetting::valueFor('allowed_file_types', ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip']);
         $allowedMimes = collect($allowedExtensions)
             ->flatMap(fn ($extension) => self::MIME_BY_EXTENSION[$extension] ?? [])
             ->unique()
@@ -94,11 +98,11 @@ class FileService
      * @param string $user_id ID del usuario que sube
      * @return array ['success' => bool, 'path' => string|null, 'error' => string|null]
      */
-    public static function storeDeliverableFile($file, int $deliverable_id, string $user_id): array
+    public static function storeDeliverableFile($file, int $deliverable_id, string $user_id, ?array $allowedExtensions = null): array
     {
         try {
             // Validar archivo
-            $validation = self::validateFile($file);
+            $validation = self::validateFile($file, $allowedExtensions);
             if (!$validation['valid']) {
                 return ['success' => false, 'path' => null, 'error' => $validation['error']];
             }

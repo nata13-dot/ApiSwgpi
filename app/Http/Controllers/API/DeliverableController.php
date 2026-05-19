@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\Competencia;
 use App\Models\Deliverable;
+use App\Models\EvaluationRoom;
 use App\Models\Project;
 use App\Services\BusinessValidationService;
 use App\Services\FileService;
@@ -15,6 +16,9 @@ use Exception;
 
 class DeliverableController extends Controller
 {
+    private const CATEGORY_RESEARCH_DOCUMENT = 'documento_investigacion';
+    private const CATEGORY_EVALUATION_SLIDES = 'diapositiva_evaluacion';
+
     public function teacherMatrix(Request $request)
     {
         $user = auth('api')->user();
@@ -172,6 +176,99 @@ class DeliverableController extends Controller
         }
 
         return response()->json($query->paginate(12));
+    }
+
+    public function evaluationDocuments()
+    {
+        $user = auth('api')->user();
+
+        $projectsQuery = Project::select(['id', 'title', 'description', 'semestre', 'year', 'subject_group_id', 'authors'])
+            ->with([
+                'students:id,nombres,apa,ama',
+                'advisors:id,nombres,apa,ama',
+                'asignaturas:id,nombre,clave',
+                'deliverables' => fn ($query) => $query
+                    ->whereIn('categoria', [self::CATEGORY_RESEARCH_DOCUMENT, self::CATEGORY_EVALUATION_SLIDES])
+                    ->with(['submittedBy:id,nombres,apa,ama', 'calificadoPor:id,nombres,apa,ama'])
+                    ->orderBy('categoria'),
+                'evaluations:id,project_id,evaluation_room_id,estado,resultado,fecha_exposicion',
+                'evaluations.room:id,nombre,salon,fecha_evaluacion',
+            ])
+            ->where('activo', true);
+
+        if ((int) $user->perfil_id === 2) {
+            $roomProjectIds = EvaluationRoom::where(function ($query) use ($user) {
+                    $query->where('responsible_teacher_id', $user->id)
+                        ->orWhereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('users.id', $user->id));
+                })
+                ->with('projects:id')
+                ->get()
+                ->flatMap(fn ($room) => $room->projects->pluck('id'))
+                ->unique()
+                ->values();
+
+            $projectsQuery->where(function ($query) use ($user, $roomProjectIds) {
+                $query->whereHas('advisors', fn ($advisorQuery) => $advisorQuery->where('users.id', $user->id));
+                if ($roomProjectIds->isNotEmpty()) {
+                    $query->orWhereIn('id', $roomProjectIds);
+                }
+            });
+        } elseif ((int) $user->perfil_id === 3) {
+            $projectsQuery->whereHas('students', fn ($query) => $query->where('users.id', $user->id));
+        } elseif ((int) $user->perfil_id !== 1) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $projects = $projectsQuery->orderBy('title')->get();
+
+        $data = $projects->map(function (Project $project) use ($user) {
+            $this->ensureEvaluationDeliverables($project);
+            $project->load([
+                'deliverables' => fn ($query) => $query
+                    ->whereIn('categoria', [self::CATEGORY_RESEARCH_DOCUMENT, self::CATEGORY_EVALUATION_SLIDES])
+                    ->with(['submittedBy:id,nombres,apa,ama', 'calificadoPor:id,nombres,apa,ama'])
+                    ->orderBy('categoria'),
+            ]);
+
+            return [
+                'project' => [
+                    'id' => $project->id,
+                    'title' => $project->title,
+                    'description' => $project->description,
+                    'semestre' => $project->semestre,
+                    'year' => $project->year,
+                    'authors' => $project->authors,
+                ],
+                'integrantes' => $project->students->map(fn ($student) => [
+                    'id' => $student->id,
+                    'nombres' => $student->nombres,
+                    'apa' => $student->apa,
+                    'ama' => $student->ama,
+                ])->values(),
+                'asignaturas' => $project->asignaturas->map(fn ($subject) => [
+                    'id' => $subject->id,
+                    'nombre' => $subject->nombre,
+                    'clave' => $subject->clave,
+                ])->values(),
+                'requiere_documento_investigacion' => $this->requiresResearchDocument($project),
+                'puede_subir' => (int) $user->perfil_id === 1 || $project->students->contains(fn ($student) => (string) $student->id === (string) $user->id),
+                'evaluaciones' => $project->evaluations->map(fn ($evaluation) => [
+                    'id' => $evaluation->id,
+                    'estado' => $evaluation->estado,
+                    'resultado' => $evaluation->resultado,
+                    'fecha_exposicion' => optional($evaluation->fecha_exposicion)->toDateTimeString(),
+                    'sala' => $evaluation->room ? [
+                        'id' => $evaluation->room->id,
+                        'nombre' => $evaluation->room->nombre,
+                        'salon' => $evaluation->room->salon,
+                        'fecha_evaluacion' => optional($evaluation->room->fecha_evaluacion)->toDateTimeString(),
+                    ] : null,
+                ])->values(),
+                'deliverables' => $project->deliverables->map(fn ($deliverable) => $this->shapeEvaluationDocument($deliverable))->values(),
+            ];
+        })->values();
+
+        return response()->json(['data' => $data]);
     }
 
     public function store(Request $request)
@@ -343,9 +440,19 @@ class DeliverableController extends Controller
                 return response()->json(['error' => 'Entregable no encontrado'], 404);
             }
 
-            // Validar que el usuario sea el autor del entregable o admin
+            // Validar que el usuario pueda subir este entregable.
             $user = auth('api')->user();
-            if ($user->id !== $deliverable->submitted_by && $user->perfil_id !== 1) {
+            $deliverable->loadMissing('project.students');
+            $isSpecialEvaluationDocument = in_array($deliverable->categoria, [self::CATEGORY_RESEARCH_DOCUMENT, self::CATEGORY_EVALUATION_SLIDES], true);
+            $isProjectMember = $deliverable->project && $deliverable->project->students->contains(fn ($student) => (string) $student->id === (string) $user->id);
+
+            if ($isSpecialEvaluationDocument) {
+                $canUpload = (int) $user->perfil_id === 1 || ((int) $user->perfil_id === 3 && $isProjectMember);
+            } else {
+                $canUpload = $user->id === $deliverable->submitted_by || (int) $user->perfil_id === 1;
+            }
+
+            if (!$canUpload) {
                 return response()->json(['error' => 'No puedes subir archivo a este entregable'], 403);
             }
 
@@ -359,7 +466,8 @@ class DeliverableController extends Controller
             $result = FileService::storeDeliverableFile(
                 $request->file('archivo'),
                 $deliverable->id,
-                $user->id
+                $user->id,
+                $this->allowedExtensionsFor($deliverable)
             );
 
             if (!$result['success']) {
@@ -374,6 +482,7 @@ class DeliverableController extends Controller
             $deliverable->update([
                 'archivo_path' => $result['path'],
                 'estado' => 'enviado',
+                'submitted_by' => $deliverable->submitted_by ?: $user->id,
             ]);
 
             return response()->json([
@@ -420,6 +529,90 @@ class DeliverableController extends Controller
                 'fecha_calificacion' => optional($deliverable->fecha_calificacion)->toDateTimeString(),
                 'calificado_por' => $deliverable->calificadoPor,
             ] : null,
+        ];
+    }
+
+    private function ensureEvaluationDeliverables(Project $project): void
+    {
+        Deliverable::firstOrCreate(
+            ['project_id' => $project->id, 'categoria' => self::CATEGORY_EVALUATION_SLIDES],
+            [
+                'competencia_id' => null,
+                'nombre' => 'Diapositivas de evaluacion',
+                'descripcion' => 'Archivo de apoyo para la presentacion del proyecto en evaluaciones.',
+                'tipo_documento' => 'presentacion',
+                'estado' => 'pendiente',
+                'activo' => true,
+            ]
+        );
+
+        if ($this->requiresResearchDocument($project)) {
+            Deliverable::firstOrCreate(
+                ['project_id' => $project->id, 'categoria' => self::CATEGORY_RESEARCH_DOCUMENT],
+                [
+                    'competencia_id' => null,
+                    'nombre' => 'Documento de investigacion',
+                    'descripcion' => 'Documento adicional requerido para proyectos con Taller de Investigacion I o II.',
+                    'tipo_documento' => 'documento',
+                    'estado' => 'pendiente',
+                    'activo' => true,
+                ]
+            );
+        }
+    }
+
+    private function requiresResearchDocument(Project $project): bool
+    {
+        $project->loadMissing('asignaturas:id,nombre,clave');
+
+        return $project->asignaturas->contains(function ($subject) {
+            $name = $this->normalizeText((string) $subject->nombre);
+            $key = $this->normalizeText((string) $subject->clave);
+
+            return preg_match('/\btaller de investigacion (i|ii|1|2)\b/', $name) === 1
+                || in_array($key, ['ac009', 'ac010'], true);
+        });
+    }
+
+    private function normalizeText(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = strtr($value, [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n',
+            'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u', 'Ü' => 'u', 'Ñ' => 'n',
+        ]);
+        return preg_replace('/\s+/', ' ', $value) ?? $value;
+    }
+
+    private function allowedExtensionsFor(Deliverable $deliverable): ?array
+    {
+        return match ($deliverable->categoria) {
+            self::CATEGORY_RESEARCH_DOCUMENT => ['pdf', 'doc', 'docx'],
+            self::CATEGORY_EVALUATION_SLIDES => ['ppt', 'pptx', 'pdf'],
+            default => null,
+        };
+    }
+
+    private function shapeEvaluationDocument(Deliverable $deliverable): array
+    {
+        return [
+            'id' => $deliverable->id,
+            'nombre' => $deliverable->nombre,
+            'descripcion' => $deliverable->descripcion,
+            'categoria' => $deliverable->categoria,
+            'estado' => $deliverable->estado,
+            'archivo_path' => $deliverable->archivo_path,
+            'tipo_documento' => $deliverable->tipo_documento,
+            'calificacion' => $deliverable->calificacion,
+            'fecha_calificacion' => optional($deliverable->fecha_calificacion)->toDateTimeString(),
+            'submitted_by' => $deliverable->submittedBy ? [
+                'id' => $deliverable->submittedBy->id,
+                'nombres' => $deliverable->submittedBy->nombres,
+                'apa' => $deliverable->submittedBy->apa,
+                'ama' => $deliverable->submittedBy->ama,
+            ] : null,
+            'calificado_por' => $deliverable->calificadoPor,
+            'allowed_extensions' => $this->allowedExtensionsFor($deliverable),
         ];
     }
 }

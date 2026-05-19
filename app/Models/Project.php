@@ -62,6 +62,11 @@ class Project extends Model
         return $this->hasMany(Deliverable::class, 'project_id');
     }
 
+    public function evaluations(): HasMany
+    {
+        return $this->hasMany(Evaluation::class, 'project_id');
+    }
+
     public function avances(): HasMany
     {
         return $this->hasMany(Avance::class, 'project_id');
