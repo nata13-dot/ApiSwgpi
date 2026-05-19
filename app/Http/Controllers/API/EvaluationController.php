@@ -23,10 +23,19 @@ class EvaluationController extends Controller
     private array $criteriaLabelCache = [];
 
     private array $levels = [
-        'nada' => 0,
-        'poco' => 1,
-        'bastante' => 2,
-        'mucho' => 3,
+        'totalmente_de_acuerdo' => 4,
+        'de_acuerdo' => 3,
+        'neutral' => 2,
+        'en_desacuerdo' => 1,
+        'totalmente_en_desacuerdo' => 0,
+    ];
+
+    private array $levelLabels = [
+        'totalmente_de_acuerdo' => 'Totalmente de acuerdo',
+        'de_acuerdo' => 'De acuerdo',
+        'neutral' => 'Neutral',
+        'en_desacuerdo' => 'En desacuerdo',
+        'totalmente_en_desacuerdo' => 'Totalmente en desacuerdo',
     ];
 
     public function criteria(Request $request)
@@ -40,7 +49,11 @@ class EvaluationController extends Controller
 
         return response()->json([
             'criteria' => $query->get()->map(fn ($criterion) => $this->shapeCriterion($criterion)),
-            'levels' => array_keys($this->levels),
+            'levels' => collect($this->levels)->map(fn ($score, $key) => [
+                'key' => $key,
+                'label' => $this->levelLabels[$key],
+                'puntaje' => $score,
+            ])->values(),
         ]);
     }
 
@@ -265,7 +278,7 @@ class EvaluationController extends Controller
             $validated = $request->validate([
                 'scores' => 'required|array',
                 'scores.*.criterio' => ['required', 'string', Rule::in($validCriteria)],
-                'scores.*.nivel' => 'required|string|in:nada,poco,bastante,mucho',
+                'scores.*.nivel' => ['required', 'string', Rule::in(array_keys($this->levels))],
                 'scores.*.comentario' => 'nullable|string',
                 'general_comment' => 'nullable|string|max:3000',
                 'confirm_update' => 'nullable|boolean',
@@ -524,7 +537,7 @@ class EvaluationController extends Controller
                 foreach ($scoresByTeacher as $teacherId => $scores) {
                     $teacher = $scores->first()->teacher;
                     $attempt = $evaluation->attempts->firstWhere('teacher_id', $teacherId);
-                    fputcsv($handle, [$room->nombre, $room->salon, $evaluation->presentation_order, $evaluation->project?->title, $evaluation->project?->students->map(fn ($s) => trim($s->nombres . ' ' . $s->apa))->join(', '), $evaluation->sequence_status, $evaluation->average, trim(($teacher?->nombres ?? '') . ' ' . ($teacher?->apa ?? '')), round(($scores->avg('puntaje') / 3) * 100, 2), $attempt?->general_comment, $evaluation->room_feedback]);
+                    fputcsv($handle, [$room->nombre, $room->salon, $evaluation->presentation_order, $evaluation->project?->title, $evaluation->project?->students->map(fn ($s) => trim($s->nombres . ' ' . $s->apa))->join(', '), $evaluation->sequence_status, $evaluation->average, trim(($teacher?->nombres ?? '') . ' ' . ($teacher?->apa ?? '')), round(($scores->avg('puntaje') / 4) * 100, 2), $attempt?->general_comment, $evaluation->room_feedback]);
                 }
             }
             fclose($handle);
@@ -629,7 +642,7 @@ class EvaluationController extends Controller
     {
         $scores = $evaluation->scores;
         $labels = $this->criteriaLabelsForSemester($evaluation->semestre);
-        $globalAverage = $scores->count() === 0 ? 0 : round(($scores->avg('puntaje') / 3) * 100, 2);
+        $globalAverage = $scores->count() === 0 ? 0 : round(($scores->avg('puntaje') / 4) * 100, 2);
 
         $teacherBreakdown = $scores
             ->groupBy('teacher_id')
@@ -639,12 +652,13 @@ class EvaluationController extends Controller
                 return [
                     'teacher_id' => $teacher?->id,
                     'teacher_name' => trim(($teacher?->nombres ?? '') . ' ' . ($teacher?->apa ?? '') . ' ' . ($teacher?->ama ?? '')) ?: 'Docente',
-                    'average' => round(($teacherScores->avg('puntaje') / 3) * 100, 2),
+                    'average' => round(($teacherScores->avg('puntaje') / 4) * 100, 2),
                     'general_comment' => $attempt?->general_comment,
                     'scores' => $teacherScores->map(fn ($score) => [
                         'criterio' => $score->criterio,
                         'criterio_label' => $labels[$score->criterio] ?? $score->criterio,
                         'nivel' => $score->nivel,
+                        'nivel_label' => $this->levelLabels[$score->nivel] ?? $score->nivel,
                         'puntaje' => $score->puntaje,
                         'comentario' => $score->comentario,
                     ])->values(),

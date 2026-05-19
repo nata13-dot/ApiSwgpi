@@ -50,6 +50,6 @@ class Evaluation extends Model
     public function getAverageAttribute(): float
     {
         $average = $this->scores->avg('puntaje');
-        return $average === null ? 0 : round(($average / 3) * 100, 2);
+        return $average === null ? 0 : round(($average / 4) * 100, 2);
     }
 }
