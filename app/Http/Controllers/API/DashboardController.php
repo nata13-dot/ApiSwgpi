@@ -33,10 +33,19 @@ class DashboardController extends Controller
     public function teacher()
     {
         $userId = auth('api')->id();
-        $advisorProjectIds = Project::whereHas('advisors', function ($query) use ($userId) {
+        $advisorProjectIds = Project::where('activo', true)->whereHas('advisors', function ($query) use ($userId) {
             $query->where('users.id', $userId);
         })->pluck('id');
-        $responsibleGroupIds = TeacherGroupAssignment::where('teacher_id', $userId)->where('activo', true)->pluck('subject_group_id');
+        $responsibleGroupIds = TeacherGroupAssignment::where('teacher_id', $userId)
+            ->where('activo', true)
+            ->pluck('subject_group_id');
+
+        $projectIds = Project::where('activo', true)
+            ->where(function ($query) use ($advisorProjectIds, $responsibleGroupIds) {
+                $query->whereIn('id', $advisorProjectIds)
+                    ->orWhereIn('subject_group_id', $responsibleGroupIds);
+            })
+            ->pluck('id');
 
         $projects = Project::select(['id', 'title', 'created_by', 'created_at', 'subject_group_id', 'authors', 'semestre'])
             ->with([
@@ -45,19 +54,19 @@ class DashboardController extends Controller
                 'students:id,nombres,apa,ama',
                 'subjectGroup:id,nombre,semestre,grupo',
             ])
-            ->where(function ($query) use ($advisorProjectIds, $responsibleGroupIds) {
-                $query->whereIn('id', $advisorProjectIds)
-                    ->orWhereIn('subject_group_id', $responsibleGroupIds);
-            })
+            ->whereIn('id', $projectIds)
             ->orderByDesc('created_at')
             ->limit(5)
             ->get();
 
         return response()->json([
             'stats' => [
-                'my_projects' => $projects->count(),
-                'students' => User::students()->where('activo', true)->count(),
-                'pending_deliverables' => Deliverable::whereIn('project_id', $projects->pluck('id'))
+                'my_projects' => $projectIds->count(),
+                'students' => User::students()
+                    ->where('activo', true)
+                    ->whereHas('projectsAsAdvisor', fn ($query) => $query->whereIn('projects.id', $projectIds)->whereNull('project_user.rol_asesor'))
+                    ->count(),
+                'pending_deliverables' => Deliverable::whereIn('project_id', $projectIds)
                     ->where('estado', 'pendiente')
                     ->count(),
             ],
@@ -69,6 +78,11 @@ class DashboardController extends Controller
     public function student()
     {
         $userId = auth('api')->id();
+        $projectIds = Project::where('activo', true)
+            ->whereHas('students', function ($query) use ($userId) {
+                $query->where('users.id', $userId);
+            })
+            ->pluck('id');
 
         $projects = Project::select(['id', 'title', 'created_by', 'created_at', 'subject_group_id', 'authors', 'semestre'])
             ->with([
@@ -77,16 +91,14 @@ class DashboardController extends Controller
                 'students:id,nombres,apa,ama',
                 'subjectGroup:id,nombre,semestre,grupo',
             ])
-            ->whereHas('students', function ($query) use ($userId) {
-                $query->where('users.id', $userId);
-            })
+            ->whereIn('id', $projectIds)
             ->orderByDesc('created_at')
             ->limit(5)
             ->get();
 
         return response()->json([
             'stats' => [
-                'my_projects' => $projects->count(),
+                'my_projects' => $projectIds->count(),
                 'completed_deliverables' => Deliverable::where('submitted_by', $userId)
                     ->where('estado', 'aprobado')
                     ->count(),

@@ -22,13 +22,35 @@ class DeliverableController extends Controller
             return response()->json(['error' => 'Solo docentes pueden consultar esta vista'], 403);
         }
 
-        $projects = Project::with([
+        $subjectFilter = $request->query('asignatura_id');
+
+        $projects = Project::select(['id', 'title', 'semestre', 'year', 'subject_group_id'])
+            ->with([
                 'students:id,nombres,apa,ama,semestre,grupo',
                 'advisors:id,nombres,apa,ama',
-                'asignaturas.competencias',
-                'deliverables.competencia.asignatura',
-                'deliverables.submittedBy:id,nombres,apa,ama',
-                'deliverables.calificadoPor:id,nombres,apa,ama',
+                'asignaturas' => fn ($query) => $query->select(['asignaturas.id', 'nombre', 'clave']),
+                'asignaturas.competencias' => function ($query) use ($subjectFilter) {
+                    $query->select(['id', 'asignatura_id', 'nombre', 'fecha_inicio', 'fecha_fin']);
+                    if ($subjectFilter) {
+                        $query->where('asignatura_id', $subjectFilter);
+                    }
+                },
+                'deliverables' => function ($query) use ($subjectFilter) {
+                    $query->select([
+                        'id', 'project_id', 'competencia_id', 'nombre', 'descripcion', 'estado',
+                        'archivo_path', 'tipo_documento', 'submitted_by', 'calificacion',
+                        'fecha_calificacion', 'calificado_por',
+                    ])->with([
+                        'competencia:id,asignatura_id,nombre,fecha_inicio,fecha_fin',
+                        'competencia.asignatura:id,nombre,clave',
+                        'submittedBy:id,nombres,apa,ama',
+                        'calificadoPor:id,nombres,apa,ama',
+                    ]);
+
+                    if ($subjectFilter) {
+                        $query->whereHas('competencia', fn ($competenciaQuery) => $competenciaQuery->where('asignatura_id', $subjectFilter));
+                    }
+                },
             ])
             ->where('activo', true)
             ->whereHas('advisors', fn ($query) => $query->where('users.id', $user->id))
@@ -36,7 +58,6 @@ class DeliverableController extends Controller
             ->get();
 
         $studentFilter = trim((string) $request->query('student', ''));
-        $subjectFilter = $request->query('asignatura_id');
 
         $data = $projects->map(function (Project $project) use ($studentFilter, $subjectFilter) {
             $competencias = $project->asignaturas
