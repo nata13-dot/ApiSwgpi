@@ -102,7 +102,7 @@ FROM php:8.4-fpm
 # Install only runtime tools and minimal dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    libzip4 \
+    libzip5 \
     nginx \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
