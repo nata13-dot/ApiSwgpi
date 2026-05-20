@@ -11,6 +11,7 @@ use App\Services\BusinessValidationService;
 use App\Services\FileService;
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Exception;
 
@@ -187,10 +188,8 @@ class DeliverableController extends Controller
                 'students:id,nombres,apa,ama',
                 'advisors:id,nombres,apa,ama',
                 'asignaturas:id,nombre,clave',
-                'deliverables' => fn ($query) => $query
-                    ->whereIn('categoria', [self::CATEGORY_RESEARCH_DOCUMENT, self::CATEGORY_EVALUATION_SLIDES])
-                    ->with(['submittedBy:id,nombres,apa,ama', 'calificadoPor:id,nombres,apa,ama'])
-                    ->orderBy('categoria'),
+                'deliverables' => fn ($query) => $this->evaluationDocumentsQuery($query)
+                    ->with(['submittedBy:id,nombres,apa,ama', 'calificadoPor:id,nombres,apa,ama']),
                 'evaluations:id,project_id,evaluation_room_id,estado,resultado,fecha_exposicion',
                 'evaluations.room:id,nombre,salon,fecha_evaluacion',
             ])
@@ -224,10 +223,8 @@ class DeliverableController extends Controller
         $data = $projects->map(function (Project $project) use ($user) {
             $this->ensureEvaluationDeliverables($project);
             $project->load([
-                'deliverables' => fn ($query) => $query
-                    ->whereIn('categoria', [self::CATEGORY_RESEARCH_DOCUMENT, self::CATEGORY_EVALUATION_SLIDES])
-                    ->with(['submittedBy:id,nombres,apa,ama', 'calificadoPor:id,nombres,apa,ama'])
-                    ->orderBy('categoria'),
+                'deliverables' => fn ($query) => $this->evaluationDocumentsQuery($query)
+                    ->with(['submittedBy:id,nombres,apa,ama', 'calificadoPor:id,nombres,apa,ama']),
             ]);
 
             return [
@@ -443,7 +440,7 @@ class DeliverableController extends Controller
             // Validar que el usuario pueda subir este entregable.
             $user = auth('api')->user();
             $deliverable->loadMissing('project.students');
-            $isSpecialEvaluationDocument = in_array($deliverable->categoria, [self::CATEGORY_RESEARCH_DOCUMENT, self::CATEGORY_EVALUATION_SLIDES], true);
+            $isSpecialEvaluationDocument = in_array($this->deliverableCategory($deliverable), [self::CATEGORY_RESEARCH_DOCUMENT, self::CATEGORY_EVALUATION_SLIDES], true);
             $isProjectMember = $deliverable->project && $deliverable->project->students->contains(fn ($student) => (string) $student->id === (string) $user->id);
 
             if ($isSpecialEvaluationDocument) {
@@ -535,28 +532,28 @@ class DeliverableController extends Controller
     private function ensureEvaluationDeliverables(Project $project): void
     {
         Deliverable::firstOrCreate(
-            ['project_id' => $project->id, 'categoria' => self::CATEGORY_EVALUATION_SLIDES],
-            [
+            $this->deliverableIdentity($project, self::CATEGORY_EVALUATION_SLIDES),
+            array_merge($this->deliverableCategoryPayload(self::CATEGORY_EVALUATION_SLIDES), [
                 'competencia_id' => null,
                 'nombre' => 'Diapositivas de evaluacion',
                 'descripcion' => 'Archivo de apoyo para la presentacion del proyecto en evaluaciones.',
                 'tipo_documento' => 'presentacion',
                 'estado' => 'pendiente',
                 'activo' => true,
-            ]
+            ])
         );
 
         if ($this->requiresResearchDocument($project)) {
             Deliverable::firstOrCreate(
-                ['project_id' => $project->id, 'categoria' => self::CATEGORY_RESEARCH_DOCUMENT],
-                [
+                $this->deliverableIdentity($project, self::CATEGORY_RESEARCH_DOCUMENT),
+                array_merge($this->deliverableCategoryPayload(self::CATEGORY_RESEARCH_DOCUMENT), [
                     'competencia_id' => null,
                     'nombre' => 'Documento de investigacion',
                     'descripcion' => 'Documento adicional requerido para proyectos con Taller de Investigacion I o II.',
                     'tipo_documento' => 'documento',
                     'estado' => 'pendiente',
                     'activo' => true,
-                ]
+                ])
             );
         }
     }
@@ -586,7 +583,7 @@ class DeliverableController extends Controller
 
     private function allowedExtensionsFor(Deliverable $deliverable): ?array
     {
-        return match ($deliverable->categoria) {
+        return match ($this->deliverableCategory($deliverable)) {
             self::CATEGORY_RESEARCH_DOCUMENT => ['pdf', 'doc', 'docx'],
             self::CATEGORY_EVALUATION_SLIDES => ['ppt', 'pptx', 'pdf'],
             default => null,
@@ -599,7 +596,7 @@ class DeliverableController extends Controller
             'id' => $deliverable->id,
             'nombre' => $deliverable->nombre,
             'descripcion' => $deliverable->descripcion,
-            'categoria' => $deliverable->categoria,
+            'categoria' => $this->deliverableCategory($deliverable),
             'estado' => $deliverable->estado,
             'archivo_path' => $deliverable->archivo_path,
             'tipo_documento' => $deliverable->tipo_documento,
@@ -614,5 +611,59 @@ class DeliverableController extends Controller
             'calificado_por' => $deliverable->calificadoPor,
             'allowed_extensions' => $this->allowedExtensionsFor($deliverable),
         ];
+    }
+
+    private function evaluationDocumentsQuery($query)
+    {
+        if ($this->supportsDeliverableCategories()) {
+            return $query
+                ->whereIn('categoria', [self::CATEGORY_RESEARCH_DOCUMENT, self::CATEGORY_EVALUATION_SLIDES])
+                ->orderBy('categoria');
+        }
+
+        return $query
+            ->whereIn('nombre', ['Diapositivas de evaluacion', 'Documento de investigacion'])
+            ->orderBy('nombre');
+    }
+
+    private function supportsDeliverableCategories(): bool
+    {
+        static $hasColumn = null;
+        if ($hasColumn === null) {
+            $hasColumn = Schema::hasColumn('deliverables', 'categoria');
+        }
+
+        return $hasColumn;
+    }
+
+    private function deliverableIdentity(Project $project, string $category): array
+    {
+        if ($this->supportsDeliverableCategories()) {
+            return ['project_id' => $project->id, 'categoria' => $category];
+        }
+
+        return [
+            'project_id' => $project->id,
+            'nombre' => $category === self::CATEGORY_EVALUATION_SLIDES ? 'Diapositivas de evaluacion' : 'Documento de investigacion',
+        ];
+    }
+
+    private function deliverableCategoryPayload(string $category): array
+    {
+        return $this->supportsDeliverableCategories() ? ['categoria' => $category] : [];
+    }
+
+    private function deliverableCategory(Deliverable $deliverable): string
+    {
+        $category = $deliverable->getAttribute('categoria');
+        if ($category) {
+            return $category;
+        }
+
+        return match ($deliverable->nombre) {
+            'Diapositivas de evaluacion' => self::CATEGORY_EVALUATION_SLIDES,
+            'Documento de investigacion' => self::CATEGORY_RESEARCH_DOCUMENT,
+            default => 'materia',
+        };
     }
 }
