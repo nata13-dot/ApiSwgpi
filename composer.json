@@ -10,7 +10,6 @@
         "laravel/framework": "^13.7",
         "laravel/sanctum": "^4.3",
         "laravel/tinker": "^3.0",
-        "phpmailer/phpmailer": "^7.1",
         "tymon/jwt-auth": "^2.3"
     },
     "require-dev": {

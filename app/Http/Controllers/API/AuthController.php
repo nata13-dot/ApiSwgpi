@@ -3,15 +3,16 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Mail\PasswordResetTokenMail;
 use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
-use PHPMailer\PHPMailer\PHPMailer;
 
 class AuthController extends Controller
 {
@@ -107,16 +108,16 @@ class AuthController extends Controller
                 ]
             );
 
-            $sent = $this->sendPasswordResetToken($user, $token);
-            if (!$sent) {
-                return response()->json(['error' => 'No se pudo enviar el correo de recuperacion. Verifica la configuracion SMTP de Gmail en Railway.'], 500);
-            }
+            Mail::to($user->email)->send(new PasswordResetTokenMail($user, $token));
 
             return response()->json(['message' => 'Token enviado al correo registrado.']);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Throwable $e) {
             logger()->error('Error inesperado solicitando token de recuperacion.', [
+                'mail_mailer' => config('mail.default'),
+                'mail_host' => config('mail.mailers.smtp.host'),
+                'mail_port' => config('mail.mailers.smtp.port'),
                 'error' => $e->getMessage(),
             ]);
 
@@ -202,63 +203,6 @@ class AuthController extends Controller
         }
 
         return Hash::check($token, $record->token);
-    }
-
-    private function sendPasswordResetToken(User $user, string $token): bool
-    {
-        if (!$user->email) {
-            return false;
-        }
-
-        $name = trim("{$user->nombres} {$user->apa}");
-        $html = view('emails.password-reset-token', [
-            'name' => $name ?: $user->id,
-            'token' => $token,
-        ])->render();
-
-        try {
-            $mail = new PHPMailer(true);
-            $smtp = config('mail.mailers.smtp');
-            $username = (string) ($smtp['username'] ?? '');
-            $password = (string) ($smtp['password'] ?? '');
-            $fromAddress = (string) config('mail.from.address');
-            $fromName = (string) config('mail.from.name');
-
-            if (!$username || !$password || !$fromAddress) {
-                return false;
-            }
-
-            $mail->isSMTP();
-            $mail->Host = (string) ($smtp['host'] ?? 'smtp.gmail.com');
-            $mail->SMTPAuth = true;
-            $mail->Username = $username;
-            $mail->Password = $password;
-            $mail->SMTPSecure = env('MAIL_ENCRYPTION', PHPMailer::ENCRYPTION_STARTTLS) ?: PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port = (int) ($smtp['port'] ?? 587);
-            $mail->CharSet = 'UTF-8';
-            $mail->Timeout = (int) env('MAIL_TIMEOUT', 8);
-            $mail->SMTPKeepAlive = false;
-
-            $mail->setFrom($fromAddress, $fromName);
-            $mail->addAddress($user->email, $name ?: $user->id);
-            $mail->isHTML(true);
-            $mail->Subject = 'Token de recuperacion de contrasena';
-            $mail->Body = $html;
-            $mail->AltBody = "Hola " . ($name ?: $user->id) . ", tu token de recuperacion es: {$token}. Vence en 15 minutos.";
-            $mail->send();
-
-            return true;
-        } catch (\Throwable $e) {
-            logger()->error('No se pudo enviar correo de recuperacion con PHPMailer.', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'smtp_host' => $mail->Host ?? null,
-                'smtp_port' => $mail->Port ?? null,
-                'error' => $e->getMessage(),
-            ]);
-            report($e);
-            return false;
-        }
     }
 
     private function userPayload(User $user): array
