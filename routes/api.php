@@ -19,10 +19,6 @@ use App\Http\Controllers\API\SystemSettingController;
 // ========================
 // AUTENTICACIÓN (sin protección)
 // ========================
-Route::options('/{any}', function () {
-    return response()->json([], 204);
-})->where('any', '.*');
-
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/password/request-token', [AuthController::class, 'requestPasswordReset']);
 Route::post('/auth/password/verify-token', [AuthController::class, 'verifyPasswordResetToken']);
