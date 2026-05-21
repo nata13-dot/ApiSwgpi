@@ -228,6 +228,7 @@ class AuthController extends Controller
             $mail->SMTPSecure = env('MAIL_ENCRYPTION', PHPMailer::ENCRYPTION_STARTTLS) ?: PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port = (int) ($smtp['port'] ?? 587);
             $mail->CharSet = 'UTF-8';
+            $mail->Timeout = (int) env('MAIL_TIMEOUT', 30);
 
             $mail->setFrom($fromAddress, $fromName);
             $mail->addAddress($user->email, $name ?: $user->id);
