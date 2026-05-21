@@ -56,6 +56,12 @@ class EvaluationController extends Controller
         if ($semester) {
             $query->where('semestre', $semester);
         }
+        if ($request->filled('project_id')) {
+            $projectId = (int) $request->project_id;
+            $query->where(function ($scope) use ($projectId) {
+                $scope->whereNull('project_id')->orWhere('project_id', $projectId);
+            });
+        }
 
         return response()->json([
             'criteria' => $query->get()->map(fn ($criterion) => $this->shapeCriterion($criterion)),
@@ -91,23 +97,39 @@ class EvaluationController extends Controller
         try {
             $validated = $request->validate([
                 'semestre' => 'required|integer|in:5,6,7,8',
+                'project_id' => 'nullable|integer|exists:projects,id',
                 'pregunta' => 'required|string|max:255',
                 'orden' => 'nullable|integer|min:0',
             ]);
 
+            $project = null;
+            if (!empty($validated['project_id'])) {
+                $project = Project::where('id', $validated['project_id'])
+                    ->where('semestre', 8)
+                    ->where('activo', true)
+                    ->first();
+                if (!$project || (int) $validated['semestre'] !== 8) {
+                    throw ValidationException::withMessages([
+                        'project_id' => ['La rubrica personalizada solo aplica a proyectos activos de 8vo semestre.'],
+                    ]);
+                }
+            }
+
             $baseKey = Str::limit(Str::slug($validated['pregunta'], '_') ?: 'criterio', 64, '');
-            $key = $baseKey;
+            $key = $project ? Str::limit('p' . $project->id . '_' . $baseKey, 80, '') : $baseKey;
             $suffix = 2;
             while (RubricCriterion::where('semestre', $validated['semestre'])->where('clave', $key)->exists()) {
-                $key = Str::limit($baseKey, 64 - strlen((string) $suffix) - 1, '') . '_' . $suffix;
+                $prefix = $project ? 'p' . $project->id . '_' : '';
+                $key = $prefix . Str::limit($baseKey, 80 - strlen($prefix) - strlen((string) $suffix) - 1, '') . '_' . $suffix;
                 $suffix++;
             }
 
             $criterion = RubricCriterion::create([
                 'semestre' => $validated['semestre'],
+                'project_id' => $validated['project_id'] ?? null,
                 'clave' => $key,
                 'pregunta' => $validated['pregunta'],
-                'orden' => $validated['orden'] ?? ((int) RubricCriterion::where('semestre', $validated['semestre'])->max('orden') + 1),
+                'orden' => $validated['orden'] ?? ((int) RubricCriterion::where('semestre', $validated['semestre'])->where('project_id', $validated['project_id'] ?? null)->max('orden') + 1),
                 'activo' => true,
             ]);
 
@@ -296,10 +318,7 @@ class EvaluationController extends Controller
             return response()->json(['error' => 'No estas asignado como evaluador de esta sala.'], 403);
         }
 
-        $validCriteria = RubricCriterion::where('semestre', $evaluation->semestre)
-            ->where('activo', true)
-            ->pluck('clave')
-            ->all();
+        $validCriteria = $this->criteriaForEvaluation($evaluation)->pluck('clave')->all();
 
         try {
             $validated = $request->validate([
@@ -674,10 +693,8 @@ class EvaluationController extends Controller
 
     private function evaluationReportData(Evaluation $evaluation): array
     {
-        $labels = $this->criteriaLabelsForSemester((int) $evaluation->semestre);
-        $orderedCriteria = RubricCriterion::where('semestre', $evaluation->semestre)
-            ->orderBy('orden')
-            ->orderBy('id')
+        $labels = $this->criteriaLabelsForEvaluation($evaluation);
+        $orderedCriteria = $this->criteriaForEvaluation($evaluation)
             ->pluck('pregunta', 'clave')
             ->all();
         $criteriaLabels = array_replace($orderedCriteria, $labels);
@@ -733,7 +750,7 @@ class EvaluationController extends Controller
                 ->where('teacher_id', $teacher->id)
                 ->filter(fn ($score) => filled($score->comentario))
                 ->map(fn ($score) => [
-                    'criterion' => $this->criteriaLabelsForSemester((int) $evaluation->semestre)[$score->criterio] ?? $score->criterio,
+                    'criterion' => $this->criteriaLabelsForEvaluation($evaluation)[$score->criterio] ?? $score->criterio,
                     'comment' => $score->comentario,
                 ])
                 ->values()
@@ -1027,10 +1044,40 @@ class EvaluationController extends Controller
         return [
             'id' => $criterion->id,
             'semestre' => $criterion->semestre,
+            'project_id' => $criterion->project_id,
+            'scope' => $criterion->project_id ? 'project' : 'general',
             'key' => $criterion->clave,
             'label' => $criterion->pregunta,
             'orden' => $criterion->orden,
         ];
+    }
+
+    private function criteriaForEvaluation(Evaluation $evaluation)
+    {
+        return RubricCriterion::where('semestre', $evaluation->semestre)
+            ->where('activo', true)
+            ->where(function ($query) use ($evaluation) {
+                $query->whereNull('project_id');
+                if ((int) $evaluation->semestre === 8 && $evaluation->project_id) {
+                    $query->orWhere('project_id', $evaluation->project_id);
+                }
+            })
+            ->orderByRaw('CASE WHEN project_id IS NULL THEN 0 ELSE 1 END')
+            ->orderBy('orden')
+            ->orderBy('id')
+            ->get();
+    }
+
+    private function criteriaLabelsForEvaluation(Evaluation $evaluation): array
+    {
+        $cacheKey = (int) $evaluation->semestre . ':' . ((int) $evaluation->project_id ?: 'general');
+        if (isset($this->criteriaLabelCache[$cacheKey])) {
+            return $this->criteriaLabelCache[$cacheKey];
+        }
+
+        return $this->criteriaLabelCache[$cacheKey] = $this->criteriaForEvaluation($evaluation)
+            ->pluck('pregunta', 'clave')
+            ->all();
     }
 
     private function criteriaLabelsForSemester(int $semester): array
@@ -1047,7 +1094,7 @@ class EvaluationController extends Controller
     private function shapeEvaluation(Evaluation $evaluation): array
     {
         $scores = $evaluation->scores;
-        $labels = $this->criteriaLabelsForSemester($evaluation->semestre);
+        $labels = $this->criteriaLabelsForEvaluation($evaluation);
         $scoreMode = $this->rubricScoreModeForSemester((int) $evaluation->semestre);
         $maxScore = $this->maxScoreForSemester((int) $evaluation->semestre);
         $globalAverage = $this->scoreCollectionAverage($scores, (int) $evaluation->semestre);
