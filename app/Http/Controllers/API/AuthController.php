@@ -115,6 +115,14 @@ class AuthController extends Controller
             return response()->json(['message' => 'Token enviado al correo registrado.']);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            logger()->error('Error inesperado solicitando token de recuperacion.', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'No se pudo procesar la solicitud de recuperacion. Revisa los logs de la API en Railway.',
+            ], 500);
         }
     }
 
