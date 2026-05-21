@@ -116,8 +116,7 @@ class AuthController extends Controller
         } catch (\Throwable $e) {
             logger()->error('Error inesperado solicitando token de recuperacion.', [
                 'mail_mailer' => config('mail.default'),
-                'mail_host' => config('mail.mailers.smtp.host'),
-                'mail_port' => config('mail.mailers.smtp.port'),
+                'mail_from' => config('mail.from.address'),
                 'error' => $e->getMessage(),
             ]);
 

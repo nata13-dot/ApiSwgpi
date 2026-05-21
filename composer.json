@@ -10,6 +10,8 @@
         "laravel/framework": "^13.7",
         "laravel/sanctum": "^4.3",
         "laravel/tinker": "^3.0",
+        "resend/resend-laravel": "^1.4",
+        "resend/resend-php": "^1.0",
         "tymon/jwt-auth": "^2.3"
     },
     "require-dev": {
