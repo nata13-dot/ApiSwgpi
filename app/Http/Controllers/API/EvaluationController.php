@@ -553,73 +553,19 @@ class EvaluationController extends Controller
     {
         if ($guard = $this->guardEvaluationManager()) abort(403, 'No autorizado para exportar evaluaciones.');
 
-        $room = EvaluationRoom::with(['evaluations.project.students', 'evaluations.scores.teacher', 'evaluations.attempts.teacher'])->findOrFail($id);
-        $filename = 'evaluaciones_sala_' . $room->id . '.csv';
+        $room = EvaluationRoom::with([
+            'teachers:id,nombres,apa,ama,perfil_id',
+            'responsibleTeacher:id,nombres,apa,ama,perfil_id',
+            'evaluations.project.students',
+            'evaluations.scores.teacher',
+            'evaluations.attempts.teacher',
+        ])->findOrFail($id);
+        $filename = 'evaluaciones_sala_' . $room->id . '.xls';
 
         return response()->streamDownload(function () use ($room) {
-            $handle = fopen('php://output', 'w');
-            fwrite($handle, "\xEF\xBB\xBF");
-            fputcsv($handle, [
-                'sala_id',
-                'sala_nombre',
-                'salon',
-                'semestre',
-                'fecha_evaluacion',
-                'orden_presentacion',
-                'evaluacion_id',
-                'proyecto_id',
-                'proyecto',
-                'integrantes',
-                'total_integrantes',
-                'estado_sala',
-                'estado_evaluacion',
-                'resultado',
-                'promedio_global',
-                'docente_id',
-                'docente',
-                'promedio_docente',
-                'criterio_clave',
-                'criterio',
-                'nivel',
-                'puntaje',
-                'puntaje_porcentaje',
-                'comentario_criterio',
-                'comentario_general_docente',
-                'retroalimentacion_sala',
-                'fecha_retroalimentacion',
-                'apto_titulacion',
-            ], ';');
-
-            foreach ($room->evaluations->sortBy('presentation_order') as $evaluation) {
-                $labels = $this->criteriaLabelsForSemester((int) $evaluation->semestre);
-                $scoresByTeacher = $evaluation->scores->groupBy('teacher_id');
-                if ($scoresByTeacher->isEmpty()) {
-                    $this->writePowerBiEvaluationRow($handle, $room, $evaluation);
-                    continue;
-                }
-
-                foreach ($scoresByTeacher as $teacherId => $scores) {
-                    $teacher = $scores->first()->teacher;
-                    $attempt = $evaluation->attempts->firstWhere('teacher_id', $teacherId);
-                    $teacherAverage = $this->scoreCollectionAverage($scores, (int) $evaluation->semestre);
-
-                    foreach ($scores->sortBy('criterio') as $score) {
-                        $this->writePowerBiEvaluationRow(
-                            $handle,
-                            $room,
-                            $evaluation,
-                            $teacher,
-                            $teacherAverage,
-                            $score,
-                            $attempt?->general_comment,
-                            $labels[$score->criterio] ?? $score->criterio
-                        );
-                    }
-                }
-            }
-            fclose($handle);
+            echo $this->roomExcelWorkbook($room);
         }, $filename, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }
@@ -638,6 +584,272 @@ class EvaluationController extends Controller
             'manager_ids' => $managerIds,
             'teachers' => $teachers,
         ]);
+    }
+
+    private function roomExcelWorkbook(EvaluationRoom $room): string
+    {
+        $evaluations = $room->evaluations->sortBy('presentation_order')->values();
+        $summaryRows = $this->roomExcelSummaryRows($room, $evaluations);
+        $projectRows = $this->roomExcelProjectRows($room, $evaluations);
+        $teacherRows = $this->roomExcelTeacherRows($room, $evaluations);
+        $detailRows = $this->roomExcelDetailRows($room, $evaluations);
+        $commentRows = $this->roomExcelCommentRows($room, $evaluations);
+
+        return '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
+            . '<?mso-application progid="Excel.Sheet"?>' . "\n"
+            . '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '
+            . 'xmlns:o="urn:schemas-microsoft-com:office:office" '
+            . 'xmlns:x="urn:schemas-microsoft-com:office:excel" '
+            . 'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" '
+            . 'xmlns:html="http://www.w3.org/TR/REC-html40">'
+            . '<Styles>'
+            . '<Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#D9EAF7" ss:Pattern="Solid"/></Style>'
+            . '<Style ss:ID="Title"><Font ss:Bold="1" ss:Size="14"/></Style>'
+            . '<Style ss:ID="Wrap"><Alignment ss:WrapText="1" ss:Vertical="Top"/></Style>'
+            . '</Styles>'
+            . $this->excelWorksheet('Resumen', $summaryRows)
+            . $this->excelWorksheet('Proyectos', $projectRows)
+            . $this->excelWorksheet('Docentes', $teacherRows)
+            . $this->excelWorksheet('Detalle_Rubrica', $detailRows)
+            . $this->excelWorksheet('Comentarios', $commentRows)
+            . '</Workbook>';
+    }
+
+    private function roomExcelSummaryRows(EvaluationRoom $room, $evaluations): array
+    {
+        $evaluated = $evaluations->filter(fn ($evaluation) => $evaluation->scores->isNotEmpty());
+        $roomAverage = $evaluated->count() === 0
+            ? 0
+            : round($evaluated->avg(fn ($evaluation) => $this->scoreCollectionAverage($evaluation->scores, (int) $evaluation->semestre)), 2);
+
+        return [
+            ['Reporte de evaluaciones de sala', ''],
+            ['Campo', 'Valor'],
+            ['sala_id', $room->id],
+            ['sala_nombre', $room->nombre],
+            ['salon', $room->salon],
+            ['semestre', $room->semestre],
+            ['fecha_evaluacion', optional($room->fecha_evaluacion)->format('Y-m-d H:i:s')],
+            ['responsable', $room->responsibleTeacher ? $this->fullName($room->responsibleTeacher) : ''],
+            ['docentes_asignados', $room->teachers->map(fn ($teacher) => $this->fullName($teacher))->filter()->join(' | ')],
+            ['total_docentes', $room->teachers->count()],
+            ['total_proyectos', $evaluations->count()],
+            ['proyectos_con_evaluacion', $evaluated->count()],
+            ['promedio_global_sala', $roomAverage],
+            ['metodo_puntaje', $this->rubricScoreModeForSemester((int) $room->semestre)],
+            ['puntaje_maximo', $this->maxScoreForSemester((int) $room->semestre)],
+            ['fecha_exportacion', now()->format('Y-m-d H:i:s')],
+        ];
+    }
+
+    private function roomExcelProjectRows(EvaluationRoom $room, $evaluations): array
+    {
+        $rows = [[
+            'orden_presentacion',
+            'evaluacion_id',
+            'proyecto_id',
+            'proyecto',
+            'integrantes',
+            'total_integrantes',
+            'empresa',
+            'giro',
+            'contacto_empresa',
+            'estado_turno',
+            'estado_evaluacion',
+            'resultado',
+            'promedio_global',
+            'evaluadores_registrados',
+            'evaluadores_esperados',
+            'evaluado_por_todos',
+            'apto_titulacion',
+            'retroalimentacion_sala',
+        ]];
+
+        foreach ($evaluations as $evaluation) {
+            $students = $evaluation->project?->students ?? collect();
+            $teacherCount = $evaluation->scores->groupBy('teacher_id')->count();
+            $expectedTeacherCount = $room->teachers->count();
+            $rows[] = [
+                $evaluation->presentation_order,
+                $evaluation->id,
+                $evaluation->project_id,
+                $evaluation->project?->title,
+                $students->map(fn ($student) => $this->fullName($student))->filter()->join(' | '),
+                $students->count(),
+                $evaluation->project?->company_name,
+                $evaluation->project?->company_giro,
+                $evaluation->project?->company_contact_name,
+                $evaluation->sequence_status,
+                $evaluation->estado,
+                $evaluation->resultado,
+                $this->scoreCollectionAverage($evaluation->scores, (int) $evaluation->semestre),
+                $teacherCount,
+                $expectedTeacherCount,
+                $expectedTeacherCount > 0 && $teacherCount >= $expectedTeacherCount ? 'Si' : 'No',
+                $evaluation->apto_titulacion === null ? '' : ($evaluation->apto_titulacion ? 'Si' : 'No'),
+                $evaluation->room_feedback,
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function roomExcelTeacherRows(EvaluationRoom $room, $evaluations): array
+    {
+        $rows = [[
+            'orden_presentacion',
+            'evaluacion_id',
+            'proyecto_id',
+            'proyecto',
+            'docente_id',
+            'docente',
+            'evaluacion_registrada',
+            'criterios_evaluados',
+            'promedio_docente',
+            'comentario_general_docente',
+            'fecha_envio',
+        ]];
+
+        foreach ($evaluations as $evaluation) {
+            $scoresByTeacher = $evaluation->scores->groupBy('teacher_id');
+            $expectedTeachers = $room->teachers->isNotEmpty()
+                ? $room->teachers
+                : $scoresByTeacher->map(fn ($scores) => $scores->first()->teacher)->filter()->values();
+
+            foreach ($expectedTeachers as $teacher) {
+                $teacherId = (string) $teacher->id;
+                $scores = $scoresByTeacher->get($teacherId, collect());
+                $attempt = $evaluation->attempts->firstWhere('teacher_id', $teacherId);
+                $rows[] = [
+                    $evaluation->presentation_order,
+                    $evaluation->id,
+                    $evaluation->project_id,
+                    $evaluation->project?->title,
+                    $teacherId,
+                    $this->fullName($teacher),
+                    $scores->isNotEmpty() ? 'Si' : 'No',
+                    $scores->count(),
+                    $scores->isNotEmpty() ? $this->scoreCollectionAverage($scores, (int) $evaluation->semestre) : '',
+                    $attempt?->general_comment,
+                    optional($attempt?->last_submitted_at)->format('Y-m-d H:i:s'),
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    private function roomExcelDetailRows(EvaluationRoom $room, $evaluations): array
+    {
+        $rows = [[
+            'sala_id',
+            'sala_nombre',
+            'orden_presentacion',
+            'evaluacion_id',
+            'proyecto_id',
+            'proyecto',
+            'docente_id',
+            'docente',
+            'criterio_clave',
+            'criterio',
+            'nivel',
+            'puntaje',
+            'puntaje_maximo',
+            'puntaje_porcentaje',
+            'comentario_criterio',
+        ]];
+
+        foreach ($evaluations as $evaluation) {
+            $labels = $this->criteriaLabelsForSemester((int) $evaluation->semestre);
+            $maxScore = $this->maxScoreForSemester((int) $evaluation->semestre);
+
+            foreach ($evaluation->scores->sortBy(fn ($score) => $score->teacher_id . '|' . $score->criterio) as $score) {
+                $rows[] = [
+                    $room->id,
+                    $room->nombre,
+                    $evaluation->presentation_order,
+                    $evaluation->id,
+                    $evaluation->project_id,
+                    $evaluation->project?->title,
+                    $score->teacher_id,
+                    $score->teacher ? $this->fullName($score->teacher) : '',
+                    $score->criterio,
+                    $labels[$score->criterio] ?? $score->criterio,
+                    $this->levelLabels[$score->nivel] ?? $score->nivel,
+                    $score->puntaje,
+                    $maxScore,
+                    round(($score->puntaje / $maxScore) * 100, 2),
+                    $score->comentario,
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    private function roomExcelCommentRows(EvaluationRoom $room, $evaluations): array
+    {
+        $rows = [[
+            'tipo_comentario',
+            'orden_presentacion',
+            'evaluacion_id',
+            'proyecto_id',
+            'proyecto',
+            'docente_id',
+            'docente',
+            'criterio',
+            'comentario',
+        ]];
+
+        foreach ($evaluations as $evaluation) {
+            if ($evaluation->room_feedback) {
+                $rows[] = [
+                    'retroalimentacion_sala',
+                    $evaluation->presentation_order,
+                    $evaluation->id,
+                    $evaluation->project_id,
+                    $evaluation->project?->title,
+                    '',
+                    '',
+                    '',
+                    $evaluation->room_feedback,
+                ];
+            }
+
+            foreach ($evaluation->attempts as $attempt) {
+                if (!$attempt->general_comment) {
+                    continue;
+                }
+                $rows[] = [
+                    'comentario_general_docente',
+                    $evaluation->presentation_order,
+                    $evaluation->id,
+                    $evaluation->project_id,
+                    $evaluation->project?->title,
+                    $attempt->teacher_id,
+                    $attempt->teacher ? $this->fullName($attempt->teacher) : '',
+                    '',
+                    $attempt->general_comment,
+                ];
+            }
+
+            $labels = $this->criteriaLabelsForSemester((int) $evaluation->semestre);
+            foreach ($evaluation->scores->filter(fn ($score) => !empty($score->comentario)) as $score) {
+                $rows[] = [
+                    'comentario_criterio',
+                    $evaluation->presentation_order,
+                    $evaluation->id,
+                    $evaluation->project_id,
+                    $evaluation->project?->title,
+                    $score->teacher_id,
+                    $score->teacher ? $this->fullName($score->teacher) : '',
+                    $labels[$score->criterio] ?? $score->criterio,
+                    $score->comentario,
+                ];
+            }
+        }
+
+        return $rows;
     }
 
     private function writePowerBiEvaluationRow(
@@ -696,6 +908,52 @@ class EvaluationController extends Controller
         }
 
         return preg_replace('/\s+/', ' ', trim($value));
+    }
+
+    private function excelWorksheet(string $name, array $rows): string
+    {
+        $xml = '<Worksheet ss:Name="' . $this->xmlEscape($this->excelSheetName($name)) . '"><Table>';
+
+        foreach ($rows as $index => $row) {
+            $style = $index === 0 ? 'Header' : 'Wrap';
+            if ($name === 'Resumen' && $index === 0) {
+                $style = 'Title';
+            } elseif ($name === 'Resumen' && $index === 1) {
+                $style = 'Header';
+            }
+
+            $xml .= '<Row>';
+            foreach ($row as $cell) {
+                $xml .= $this->excelCell($cell, $style);
+            }
+            $xml .= '</Row>';
+        }
+
+        return $xml . '</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane></WorksheetOptions></Worksheet>';
+    }
+
+    private function excelCell(mixed $value, string $style = 'Wrap'): string
+    {
+        if ($value === null) {
+            $value = '';
+        }
+
+        $type = is_int($value) || is_float($value) ? 'Number' : 'String';
+        $text = $type === 'Number' ? (string) $value : $this->xmlEscape((string) $value);
+
+        return '<Cell ss:StyleID="' . $style . '"><Data ss:Type="' . $type . '">' . $text . '</Data></Cell>';
+    }
+
+    private function excelSheetName(string $name): string
+    {
+        $clean = preg_replace('/[\[\]\*\/\\\\\?:]/', '_', $name) ?: 'Hoja';
+        return mb_substr($clean, 0, 31);
+    }
+
+    private function xmlEscape(string $value): string
+    {
+        $value = preg_replace('/[^\P{C}\t\r\n]/u', '', $value) ?? '';
+        return htmlspecialchars($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
     }
 
     private function rubricScoreModes(): array

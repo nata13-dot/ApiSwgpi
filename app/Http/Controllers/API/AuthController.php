@@ -9,9 +9,9 @@ use Illuminate\Http\Request;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
+use PHPMailer\PHPMailer\PHPMailer;
 
 class AuthController extends Controller
 {
@@ -198,8 +198,7 @@ class AuthController extends Controller
 
     private function sendPasswordResetToken(User $user, string $token): bool
     {
-        $apiKey = config('services.resend.key');
-        if (!$apiKey || !$user->email) {
+        if (!$user->email) {
             return false;
         }
 
@@ -209,16 +208,40 @@ class AuthController extends Controller
             'token' => $token,
         ])->render();
 
-        $response = Http::withToken($apiKey)
-            ->acceptJson()
-            ->post('https://api.resend.com/emails', [
-                'from' => config('services.resend.from'),
-                'to' => [$user->email],
-                'subject' => 'Token de recuperacion de contraseña',
-                'html' => $html,
-            ]);
+        try {
+            $mail = new PHPMailer(true);
+            $smtp = config('mail.mailers.smtp');
+            $username = (string) ($smtp['username'] ?? '');
+            $password = (string) ($smtp['password'] ?? '');
+            $fromAddress = (string) config('mail.from.address');
+            $fromName = (string) config('mail.from.name');
 
-        return $response->successful();
+            if (!$username || !$password || !$fromAddress) {
+                return false;
+            }
+
+            $mail->isSMTP();
+            $mail->Host = (string) ($smtp['host'] ?? 'smtp.gmail.com');
+            $mail->SMTPAuth = true;
+            $mail->Username = $username;
+            $mail->Password = $password;
+            $mail->SMTPSecure = env('MAIL_ENCRYPTION', PHPMailer::ENCRYPTION_STARTTLS) ?: PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port = (int) ($smtp['port'] ?? 587);
+            $mail->CharSet = 'UTF-8';
+
+            $mail->setFrom($fromAddress, $fromName);
+            $mail->addAddress($user->email, $name ?: $user->id);
+            $mail->isHTML(true);
+            $mail->Subject = 'Token de recuperacion de contrasena';
+            $mail->Body = $html;
+            $mail->AltBody = "Hola " . ($name ?: $user->id) . ", tu token de recuperacion es: {$token}. Vence en 15 minutos.";
+            $mail->send();
+
+            return true;
+        } catch (\Throwable $e) {
+            report($e);
+            return false;
+        }
     }
 
     private function userPayload(User $user): array
