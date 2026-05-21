@@ -54,7 +54,24 @@ class EvaluationController extends Controller
                 'label' => $this->levelLabels[$key],
                 'puntaje' => $score,
             ])->values(),
+            'score_modes' => $this->rubricScoreModes(),
         ]);
+    }
+
+    public function updateRubricScoreModes(Request $request)
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        $validated = $request->validate([
+            'semester' => 'required|integer|in:5,6,7,8',
+            'mode' => ['required', Rule::in(['levels', 'numeric'])],
+        ]);
+
+        $modes = $this->rubricScoreModes();
+        $modes[(string) $validated['semester']] = $validated['mode'];
+        SystemSetting::setValue('rubric_score_modes', $modes, 'array', 'Metodo de puntaje de rubrica por semestre');
+
+        return response()->json(['message' => 'Metodo de rubrica guardado', 'score_modes' => $modes]);
     }
 
     public function storeCriterion(Request $request)
@@ -304,6 +321,7 @@ class EvaluationController extends Controller
                 }
 
                 foreach ($validated['scores'] as $score) {
+                    $scoreMode = $this->rubricScoreModeForSemester((int) $evaluation->semestre);
                     EvaluationScore::updateOrCreate(
                         [
                             'evaluation_id' => $evaluation->id,
@@ -312,7 +330,7 @@ class EvaluationController extends Controller
                         ],
                         [
                             'nivel' => $score['nivel'],
-                            'puntaje' => $this->levels[$score['nivel']],
+                            'puntaje' => $this->pointsForLevel($score['nivel'], $scoreMode),
                             'comentario' => $score['comentario'] ?? null,
                         ]
                     );
@@ -361,7 +379,7 @@ class EvaluationController extends Controller
     public function projects()
     {
         $user = auth('api')->user();
-        $query = Project::with('students:id,nombres,apa,ama')
+        $query = Project::with('students:id,nombres,apa,ama,email,semestre,grupo')
             ->where('activo', true)
             ->orderBy('title');
         if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
@@ -374,13 +392,26 @@ class EvaluationController extends Controller
         if (request()->filled('semestre')) {
             $query->where('semestre', request('semestre'));
         }
-        return response()->json($query->get(['id', 'title', 'semestre', 'authors']));
+        return response()->json($query->get([
+            'id',
+            'title',
+            'description',
+            'semestre',
+            'authors',
+            'company_name',
+            'company_giro',
+            'company_contact_name',
+            'company_contact_position',
+            'subject_group_id',
+            'year',
+            'proposal_status',
+        ]));
     }
 
     public function rooms(Request $request)
     {
         $user = auth('api')->user();
-        $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama,perfil_id', 'responsibleTeacher:id,nombres,apa,ama,perfil_id', 'projects:id,title,semestre'])
+        $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama,perfil_id', 'responsibleTeacher:id,nombres,apa,ama,perfil_id', 'projects:id,title,semestre,company_name'])
             ->where('activo', true)
             ->orderByDesc('fecha_evaluacion')
             ->orderBy('nombre');
@@ -527,21 +558,70 @@ class EvaluationController extends Controller
 
         return response()->streamDownload(function () use ($room) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Sala', 'Salon', 'Orden', 'Proyecto', 'Integrantes', 'Estado', 'Promedio global', 'Docente', 'Promedio docente', 'Comentarios generales', 'Retroalimentacion sala']);
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, [
+                'sala_id',
+                'sala_nombre',
+                'salon',
+                'semestre',
+                'fecha_evaluacion',
+                'orden_presentacion',
+                'evaluacion_id',
+                'proyecto_id',
+                'proyecto',
+                'integrantes',
+                'total_integrantes',
+                'estado_sala',
+                'estado_evaluacion',
+                'resultado',
+                'promedio_global',
+                'docente_id',
+                'docente',
+                'promedio_docente',
+                'criterio_clave',
+                'criterio',
+                'nivel',
+                'puntaje',
+                'puntaje_porcentaje',
+                'comentario_criterio',
+                'comentario_general_docente',
+                'retroalimentacion_sala',
+                'fecha_retroalimentacion',
+                'apto_titulacion',
+            ], ';');
+
             foreach ($room->evaluations->sortBy('presentation_order') as $evaluation) {
+                $labels = $this->criteriaLabelsForSemester((int) $evaluation->semestre);
                 $scoresByTeacher = $evaluation->scores->groupBy('teacher_id');
                 if ($scoresByTeacher->isEmpty()) {
-                    fputcsv($handle, [$room->nombre, $room->salon, $evaluation->presentation_order, $evaluation->project?->title, $evaluation->project?->students->map(fn ($s) => trim($s->nombres . ' ' . $s->apa))->join(', '), $evaluation->sequence_status, $evaluation->average, '', '', '', $evaluation->room_feedback]);
+                    $this->writePowerBiEvaluationRow($handle, $room, $evaluation);
                     continue;
                 }
+
                 foreach ($scoresByTeacher as $teacherId => $scores) {
                     $teacher = $scores->first()->teacher;
                     $attempt = $evaluation->attempts->firstWhere('teacher_id', $teacherId);
-                    fputcsv($handle, [$room->nombre, $room->salon, $evaluation->presentation_order, $evaluation->project?->title, $evaluation->project?->students->map(fn ($s) => trim($s->nombres . ' ' . $s->apa))->join(', '), $evaluation->sequence_status, $evaluation->average, trim(($teacher?->nombres ?? '') . ' ' . ($teacher?->apa ?? '')), round(($scores->avg('puntaje') / 4) * 100, 2), $attempt?->general_comment, $evaluation->room_feedback]);
+                    $teacherAverage = $this->scoreCollectionAverage($scores, (int) $evaluation->semestre);
+
+                    foreach ($scores->sortBy('criterio') as $score) {
+                        $this->writePowerBiEvaluationRow(
+                            $handle,
+                            $room,
+                            $evaluation,
+                            $teacher,
+                            $teacherAverage,
+                            $score,
+                            $attempt?->general_comment,
+                            $labels[$score->criterio] ?? $score->criterio
+                        );
+                    }
                 }
             }
             fclose($handle);
-        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function managers()
@@ -558,6 +638,107 @@ class EvaluationController extends Controller
             'manager_ids' => $managerIds,
             'teachers' => $teachers,
         ]);
+    }
+
+    private function writePowerBiEvaluationRow(
+        mixed $handle,
+        EvaluationRoom $room,
+        Evaluation $evaluation,
+        ?User $teacher = null,
+        ?float $teacherAverage = null,
+        ?EvaluationScore $score = null,
+        ?string $teacherGeneralComment = null,
+        ?string $criterionLabel = null
+    ): void {
+        $students = $evaluation->project?->students ?? collect();
+
+        fputcsv($handle, [
+            $room->id,
+            $this->csvCell($room->nombre),
+            $this->csvCell($room->salon),
+            $room->semestre,
+            optional($room->fecha_evaluacion)->format('Y-m-d H:i:s'),
+            $evaluation->presentation_order,
+            $evaluation->id,
+            $evaluation->project_id,
+            $this->csvCell($evaluation->project?->title),
+            $this->csvCell($students->map(fn ($student) => $this->fullName($student))->filter()->join(' | ')),
+            $students->count(),
+            $this->csvCell($evaluation->sequence_status),
+            $this->csvCell($evaluation->estado),
+            $this->csvCell($evaluation->resultado),
+            $this->scoreCollectionAverage($evaluation->scores, (int) $evaluation->semestre),
+            $teacher?->id,
+            $this->csvCell($teacher ? $this->fullName($teacher) : null),
+            $teacherAverage,
+            $this->csvCell($score?->criterio),
+            $this->csvCell($criterionLabel),
+            $this->csvCell($score ? ($this->levelLabels[$score->nivel] ?? $score->nivel) : null),
+            $score?->puntaje,
+            $score ? round(($score->puntaje / $this->maxScoreForSemester((int) $evaluation->semestre)) * 100, 2) : null,
+            $this->csvCell($score?->comentario),
+            $this->csvCell($teacherGeneralComment),
+            $this->csvCell($evaluation->room_feedback),
+            optional($evaluation->feedback_at)->format('Y-m-d H:i:s'),
+            $evaluation->apto_titulacion === null ? null : ($evaluation->apto_titulacion ? 1 : 0),
+        ], ';');
+    }
+
+    private function fullName(User $user): string
+    {
+        return trim(collect([$user->nombres, $user->apa, $user->ama])->filter()->join(' '));
+    }
+
+    private function csvCell(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return preg_replace('/\s+/', ' ', trim($value));
+    }
+
+    private function rubricScoreModes(): array
+    {
+        $modes = SystemSetting::valueFor('rubric_score_modes', []);
+        $defaults = ['5' => 'levels', '6' => 'levels', '7' => 'levels', '8' => 'levels'];
+
+        return array_replace($defaults, array_intersect_key((array) $modes, $defaults));
+    }
+
+    private function rubricScoreModeForSemester(int $semester): string
+    {
+        return $this->rubricScoreModes()[(string) $semester] ?? 'levels';
+    }
+
+    private function maxScoreForSemester(int $semester): int
+    {
+        return $this->rubricScoreModeForSemester($semester) === 'numeric' ? 5 : 4;
+    }
+
+    private function pointsForLevel(string $level, string $mode): int
+    {
+        if ($mode === 'numeric') {
+            return match ($level) {
+                'totalmente_en_desacuerdo' => 1,
+                'en_desacuerdo' => 2,
+                'neutral' => 3,
+                'de_acuerdo' => 4,
+                'totalmente_de_acuerdo' => 5,
+                default => 1,
+            };
+        }
+
+        return $this->levels[$level] ?? 0;
+    }
+
+    private function scoreCollectionAverage($scores, int $semester): float
+    {
+        if (!$scores || $scores->count() === 0) {
+            return 0;
+        }
+
+        return round(($scores->avg('puntaje') / $this->maxScoreForSemester($semester)) * 100, 2);
     }
 
     public function updateManagers(Request $request)
@@ -642,7 +823,9 @@ class EvaluationController extends Controller
     {
         $scores = $evaluation->scores;
         $labels = $this->criteriaLabelsForSemester($evaluation->semestre);
-        $globalAverage = $scores->count() === 0 ? 0 : round(($scores->avg('puntaje') / 4) * 100, 2);
+        $scoreMode = $this->rubricScoreModeForSemester((int) $evaluation->semestre);
+        $maxScore = $this->maxScoreForSemester((int) $evaluation->semestre);
+        $globalAverage = $this->scoreCollectionAverage($scores, (int) $evaluation->semestre);
 
         $teacherBreakdown = $scores
             ->groupBy('teacher_id')
@@ -652,7 +835,9 @@ class EvaluationController extends Controller
                 return [
                     'teacher_id' => $teacher?->id,
                     'teacher_name' => trim(($teacher?->nombres ?? '') . ' ' . ($teacher?->apa ?? '') . ' ' . ($teacher?->ama ?? '')) ?: 'Docente',
-                    'average' => round(($teacherScores->avg('puntaje') / 4) * 100, 2),
+                    'average' => $this->scoreCollectionAverage($teacherScores, (int) $evaluation->semestre),
+                    'score_mode' => $this->rubricScoreModeForSemester((int) $evaluation->semestre),
+                    'max_score' => $this->maxScoreForSemester((int) $evaluation->semestre),
                     'general_comment' => $attempt?->general_comment,
                     'scores' => $teacherScores->map(fn ($score) => [
                         'criterio' => $score->criterio,
@@ -660,6 +845,7 @@ class EvaluationController extends Controller
                         'nivel' => $score->nivel,
                         'nivel_label' => $this->levelLabels[$score->nivel] ?? $score->nivel,
                         'puntaje' => $score->puntaje,
+                        'puntaje_max' => $this->maxScoreForSemester((int) $evaluation->semestre),
                         'comentario' => $score->comentario,
                     ])->values(),
                 ];
@@ -690,6 +876,8 @@ class EvaluationController extends Controller
             'feedback_at' => optional($evaluation->feedback_at)->toDateTimeString(),
             'apto_titulacion' => $evaluation->apto_titulacion,
             'global_average' => $globalAverage,
+            'score_mode' => $scoreMode,
+            'max_score' => $maxScore,
             'global_average_color' => $globalAverage < 70 ? 'danger' : ($globalAverage <= 85 ? 'warning' : 'success'),
             'evaluators_count' => $teacherBreakdown->count(),
             'expected_evaluators_count' => $expectedEvaluatorsCount,
@@ -719,9 +907,9 @@ class EvaluationController extends Controller
             'teacher_ids' => 'nullable|array',
             'teacher_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
             'project_ids' => 'nullable|array',
-            'project_ids.*' => 'integer|exists:projects,id',
+            'project_ids.*' => 'integer|distinct|exists:projects,id',
             'project_order' => 'nullable|array',
-            'project_order.*' => 'integer|min:1',
+            'project_order.*' => 'integer|min:1|distinct',
         ]);
 
         $ignoreId = $request->route('id');
@@ -733,20 +921,33 @@ class EvaluationController extends Controller
             throw ValidationException::withMessages(['nombre' => ['Ya existe una sala activa con ese nombre.']]);
         }
 
+        $projectIds = collect($validated['project_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        if ($projectIds->count() !== count($validated['project_ids'] ?? [])) {
+            throw ValidationException::withMessages(['project_ids' => ['No puedes asignar el mismo proyecto mas de una vez en la sala.']]);
+        }
+
+        $duplicateProjectRoom = EvaluationRoom::where('activo', true)
+            ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+            ->whereHas('projects', fn ($query) => $query->whereIn('projects.id', $projectIds))
+            ->exists();
+
+        if ($duplicateProjectRoom) {
+            throw ValidationException::withMessages([
+                'project_ids' => ['Uno o mas proyectos ya estan asignados a otra sala activa.'],
+            ]);
+        }
+
         $selectedHour = \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion'])->startOfHour();
         $conflictingRooms = EvaluationRoom::where('activo', true)
             ->whereBetween('fecha_evaluacion', [$selectedHour, $selectedHour->copy()->endOfHour()])
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->where(function ($query) use ($validated) {
                 $teacherIds = $validated['teacher_ids'] ?? [];
-                $projectIds = $validated['project_ids'] ?? [];
                 if ($teacherIds) {
                     $query->whereHas('teachers', fn ($q) => $q->whereIn('users.id', $teacherIds));
+                    return;
                 }
-                if ($projectIds) {
-                    $method = $teacherIds ? 'orWhereHas' : 'whereHas';
-                    $query->{$method}('projects', fn ($q) => $q->whereIn('projects.id', $projectIds));
-                }
+                $query->whereRaw('1 = 0');
             })
             ->with(['teachers:id,nombres,apa,perfil_id', 'projects:id,title'])
             ->get();
@@ -764,7 +965,7 @@ class EvaluationController extends Controller
     {
         $payload = [];
         $fallbackOrder = 1;
-        foreach ($projectIds as $projectId) {
+        foreach (array_values(array_unique(array_map('intval', $projectIds))) as $projectId) {
             $id = (int) $projectId;
             $payload[$id] = [
                 'presentation_order' => (int) ($projectOrder[$id] ?? $projectOrder[(string) $id] ?? $fallbackOrder),

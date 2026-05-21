@@ -28,6 +28,7 @@ class SystemSetting extends Model
         'global_notice' => '',
         'proposal_registration_enabled' => true,
         'evaluation_manager_teacher_ids' => [],
+        'rubric_score_modes' => [],
         'font_scale' => 100,
         'grayscale_mode' => false,
         'system_notices' => [],

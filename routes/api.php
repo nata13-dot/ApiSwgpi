@@ -53,6 +53,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::get('/evaluations/managers', [EvaluationController::class, 'managers']);
         Route::put('/evaluations/managers', [EvaluationController::class, 'updateManagers']);
         Route::get('/evaluations/criteria', [EvaluationController::class, 'criteria']);
+        Route::put('/evaluations/rubric-score-modes', [EvaluationController::class, 'updateRubricScoreModes']);
         Route::post('/evaluations/rubric-criteria', [EvaluationController::class, 'storeCriterion']);
         Route::put('/evaluations/rubric-criteria/{id}', [EvaluationController::class, 'updateCriterion']);
         Route::delete('/evaluations/rubric-criteria/{id}', [EvaluationController::class, 'destroyCriterion']);
