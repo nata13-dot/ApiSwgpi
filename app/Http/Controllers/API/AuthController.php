@@ -109,7 +109,7 @@ class AuthController extends Controller
 
             $sent = $this->sendPasswordResetToken($user, $token);
             if (!$sent) {
-                return response()->json(['error' => 'No se pudo enviar el correo de recuperacion. Verifica la configuracion de Resend.'], 500);
+                return response()->json(['error' => 'No se pudo enviar el correo de recuperacion. Verifica la configuracion SMTP de Gmail en Railway.'], 500);
             }
 
             return response()->json(['message' => 'Token enviado al correo registrado.']);
@@ -240,6 +240,13 @@ class AuthController extends Controller
 
             return true;
         } catch (\Throwable $e) {
+            logger()->error('No se pudo enviar correo de recuperacion con PHPMailer.', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'smtp_host' => $mail->Host ?? null,
+                'smtp_port' => $mail->Port ?? null,
+                'error' => $e->getMessage(),
+            ]);
             report($e);
             return false;
         }
