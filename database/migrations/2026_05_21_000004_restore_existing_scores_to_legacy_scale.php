@@ -20,25 +20,25 @@ return new class extends Migration
         $legacyCutoff = now();
 
         DB::table('evaluation_scores')
-            ->where('created_at', '<', $legacyCutoff)
+            ->where('created_at', '<=', $legacyCutoff)
             ->where('nivel', 'totalmente_de_acuerdo')
             ->where('puntaje', 4)
             ->update(['nivel' => 'mucho', 'puntaje' => 3]);
 
         DB::table('evaluation_scores')
-            ->where('created_at', '<', $legacyCutoff)
+            ->where('created_at', '<=', $legacyCutoff)
             ->where('nivel', 'de_acuerdo')
             ->where('puntaje', 3)
             ->update(['nivel' => 'bastante', 'puntaje' => 2]);
 
         DB::table('evaluation_scores')
-            ->where('created_at', '<', $legacyCutoff)
+            ->where('created_at', '<=', $legacyCutoff)
             ->where('nivel', 'en_desacuerdo')
             ->where('puntaje', 1)
             ->update(['nivel' => 'poco']);
 
         DB::table('evaluation_scores')
-            ->where('created_at', '<', $legacyCutoff)
+            ->where('created_at', '<=', $legacyCutoff)
             ->where('nivel', 'totalmente_en_desacuerdo')
             ->where('puntaje', 0)
             ->update(['nivel' => 'nada']);
