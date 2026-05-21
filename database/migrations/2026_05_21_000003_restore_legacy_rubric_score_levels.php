@@ -17,8 +17,31 @@ return new class extends Migration
             DB::statement("ALTER TABLE evaluation_scores MODIFY nivel ENUM('nada','poco','bastante','mucho','totalmente_de_acuerdo','de_acuerdo','neutral','en_desacuerdo','totalmente_en_desacuerdo') NOT NULL");
         }
 
-        // Keep historical rubric answers as they were captured. New evaluations may
-        // use the agreement scale, but old answers must remain readable.
+        $legacyCutoff = '2026-05-19 00:00:00';
+
+        DB::table('evaluation_scores')
+            ->where('created_at', '<', $legacyCutoff)
+            ->where('nivel', 'totalmente_de_acuerdo')
+            ->where('puntaje', 4)
+            ->update(['nivel' => 'mucho', 'puntaje' => 3]);
+
+        DB::table('evaluation_scores')
+            ->where('created_at', '<', $legacyCutoff)
+            ->where('nivel', 'de_acuerdo')
+            ->where('puntaje', 3)
+            ->update(['nivel' => 'bastante', 'puntaje' => 2]);
+
+        DB::table('evaluation_scores')
+            ->where('created_at', '<', $legacyCutoff)
+            ->where('nivel', 'en_desacuerdo')
+            ->where('puntaje', 1)
+            ->update(['nivel' => 'poco']);
+
+        DB::table('evaluation_scores')
+            ->where('created_at', '<', $legacyCutoff)
+            ->where('nivel', 'totalmente_en_desacuerdo')
+            ->where('puntaje', 0)
+            ->update(['nivel' => 'nada']);
     }
 
     public function down(): void
@@ -28,10 +51,6 @@ return new class extends Migration
         }
 
         $driver = DB::connection()->getDriverName();
-        if (in_array($driver, ['mysql', 'mariadb'], true)) {
-            DB::statement("ALTER TABLE evaluation_scores MODIFY nivel ENUM('nada','poco','bastante','mucho','totalmente_de_acuerdo','de_acuerdo','neutral','en_desacuerdo','totalmente_en_desacuerdo') NOT NULL");
-        }
-
         if (in_array($driver, ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE evaluation_scores MODIFY nivel ENUM('nada','poco','bastante','mucho','totalmente_de_acuerdo','de_acuerdo','neutral','en_desacuerdo','totalmente_en_desacuerdo') NOT NULL");
         }

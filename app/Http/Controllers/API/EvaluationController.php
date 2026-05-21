@@ -30,12 +30,23 @@ class EvaluationController extends Controller
         'totalmente_en_desacuerdo' => 0,
     ];
 
+    private array $legacyLevels = [
+        'nada' => 0,
+        'poco' => 1,
+        'bastante' => 2,
+        'mucho' => 3,
+    ];
+
     private array $levelLabels = [
         'totalmente_de_acuerdo' => 'Totalmente de acuerdo',
         'de_acuerdo' => 'De acuerdo',
         'neutral' => 'Neutral',
         'en_desacuerdo' => 'En desacuerdo',
         'totalmente_en_desacuerdo' => 'Totalmente en desacuerdo',
+        'nada' => 'Nada',
+        'poco' => 'Poco',
+        'bastante' => 'Bastante',
+        'mucho' => 'Mucho',
     ];
 
     public function criteria(Request $request)
@@ -570,6 +581,44 @@ class EvaluationController extends Controller
         ]);
     }
 
+    public function exportEvaluationExcel($id): StreamedResponse
+    {
+        $evaluation = $this->reportEvaluationQuery()->findOrFail($id);
+        if ($guard = $this->guardEvaluationReport($evaluation)) abort(403, 'No autorizado para exportar esta evaluacion.');
+
+        $report = $this->evaluationReportData($evaluation);
+        $filename = 'reporte_evaluacion_' . $evaluation->id . '.xls';
+
+        return response()->streamDownload(function () use ($report) {
+            echo $this->evaluationReportExcelWorkbook($report);
+        }, $filename, [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    public function exportEvaluationPdf($id)
+    {
+        $evaluation = $this->reportEvaluationQuery()->findOrFail($id);
+        if ($guard = $this->guardEvaluationReport($evaluation)) return $guard;
+
+        if (!app()->bound('dompdf.wrapper') && !class_exists(\Dompdf\Dompdf::class)) {
+            return response()->json([
+                'error' => 'DomPDF no esta instalado. Ejecuta composer install o instala barryvdh/laravel-dompdf en el despliegue.',
+            ], 501);
+        }
+
+        $report = $this->evaluationReportData($evaluation);
+        $pdf = app('dompdf.wrapper');
+        $pdf->setOptions([
+            'isRemoteEnabled' => true,
+            'defaultFont' => 'DejaVu Sans',
+        ]);
+        $pdf->loadHTML(view('reports.evaluation-pdf', $report)->render());
+
+        return $pdf->download('reporte_evaluacion_' . $evaluation->id . '.pdf');
+    }
+
     public function managers()
     {
         if ($guard = $this->guardEvaluationManager()) return $guard;
@@ -613,6 +662,236 @@ class EvaluationController extends Controller
             . $this->excelWorksheet('Detalle_Rubrica', $detailRows)
             . $this->excelWorksheet('Comentarios', $commentRows)
             . '</Workbook>';
+    }
+
+    private function reportEvaluationQuery()
+    {
+        return Evaluation::with([
+            'project.students',
+            'project.advisors',
+            'room.teachers',
+            'room.responsibleTeacher',
+            'scores.teacher',
+            'attempts.teacher',
+        ]);
+    }
+
+    private function guardEvaluationReport(Evaluation $evaluation)
+    {
+        $user = auth('api')->user();
+        if ($this->isEvaluationManager($user) || $this->isRoomResponsible($evaluation->room, $user)) {
+            return null;
+        }
+
+        if ((int) $user->perfil_id === 2 && $this->canUserScoreEvaluation($evaluation, $user)) {
+            return null;
+        }
+
+        return response()->json(['error' => 'No autorizado para exportar esta evaluacion.'], 403);
+    }
+
+    private function evaluationReportData(Evaluation $evaluation): array
+    {
+        $labels = $this->criteriaLabelsForSemester((int) $evaluation->semestre);
+        $orderedCriteria = RubricCriterion::where('semestre', $evaluation->semestre)
+            ->orderBy('orden')
+            ->orderBy('id')
+            ->pluck('pregunta', 'clave')
+            ->all();
+        $criteriaLabels = array_replace($orderedCriteria, $labels);
+        foreach ($evaluation->scores as $score) {
+            $criteriaLabels[$score->criterio] = $criteriaLabels[$score->criterio] ?? $score->criterio;
+        }
+
+        $teachers = $evaluation->scores
+            ->map(fn ($score) => $score->teacher)
+            ->filter()
+            ->unique('id')
+            ->values();
+
+        $matrix = collect($criteriaLabels)->map(function ($label, $criterion) use ($evaluation, $teachers) {
+            $teacherScores = [];
+            $percentages = [];
+
+            foreach ($teachers as $teacher) {
+                $score = $evaluation->scores
+                    ->where('criterio', $criterion)
+                    ->firstWhere('teacher_id', $teacher->id);
+
+                if ($score) {
+                    $percentage = $this->scorePercentage($score, (int) $evaluation->semestre);
+                    $percentages[] = $percentage;
+                    $teacherScores[] = [
+                        'teacher_id' => $teacher->id,
+                        'value' => $score->puntaje . '/' . $this->maxScoreForScore($score, (int) $evaluation->semestre),
+                        'percentage' => $percentage,
+                        'level' => $this->levelLabels[$score->nivel] ?? $score->nivel,
+                    ];
+                } else {
+                    $teacherScores[] = [
+                        'teacher_id' => $teacher->id,
+                        'value' => '-',
+                        'percentage' => null,
+                        'level' => '-',
+                    ];
+                }
+            }
+
+            return [
+                'criterion' => $criterion,
+                'label' => $label,
+                'teacher_scores' => $teacherScores,
+                'average' => count($percentages) ? round(array_sum($percentages) / count($percentages), 2) : 0,
+            ];
+        })->values()->all();
+
+        $comments = $teachers->map(function ($teacher) use ($evaluation) {
+            $attempt = $evaluation->attempts->firstWhere('teacher_id', $teacher->id);
+            $criterionComments = $evaluation->scores
+                ->where('teacher_id', $teacher->id)
+                ->filter(fn ($score) => filled($score->comentario))
+                ->map(fn ($score) => [
+                    'criterion' => $this->criteriaLabelsForSemester((int) $evaluation->semestre)[$score->criterio] ?? $score->criterio,
+                    'comment' => $score->comentario,
+                ])
+                ->values()
+                ->all();
+
+            return [
+                'teacher_id' => $teacher->id,
+                'teacher_name' => $this->fullName($teacher),
+                'general_comment' => $attempt?->general_comment,
+                'criterion_comments' => $criterionComments,
+            ];
+        })->values()->all();
+
+        $chartLabels = collect($matrix)->pluck('label')->map(fn ($label) => Str::limit($label, 32))->all();
+        $chartValues = collect($matrix)->pluck('average')->all();
+
+        return [
+            'evaluation' => $evaluation,
+            'project' => $evaluation->project,
+            'students' => $evaluation->project?->students ?? collect(),
+            'teachers' => $teachers,
+            'matrix' => $matrix,
+            'comments' => $comments,
+            'globalAverage' => $this->scoreCollectionAverage($evaluation->scores, (int) $evaluation->semestre),
+            'chartUrl' => $this->quickChartUrl($chartLabels, $chartValues),
+            'generatedAt' => now(),
+        ];
+    }
+
+    private function quickChartUrl(array $labels, array $values): string
+    {
+        $config = [
+            'type' => 'bar',
+            'data' => [
+                'labels' => $labels,
+                'datasets' => [[
+                    'label' => 'Promedio por criterio',
+                    'data' => $values,
+                    'backgroundColor' => '#2563eb',
+                ]],
+            ],
+            'options' => [
+                'legend' => ['display' => false],
+                'scales' => [
+                    'yAxes' => [[
+                        'ticks' => ['beginAtZero' => true, 'max' => 100],
+                    ]],
+                ],
+            ],
+        ];
+
+        return 'https://quickchart.io/chart?' . http_build_query([
+            'width' => 760,
+            'height' => 320,
+            'format' => 'png',
+            'c' => json_encode($config),
+        ]);
+    }
+
+    private function evaluationReportExcelWorkbook(array $report): string
+    {
+        return '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
+            . '<?mso-application progid="Excel.Sheet"?>' . "\n"
+            . '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '
+            . 'xmlns:o="urn:schemas-microsoft-com:office:office" '
+            . 'xmlns:x="urn:schemas-microsoft-com:office:excel" '
+            . 'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" '
+            . 'xmlns:html="http://www.w3.org/TR/REC-html40">'
+            . '<Styles>'
+            . '<Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#D9EAF7" ss:Pattern="Solid"/></Style>'
+            . '<Style ss:ID="Title"><Font ss:Bold="1" ss:Size="14"/></Style>'
+            . '<Style ss:ID="Wrap"><Alignment ss:WrapText="1" ss:Vertical="Top"/></Style>'
+            . '</Styles>'
+            . $this->excelWorksheet('Resumen', $this->evaluationReportSummaryRows($report))
+            . $this->excelWorksheet('Calificaciones', $this->evaluationReportScoreRows($report))
+            . $this->excelWorksheet('Comentarios', $this->evaluationReportCommentRows($report))
+            . '</Workbook>';
+    }
+
+    private function evaluationReportSummaryRows(array $report): array
+    {
+        $evaluation = $report['evaluation'];
+        $project = $report['project'];
+
+        return [
+            ['Reporte de Evaluacion', ''],
+            ['Campo', 'Valor'],
+            ['proyecto', $project?->title],
+            ['semestre', $evaluation->semestre],
+            ['etapa', $evaluation->etapa],
+            ['sala', $evaluation->room?->nombre ?? $evaluation->sala],
+            ['fecha_evaluacion', optional($evaluation->fecha_exposicion)->format('Y-m-d H:i:s')],
+            ['equipo', $report['students']->map(fn ($student) => $this->fullName($student))->filter()->join(' | ')],
+            ['promedio_global', $report['globalAverage']],
+            ['docentes_evaluadores', $report['teachers']->map(fn ($teacher) => $this->fullName($teacher))->filter()->join(' | ')],
+            ['fecha_exportacion', $report['generatedAt']->format('Y-m-d H:i:s')],
+            ['grafica_quickchart', $report['chartUrl']],
+        ];
+    }
+
+    private function evaluationReportScoreRows(array $report): array
+    {
+        $headers = ['Criterio'];
+        foreach ($report['teachers'] as $teacher) {
+            $headers[] = $this->fullName($teacher);
+        }
+        $headers[] = 'Promedio %';
+        $rows = [$headers];
+
+        foreach ($report['matrix'] as $row) {
+            $cells = [$row['label']];
+            foreach ($row['teacher_scores'] as $score) {
+                $cells[] = $score['percentage'] === null
+                    ? '-'
+                    : $score['value'] . ' (' . $score['percentage'] . '%) - ' . $score['level'];
+            }
+            $cells[] = $row['average'];
+            $rows[] = $cells;
+        }
+
+        return $rows;
+    }
+
+    private function evaluationReportCommentRows(array $report): array
+    {
+        $rows = [['Docente', 'Tipo', 'Criterio', 'Comentario']];
+        foreach ($report['comments'] as $comment) {
+            if ($comment['general_comment']) {
+                $rows[] = [$comment['teacher_name'], 'General', '', $comment['general_comment']];
+            }
+            foreach ($comment['criterion_comments'] as $criterionComment) {
+                $rows[] = [$comment['teacher_name'], 'Criterio', $criterionComment['criterion'], $criterionComment['comment']];
+            }
+        }
+
+        if (count($rows) === 1) {
+            $rows[] = ['', '', '', 'Sin comentarios registrados'];
+        }
+
+        return $rows;
     }
 
     private function roomExcelSummaryRows(EvaluationRoom $room, $evaluations): array
@@ -761,9 +1040,8 @@ class EvaluationController extends Controller
 
         foreach ($evaluations as $evaluation) {
             $labels = $this->criteriaLabelsForSemester((int) $evaluation->semestre);
-            $maxScore = $this->maxScoreForSemester((int) $evaluation->semestre);
-
             foreach ($evaluation->scores->sortBy(fn ($score) => $score->teacher_id . '|' . $score->criterio) as $score) {
+                $maxScore = $this->maxScoreForScore($score, (int) $evaluation->semestre);
                 $rows[] = [
                     $room->id,
                     $room->nombre,
@@ -778,7 +1056,7 @@ class EvaluationController extends Controller
                     $this->levelLabels[$score->nivel] ?? $score->nivel,
                     $score->puntaje,
                     $maxScore,
-                    round(($score->puntaje / $maxScore) * 100, 2),
+                    $this->scorePercentage($score, (int) $evaluation->semestre),
                     $score->comentario,
                 ];
             }
@@ -887,7 +1165,7 @@ class EvaluationController extends Controller
             $this->csvCell($criterionLabel),
             $this->csvCell($score ? ($this->levelLabels[$score->nivel] ?? $score->nivel) : null),
             $score?->puntaje,
-            $score ? round(($score->puntaje / $this->maxScoreForSemester((int) $evaluation->semestre)) * 100, 2) : null,
+            $score ? $this->scorePercentage($score, (int) $evaluation->semestre) : null,
             $this->csvCell($score?->comentario),
             $this->csvCell($teacherGeneralComment),
             $this->csvCell($evaluation->room_feedback),
@@ -990,13 +1268,43 @@ class EvaluationController extends Controller
         return $this->levels[$level] ?? 0;
     }
 
+    private function isLegacyLevel(?string $level): bool
+    {
+        return $level !== null && array_key_exists($level, $this->legacyLevels);
+    }
+
+    private function maxScoreForScore(EvaluationScore $score, int $semester): int
+    {
+        if ($this->isLegacyLevel($score->nivel)) {
+            return 3;
+        }
+
+        return $this->maxScoreForSemester($semester);
+    }
+
+    private function scoreModeForScore(EvaluationScore $score, int $semester): string
+    {
+        if ($this->isLegacyLevel($score->nivel)) {
+            return 'legacy';
+        }
+
+        return $this->rubricScoreModeForSemester($semester);
+    }
+
+    private function scorePercentage(EvaluationScore $score, int $semester): float
+    {
+        $maxScore = max(1, $this->maxScoreForScore($score, $semester));
+
+        return round(($score->puntaje / $maxScore) * 100, 2);
+    }
+
     private function scoreCollectionAverage($scores, int $semester): float
     {
         if (!$scores || $scores->count() === 0) {
             return 0;
         }
 
-        return round(($scores->avg('puntaje') / $this->maxScoreForSemester($semester)) * 100, 2);
+        return round($scores->avg(fn ($score) => $this->scorePercentage($score, $semester)), 2);
     }
 
     public function updateManagers(Request $request)
@@ -1094,8 +1402,12 @@ class EvaluationController extends Controller
                     'teacher_id' => $teacher?->id,
                     'teacher_name' => trim(($teacher?->nombres ?? '') . ' ' . ($teacher?->apa ?? '') . ' ' . ($teacher?->ama ?? '')) ?: 'Docente',
                     'average' => $this->scoreCollectionAverage($teacherScores, (int) $evaluation->semestre),
-                    'score_mode' => $this->rubricScoreModeForSemester((int) $evaluation->semestre),
-                    'max_score' => $this->maxScoreForSemester((int) $evaluation->semestre),
+                    'score_mode' => $teacherScores->every(fn ($score) => $this->isLegacyLevel($score->nivel))
+                        ? 'legacy'
+                        : $this->rubricScoreModeForSemester((int) $evaluation->semestre),
+                    'max_score' => $teacherScores->every(fn ($score) => $this->isLegacyLevel($score->nivel))
+                        ? 3
+                        : $this->maxScoreForSemester((int) $evaluation->semestre),
                     'general_comment' => $attempt?->general_comment,
                     'scores' => $teacherScores->map(fn ($score) => [
                         'criterio' => $score->criterio,
@@ -1103,7 +1415,8 @@ class EvaluationController extends Controller
                         'nivel' => $score->nivel,
                         'nivel_label' => $this->levelLabels[$score->nivel] ?? $score->nivel,
                         'puntaje' => $score->puntaje,
-                        'puntaje_max' => $this->maxScoreForSemester((int) $evaluation->semestre),
+                        'puntaje_max' => $this->maxScoreForScore($score, (int) $evaluation->semestre),
+                        'score_mode' => $this->scoreModeForScore($score, (int) $evaluation->semestre),
                         'comentario' => $score->comentario,
                     ])->values(),
                 ];
