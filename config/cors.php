@@ -1,10 +1,5 @@
 <?php
 
-$frontendOrigins = array_filter(array_map(
-    'trim',
-    explode(',', env('FRONTEND_URLS', ''))
-));
-
 return [
 
     /*
@@ -21,27 +16,22 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => [
+        'api/*',
+        'sanctum/csrf-cookie',
+    ],
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => array_values(array_unique(array_merge([
-        'http://127.0.0.1:3000',
-        'http://localhost:3000',
-        'http://127.0.0.1:3004',
-        'http://localhost:3004',
-        'http://127.0.0.1:3005',
-        'http://localhost:3005',
-        'http://127.0.0.1:8081',
-        'http://localhost:8081',
-        'http://127.0.0.1:19006',
-        'http://localhost:19006',
-        'http://localhost:8000',
-        'http://localhost:8001',
-        'http://frontend_swgpi.test',
-        'http://127.0.0.1:8000',
+    'allowed_origins' => [
         'https://frontsgwpi-production.up.railway.app',
-    ], $frontendOrigins))),
+        'http://localhost:3000',
+        'http://localhost:3004',
+        'http://localhost:5173',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:3004',
+        'http://127.0.0.1:5173',
+    ],
 
     'allowed_origins_patterns' => [
         '#^https://[a-z0-9-]+\.up\.railway\.app$#i',
