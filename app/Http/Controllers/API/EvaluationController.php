@@ -155,7 +155,16 @@ class EvaluationController extends Controller
                 'activo' => 'nullable|boolean',
             ]);
 
-            $criterion->update($validated);
+            DB::transaction(function () use ($criterion, $validated) {
+                $criterion->update($validated);
+
+                if (array_key_exists('activo', $validated) && !$validated['activo']) {
+                    EvaluationScore::where('criterio', $criterion->clave)
+                        ->whereHas('evaluation', fn ($query) => $query->where('semestre', $criterion->semestre))
+                        ->delete();
+                }
+            });
+
             return response()->json(['message' => 'Pregunta actualizada', 'criterion' => $this->shapeCriterion($criterion)]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -171,7 +180,13 @@ class EvaluationController extends Controller
             return response()->json(['error' => 'Pregunta no encontrada'], 404);
         }
 
-        $criterion->update(['activo' => false]);
+        DB::transaction(function () use ($criterion) {
+            $criterion->update(['activo' => false]);
+            EvaluationScore::where('criterio', $criterion->clave)
+                ->whereHas('evaluation', fn ($query) => $query->where('semestre', $criterion->semestre))
+                ->delete();
+        });
+
         return response()->json(['message' => 'Pregunta desactivada']);
     }
 
@@ -693,27 +708,25 @@ class EvaluationController extends Controller
 
     private function evaluationReportData(Evaluation $evaluation): array
     {
+        $scores = $this->activeScoresForEvaluation($evaluation);
         $labels = $this->criteriaLabelsForEvaluation($evaluation);
         $orderedCriteria = $this->criteriaForEvaluation($evaluation)
             ->pluck('pregunta', 'clave')
             ->all();
         $criteriaLabels = array_replace($orderedCriteria, $labels);
-        foreach ($evaluation->scores as $score) {
-            $criteriaLabels[$score->criterio] = $criteriaLabels[$score->criterio] ?? $score->criterio;
-        }
 
-        $teachers = $evaluation->scores
+        $teachers = $scores
             ->map(fn ($score) => $score->teacher)
             ->filter()
             ->unique('id')
             ->values();
 
-        $matrix = collect($criteriaLabels)->map(function ($label, $criterion) use ($evaluation, $teachers) {
+        $matrix = collect($criteriaLabels)->map(function ($label, $criterion) use ($evaluation, $teachers, $scores) {
             $teacherScores = [];
             $percentages = [];
 
             foreach ($teachers as $teacher) {
-                $score = $evaluation->scores
+                $score = $scores
                     ->where('criterio', $criterion)
                     ->firstWhere('teacher_id', $teacher->id);
 
@@ -744,9 +757,9 @@ class EvaluationController extends Controller
             ];
         })->values()->all();
 
-        $comments = $teachers->map(function ($teacher) use ($evaluation) {
+        $comments = $teachers->map(function ($teacher) use ($evaluation, $scores) {
             $attempt = $evaluation->attempts->firstWhere('teacher_id', $teacher->id);
-            $criterionComments = $evaluation->scores
+            $criterionComments = $scores
                 ->where('teacher_id', $teacher->id)
                 ->filter(fn ($score) => filled($score->comentario))
                 ->map(fn ($score) => [
@@ -774,7 +787,7 @@ class EvaluationController extends Controller
             'teachers' => $teachers,
             'matrix' => $matrix,
             'comments' => $comments,
-            'globalAverage' => $this->scoreCollectionAverage($evaluation->scores, (int) $evaluation->semestre),
+            'globalAverage' => $this->scoreCollectionAverage($scores, (int) $evaluation->semestre),
             'chartUrl' => $this->quickChartUrl($chartLabels, $chartValues),
             'generatedAt' => now(),
         ];
@@ -1068,6 +1081,13 @@ class EvaluationController extends Controller
             ->get();
     }
 
+    private function activeScoresForEvaluation(Evaluation $evaluation)
+    {
+        $activeCriteria = $this->criteriaForEvaluation($evaluation)->pluck('clave');
+
+        return $evaluation->scores->whereIn('criterio', $activeCriteria);
+    }
+
     private function criteriaLabelsForEvaluation(Evaluation $evaluation): array
     {
         $cacheKey = (int) $evaluation->semestre . ':' . ((int) $evaluation->project_id ?: 'general');
@@ -1087,13 +1107,14 @@ class EvaluationController extends Controller
         }
 
         return $this->criteriaLabelCache[$semester] = RubricCriterion::where('semestre', $semester)
+            ->where('activo', true)
             ->pluck('pregunta', 'clave')
             ->all();
     }
 
     private function shapeEvaluation(Evaluation $evaluation): array
     {
-        $scores = $evaluation->scores;
+        $scores = $this->activeScoresForEvaluation($evaluation);
         $labels = $this->criteriaLabelsForEvaluation($evaluation);
         $scoreMode = $this->rubricScoreModeForSemester((int) $evaluation->semestre);
         $maxScore = $this->maxScoreForSemester((int) $evaluation->semestre);
