@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -16,7 +17,12 @@ return new class extends Migration
                 $table->string('archived_by', 10)->nullable()->after('archived_at');
                 $table->foreign('archived_by')->references('id')->on('users')->nullOnDelete();
             }
-            $table->index('archived_at', 'evaluations_archived_at_idx');
+            if (
+                Schema::hasColumn('evaluations', 'archived_at')
+                && !$this->indexExists('evaluations', 'evaluations_archived_at_idx')
+            ) {
+                $table->index('archived_at', 'evaluations_archived_at_idx');
+            }
         });
     }
 
@@ -28,9 +34,21 @@ return new class extends Migration
                 $table->dropColumn('archived_by');
             }
             if (Schema::hasColumn('evaluations', 'archived_at')) {
-                $table->dropIndex('evaluations_archived_at_idx');
+                if ($this->indexExists('evaluations', 'evaluations_archived_at_idx')) {
+                    $table->dropIndex('evaluations_archived_at_idx');
+                }
                 $table->dropColumn('archived_at');
             }
         });
+    }
+
+    private function indexExists(string $table, string $index): bool
+    {
+        $database = DB::getDatabaseName();
+
+        return !empty(DB::select(
+            'select 1 from information_schema.statistics where table_schema = ? and table_name = ? and index_name = ? limit 1',
+            [$database, $table, $index]
+        ));
     }
 };

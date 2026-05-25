@@ -13,6 +13,7 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -194,9 +195,21 @@ class EvaluationController extends Controller
     {
         $user = auth('api')->user();
         $archived = $request->boolean('archived');
+        $supportsArchive = Schema::hasColumn('evaluations', 'archived_at');
+
+        if ($archived && !$supportsArchive) {
+            return response()->json([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => 15,
+                'total' => 0,
+            ]);
+        }
+
         $query = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher'])
-            ->when($archived, fn ($scope) => $scope->whereNotNull('archived_at'))
-            ->when(!$archived, fn ($scope) => $scope->whereNull('archived_at'))
+            ->when($supportsArchive && $archived, fn ($scope) => $scope->whereNotNull('archived_at'))
+            ->when($supportsArchive && !$archived, fn ($scope) => $scope->whereNull('archived_at'))
             ->orderBy('evaluation_room_id')
             ->orderBy('presentation_order')
             ->orderByDesc('created_at');
@@ -223,6 +236,10 @@ class EvaluationController extends Controller
         $user = auth('api')->user();
         if ($guard = $this->guardEvaluationManager($user)) return $guard;
 
+        if (!Schema::hasColumn('evaluations', 'archived_at')) {
+            return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
+        }
+
         $evaluation = Evaluation::find($id);
         if (!$evaluation) {
             return response()->json(['error' => 'Evaluacion no encontrada'], 404);
@@ -240,6 +257,10 @@ class EvaluationController extends Controller
     {
         $user = auth('api')->user();
         if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        if (!Schema::hasColumn('evaluations', 'archived_at')) {
+            return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
+        }
 
         $evaluation = Evaluation::find($id);
         if (!$evaluation) {
