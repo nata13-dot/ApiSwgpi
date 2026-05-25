@@ -9,9 +9,29 @@ use Illuminate\Validation\ValidationException;
 
 class DocumentTagController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(DocumentTag::where('activo', true)->paginate(15));
+        $query = DocumentTag::query()
+            ->where('activo', true)
+            ->withCount(['deliverables', 'repositoryDocuments'])
+            ->orderBy('nombre');
+
+        if ($request->filled('q')) {
+            $term = trim((string) $request->query('q'));
+            $query->where(function ($subquery) use ($term) {
+                $subquery->where('nombre', 'like', "%{$term}%")
+                    ->orWhere('descripcion', 'like', "%{$term}%");
+            });
+        }
+
+        $perPage = min(max((int) $request->query('per_page', 15), 5), 50);
+        $tags = $query->paginate($perPage);
+        $tags->getCollection()->transform(function (DocumentTag $tag) {
+            $tag->documents_count = (int) $tag->deliverables_count + (int) $tag->repository_documents_count;
+            return $tag;
+        });
+
+        return response()->json($tags);
     }
 
     public function store(Request $request)
