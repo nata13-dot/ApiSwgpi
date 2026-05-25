@@ -333,15 +333,39 @@ class RepositoryController extends Controller
     public function store(Request $request)
     {
         try {
+            $user = auth('api')->user();
+            if (!$user || !in_array((int) $user->perfil_id, [1, 3], true)) {
+                return response()->json(['error' => 'Solo administradores o estudiantes con proyecto asignado pueden subir documentos.'], 403);
+            }
+
             $validated = $request->validate([
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'required|string|max:5000',
                 'autores' => 'required|string|max:1000',
+                'project_id' => 'nullable|integer|exists:projects,id',
                 'tag_ids' => 'nullable|array',
                 'tag_ids.*' => 'integer|exists:document_tags,id',
                 'visibility' => 'nullable|in:public,private',
                 'archivo' => $this->fileValidationRule(true),
             ]);
+
+            $project = null;
+            if ((int) $user->perfil_id === 3) {
+                if (empty($validated['project_id'])) {
+                    return response()->json(['errors' => ['project_id' => ['Selecciona el proyecto al que pertenece el documento.']]], 422);
+                }
+
+                $project = Project::with('students:id,nombres,apa,ama')
+                    ->where('activo', true)
+                    ->whereHas('students', fn ($query) => $query->where('users.id', $user->id))
+                    ->find($validated['project_id']);
+
+                if (!$project) {
+                    return response()->json(['error' => 'No puedes subir documentos para un proyecto que no tienes asignado.'], 403);
+                }
+            } elseif (!empty($validated['project_id'])) {
+                $project = Project::where('activo', true)->find($validated['project_id']);
+            }
 
             $file = $request->file('archivo');
             [$path, $extension] = $this->storeRepositoryFile($file);
@@ -353,18 +377,23 @@ class RepositoryController extends Controller
                 'nombre' => trim($validated['nombre']),
                 'descripcion' => trim($validated['descripcion']),
                 'autores' => trim($validated['autores']),
+                'project_id' => $project?->id,
                 'archivo_path' => $path,
                 'archivo_tipo' => $extension,
-                'uploaded_by' => auth('api')->id(),
+                'uploaded_by' => $user->id,
                 'activo' => true,
             ];
 
             if ($this->repositoryVisibilityEnabled()) {
-                $visibility = $validated['visibility'] ?? RepositoryDocument::VISIBILITY_PUBLIC;
-                $documentData['document_category'] = RepositoryDocument::CATEGORY_REPOSITORY;
+                $visibility = (int) $user->perfil_id === 3
+                    ? RepositoryDocument::VISIBILITY_PRIVATE
+                    : ($validated['visibility'] ?? RepositoryDocument::VISIBILITY_PUBLIC);
+                $documentData['document_category'] = $project
+                    ? RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT
+                    : RepositoryDocument::CATEGORY_REPOSITORY;
                 $documentData['visibility'] = $visibility;
                 $documentData['published_at'] = $visibility === RepositoryDocument::VISIBILITY_PUBLIC ? now() : null;
-                $documentData['published_by'] = $visibility === RepositoryDocument::VISIBILITY_PUBLIC ? auth('api')->id() : null;
+                $documentData['published_by'] = $visibility === RepositoryDocument::VISIBILITY_PUBLIC ? $user->id : null;
             }
 
             $document = RepositoryDocument::create($documentData);

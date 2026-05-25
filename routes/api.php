@@ -106,6 +106,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/proposal/students/search', [ProposalWorkflowController::class, 'searchStudents']);
     Route::get('/proposal/teacher-projects', [ProposalWorkflowController::class, 'teacherProjects']);
     Route::post('/proposal/projects/{id}/review', [ProposalWorkflowController::class, 'review']);
+    Route::post('/repositorio', [RepositoryController::class, 'store']);
 
     // Users (solo Admin)
     Route::middleware('role:admin')->group(function () {
@@ -124,7 +125,6 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::get('/settings/semester-preview', [SystemSettingController::class, 'semesterPreview']);
         Route::post('/settings/apply-semester-change', [SystemSettingController::class, 'applySemesterChange']);
         Route::get('/repositorio/admin/list', [RepositoryController::class, 'adminIndex']);
-        Route::post('/repositorio', [RepositoryController::class, 'store']);
         Route::post('/repositorio/{id}', [RepositoryController::class, 'update']);
         Route::post('/repositorio/{id}/publish', [RepositoryController::class, 'publish']);
         Route::delete('/repositorio/{id}', [RepositoryController::class, 'destroy']);
