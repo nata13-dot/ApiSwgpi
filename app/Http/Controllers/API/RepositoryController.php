@@ -18,6 +18,21 @@ class RepositoryController extends Controller
 
     public function index(Request $request)
     {
+        return $this->repositoryIndex($request, true);
+    }
+
+    public function adminIndex(Request $request)
+    {
+        $user = auth('api')->user();
+        if (!$user || (int) $user->perfil_id !== 1) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        return $this->repositoryIndex($request, false);
+    }
+
+    private function repositoryIndex(Request $request, bool $publicOnly)
+    {
         $query = RepositoryDocument::with(['tags', 'uploader'])
             ->where('activo', true);
 
@@ -31,7 +46,9 @@ class RepositoryController extends Controller
             ]);
         }
 
-        $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC);
+        if ($publicOnly) {
+            $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC);
+        }
 
         if ($request->filled('categoria') && $this->repositoryDocumentsHas('document_category')) {
             $categories = match ($request->query('categoria')) {

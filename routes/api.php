@@ -123,6 +123,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::put('/notices', [SystemSettingController::class, 'updateNotices']);
         Route::get('/settings/semester-preview', [SystemSettingController::class, 'semesterPreview']);
         Route::post('/settings/apply-semester-change', [SystemSettingController::class, 'applySemesterChange']);
+        Route::get('/repositorio/admin/list', [RepositoryController::class, 'adminIndex']);
         Route::post('/repositorio', [RepositoryController::class, 'store']);
         Route::post('/repositorio/{id}', [RepositoryController::class, 'update']);
         Route::post('/repositorio/{id}/publish', [RepositoryController::class, 'publish']);
