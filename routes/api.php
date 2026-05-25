@@ -106,6 +106,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/proposal/students/search', [ProposalWorkflowController::class, 'searchStudents']);
     Route::get('/proposal/teacher-projects', [ProposalWorkflowController::class, 'teacherProjects']);
     Route::post('/proposal/projects/{id}/review', [ProposalWorkflowController::class, 'review']);
+    Route::get('/repositorio/student/list', [RepositoryController::class, 'studentIndex']);
     Route::post('/repositorio', [RepositoryController::class, 'store']);
 
     // Users (solo Admin)

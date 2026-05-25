@@ -31,7 +31,17 @@ class RepositoryController extends Controller
         return $this->repositoryIndex($request, false);
     }
 
-    private function repositoryIndex(Request $request, bool $publicOnly)
+    public function studentIndex(Request $request)
+    {
+        $user = auth('api')->user();
+        if (!$user || (int) $user->perfil_id !== 3) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        return $this->repositoryIndex($request, false, $user);
+    }
+
+    private function repositoryIndex(Request $request, bool $publicOnly, $studentUser = null)
     {
         $query = RepositoryDocument::with(['tags', 'uploader'])
             ->where('activo', true);
@@ -48,6 +58,14 @@ class RepositoryController extends Controller
 
         if ($publicOnly) {
             $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC);
+        }
+
+        if ($studentUser) {
+            $query->where(function ($scope) use ($studentUser) {
+                $scope->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
+                    ->orWhere('uploaded_by', $studentUser->id)
+                    ->orWhereHas('project.students', fn ($studentQuery) => $studentQuery->where('users.id', $studentUser->id));
+            });
         }
 
         if ($request->filled('categoria') && $this->repositoryDocumentsHas('document_category')) {
