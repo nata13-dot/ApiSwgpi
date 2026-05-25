@@ -40,12 +40,16 @@ return [
         'http://localhost:8001',
         'http://frontend_swgpi.test',
         'http://127.0.0.1:8000',
-        'swgpi.online',
+        'https://swgpi.online',
+        'https://www.swgpi.online',
+        'http://swgpi.online',
+        'http://www.swgpi.online',
         'https://frontsgwpi-production.up.railway.app',
     ], $frontendOrigins))),
 
     'allowed_origins_patterns' => [
         '#^https://[a-z0-9-]+\.up\.railway\.app$#i',
+        '#^https://([a-z0-9-]+\.)?swgpi\.online$#i',
     ],
 
     'allowed_headers' => ['*'],
