@@ -515,10 +515,17 @@ class EvaluationController extends Controller
     public function rooms(Request $request)
     {
         $user = auth('api')->user();
+        $supportsArchive = Schema::hasColumn('evaluations', 'archived_at');
         $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama,perfil_id', 'responsibleTeacher:id,nombres,apa,ama,perfil_id', 'projects:id,title,semestre,company_name'])
-            ->where('activo', true)
+            ->where('activo', !$request->boolean('archived'))
             ->orderByDesc('fecha_evaluacion')
             ->orderBy('nombre');
+
+        if ($supportsArchive && $request->boolean('archived')) {
+            $query->whereHas('evaluations', fn ($evaluationQuery) => $evaluationQuery->whereNotNull('archived_at'));
+        } elseif ($supportsArchive) {
+            $query->whereHas('evaluations', fn ($evaluationQuery) => $evaluationQuery->whereNull('archived_at'));
+        }
 
         if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
             $query->where(function ($scope) use ($user) {
@@ -567,6 +574,44 @@ class EvaluationController extends Controller
 
         EvaluationRoom::findOrFail($id)->update(['activo' => false]);
         return response()->json(['message' => 'Sala desactivada']);
+    }
+
+    public function archiveRoom($id)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        if (!Schema::hasColumn('evaluations', 'archived_at')) {
+            return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
+        }
+
+        $room = EvaluationRoom::findOrFail($id);
+        $room->update(['activo' => false]);
+        Evaluation::where('evaluation_room_id', $room->id)->update([
+            'archived_at' => now(),
+            'archived_by' => $user->id,
+        ]);
+
+        return response()->json(['message' => 'Sala archivada']);
+    }
+
+    public function unarchiveRoom($id)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        if (!Schema::hasColumn('evaluations', 'archived_at')) {
+            return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
+        }
+
+        $room = EvaluationRoom::findOrFail($id);
+        $room->update(['activo' => true]);
+        Evaluation::where('evaluation_room_id', $room->id)->update([
+            'archived_at' => null,
+            'archived_by' => null,
+        ]);
+
+        return response()->json(['message' => 'Sala restaurada']);
     }
 
     public function lockRoomSequence($id)

@@ -68,6 +68,8 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::post('/evaluations/rooms', [EvaluationController::class, 'storeRoom']);
         Route::put('/evaluations/rooms/{id}', [EvaluationController::class, 'updateRoom']);
         Route::delete('/evaluations/rooms/{id}', [EvaluationController::class, 'destroyRoom']);
+        Route::post('/evaluations/rooms/{id}/archive', [EvaluationController::class, 'archiveRoom']);
+        Route::post('/evaluations/rooms/{id}/unarchive', [EvaluationController::class, 'unarchiveRoom']);
         Route::post('/evaluations/rooms/{id}/lock-sequence', [EvaluationController::class, 'lockRoomSequence']);
         Route::post('/evaluations/rooms/{id}/advance', [EvaluationController::class, 'advanceRoom']);
         Route::get('/evaluations/rooms/{id}/report.pdf', [EvaluationController::class, 'exportRoomPdf']);

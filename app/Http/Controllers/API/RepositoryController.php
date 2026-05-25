@@ -111,11 +111,9 @@ class RepositoryController extends Controller
             ])
             ->where('activo', true);
 
-        if ((int) $user->perfil_id === 2) {
-            $projectsQuery->whereHas('advisors', fn ($query) => $query->where('users.id', $user->id));
-        } elseif ((int) $user->perfil_id === 3) {
+        if ((int) $user->perfil_id === 3) {
             $projectsQuery->whereHas('students', fn ($query) => $query->where('users.id', $user->id));
-        } elseif ((int) $user->perfil_id !== 1) {
+        } elseif (!in_array((int) $user->perfil_id, [1, 2], true)) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -528,10 +526,8 @@ class RepositoryController extends Controller
             return true;
         }
 
-        if ((int) $user->perfil_id === 2 && $document->project_id) {
-            return Project::where('id', $document->project_id)
-                ->whereHas('advisors', fn ($query) => $query->where('users.id', $user->id))
-                ->exists();
+        if ((int) $user->perfil_id === 2 && $document->document_category === RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT) {
+            return true;
         }
 
         if ((int) $user->perfil_id === 2 && in_array($document->document_category, [RepositoryDocument::CATEGORY_THESIS_GENERAL, RepositoryDocument::CATEGORY_THESIS_RESIDENCY], true)) {
