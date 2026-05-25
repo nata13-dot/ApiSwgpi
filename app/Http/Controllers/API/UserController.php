@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\API;
 
+use App\Mail\UserCredentialsMail;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -208,6 +210,126 @@ class UserController extends Controller
         return response()->json(User::where('activo', false)->paginate(15));
     }
 
+    public function credentialEmailTemplate()
+    {
+        return response()->json([
+            'subject' => 'Credenciales de acceso al SGPI',
+            'body' => "Hola {{Nombre}},\n\nSe han generado tus credenciales temporales para acceder al Sistema de Gestion de Proyectos Integradores.\n\nUsuario: {{Usuario}}\nCorreo: {{Correo}}\nContraseña temporal: {{Contraseña}}\nPerfil: {{Perfil}}\n\nPor seguridad, cambia tu contraseña despues de iniciar sesion.",
+            'tags' => [
+                '{{Nombre}}',
+                '{{Usuario}}',
+                '{{Correo}}',
+                '{{Contraseña}}',
+                '{{Perfil}}',
+                '{{Semestre}}',
+                '{{Grupo}}',
+            ],
+            'security_recommendations' => [
+                'No se reenvian contraseñas existentes; el sistema genera una contraseña temporal nueva y guarda solo su hash.',
+                'Solicita siempre la contraseña del administrador para autorizar el envio masivo.',
+                'Evita lotes muy grandes; el endpoint limita el envio a 200 destinatarios por solicitud.',
+                'Recomienda al usuario cambiar la contraseña despues del primer acceso.',
+            ],
+        ]);
+    }
+
+    public function sendCredentialEmails(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'subject' => 'nullable|string|max:150',
+                'body' => 'required|string|min:20|max:5000',
+                'user_ids' => 'nullable|array|max:200',
+                'user_ids.*' => ['string', 'max:10', 'exists:users,id'],
+                'perfil_id' => 'nullable|integer|in:1,2,3',
+                'status' => 'nullable|in:active,inactive,all',
+                'semestre' => 'nullable|integer|in:5,6,7,8',
+                'grupo' => 'nullable|string|max:20',
+                'q' => 'nullable|string|max:100',
+                'rotate_password' => 'nullable|boolean',
+                'admin_password' => 'required|string|max:72',
+            ], [], [
+                'subject' => 'asunto',
+                'body' => 'base del correo',
+                'user_ids' => 'usuarios',
+                'perfil_id' => 'perfil',
+                'admin_password' => 'contraseña de administrador',
+            ]);
+
+            $currentAdmin = auth('api')->user();
+            if (!$currentAdmin || (int) $currentAdmin->perfil_id !== 1) {
+                return response()->json(['error' => 'Solo un administrador puede enviar credenciales.'], 403);
+            }
+
+            if (!Hash::check($validated['admin_password'], $currentAdmin->password)) {
+                return response()->json(['error' => 'Contraseña de administrador incorrecta'], 403);
+            }
+
+            $bodyTemplate = $validated['body'];
+            $usesPasswordTag = $this->templateUsesPasswordTag($bodyTemplate);
+            $rotatePassword = array_key_exists('rotate_password', $validated)
+                ? (bool) $validated['rotate_password']
+                : $usesPasswordTag;
+
+            if ($usesPasswordTag && !$rotatePassword) {
+                return response()->json([
+                    'errors' => [
+                        'rotate_password' => ['Para usar la etiqueta {{Contraseña}} debes generar contraseñas temporales nuevas.'],
+                    ],
+                ], 422);
+            }
+
+            $users = $this->credentialEmailRecipients($request)->get();
+
+            if ($users->isEmpty()) {
+                return response()->json(['errors' => ['users' => ['No hay usuarios activos con correo para este envio.']]], 422);
+            }
+
+            if ($users->count() > 200) {
+                return response()->json(['errors' => ['users' => ['El envio masivo esta limitado a 200 destinatarios por solicitud. Ajusta los filtros.']]], 422);
+            }
+
+            $sent = 0;
+            $errors = [];
+            $subjectTemplate = $validated['subject'] ?? 'Credenciales de acceso al SGPI';
+
+            foreach ($users as $user) {
+                $temporaryPassword = '';
+                $previousPasswordHash = $user->password;
+                if ($rotatePassword) {
+                    $temporaryPassword = $this->generateTemporaryPassword();
+                    $user->forceFill(['password' => Hash::make($temporaryPassword)])->save();
+                }
+
+                try {
+                    $subject = $this->renderCredentialTemplate($subjectTemplate, $user, $temporaryPassword);
+                    $body = $this->renderCredentialTemplate($bodyTemplate, $user, $temporaryPassword);
+                    Mail::to($user->email)->send(new UserCredentialsMail($subject, $body));
+                    $sent++;
+                } catch (\Throwable $e) {
+                    if ($rotatePassword) {
+                        $user->forceFill(['password' => $previousPasswordHash])->save();
+                    }
+                    report($e);
+                    $errors[] = [
+                        'id' => $user->id,
+                        'email' => $user->email,
+                        'error' => 'No se pudo enviar el correo.',
+                    ];
+                }
+            }
+
+            return response()->json([
+                'message' => $errors ? 'Envio procesado con errores' : 'Credenciales enviadas correctamente',
+                'sent' => $sent,
+                'failed' => count($errors),
+                'errors' => $errors,
+            ], $errors ? 207 : 200);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
+    }
+
     public function blankCsvTemplate()
     {
         return $this->usersExcelTemplate();
@@ -361,6 +483,95 @@ class UserController extends Controller
         }
 
         return null;
+    }
+
+    private function credentialEmailRecipients(Request $request)
+    {
+        $query = User::query()
+            ->whereNotNull('email')
+            ->where('email', '<>', '');
+
+        if ($request->filled('user_ids')) {
+            $query->whereIn('id', $request->input('user_ids', []));
+        } else {
+            if ($request->query('status') === 'inactive' || $request->input('status') === 'inactive') {
+                $query->where('activo', false);
+            } elseif (($request->query('status') ?? $request->input('status')) !== 'all') {
+                $query->where('activo', true);
+            }
+
+            if ($request->filled('perfil_id')) {
+                $query->where('perfil_id', $request->input('perfil_id'));
+            }
+
+            if ($request->filled('semestre')) {
+                $query->where('semestre', $request->input('semestre'));
+            }
+
+            if ($request->filled('grupo')) {
+                $query->where('grupo', strtoupper(trim((string) $request->input('grupo'))));
+            }
+
+            if ($request->filled('q')) {
+                $search = trim((string) $request->input('q'));
+                $query->where(function ($scope) use ($search) {
+                    $scope->where('id', 'like', "%{$search}%")
+                        ->orWhere('nombres', 'like', "%{$search}%")
+                        ->orWhere('apa', 'like', "%{$search}%")
+                        ->orWhere('ama', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apa, ''), ' ', COALESCE(ama, '')) LIKE ?", ["%{$search}%"]);
+                });
+            }
+        }
+
+        return $query->orderBy('perfil_id')->orderBy('nombres')->limit(201);
+    }
+
+    private function templateUsesPasswordTag(string $template): bool
+    {
+        return str_contains($template, '{{Contraseña}}')
+            || str_contains($template, '{{Contrasena}}')
+            || str_contains($template, '{{Password}}');
+    }
+
+    private function renderCredentialTemplate(string $template, User $user, string $temporaryPassword = ''): string
+    {
+        $fullName = trim("{$user->nombres} {$user->apa} {$user->ama}");
+        $replacements = [
+            '{{Nombre}}' => $fullName ?: $user->id,
+            '{{Usuario}}' => $user->id,
+            '{{Correo}}' => $user->email ?? '',
+            '{{Contraseña}}' => $temporaryPassword,
+            '{{Contrasena}}' => $temporaryPassword,
+            '{{Password}}' => $temporaryPassword,
+            '{{Perfil}}' => $this->profileName((int) $user->perfil_id),
+            '{{Semestre}}' => $user->semestre ? (string) $user->semestre : '',
+            '{{Grupo}}' => $user->grupo ?? '',
+        ];
+
+        return strtr($template, $replacements);
+    }
+
+    private function profileName(int $profileId): string
+    {
+        return match ($profileId) {
+            1 => 'Administrador',
+            2 => 'Docente',
+            3 => 'Estudiante',
+            default => 'Usuario',
+        };
+    }
+
+    private function generateTemporaryPassword(): string
+    {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@$#%';
+        $password = '';
+        for ($i = 0; $i < 12; $i++) {
+            $password .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+
+        return $password;
     }
 
     private function normalizeAddress(?string $address): ?string

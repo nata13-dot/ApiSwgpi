@@ -117,6 +117,8 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::post('/repositorio/{id}', [RepositoryController::class, 'update']);
         Route::delete('/repositorio/{id}', [RepositoryController::class, 'destroy']);
         Route::get('/users', [UserController::class, 'index']);
+        Route::get('/users/credential-email-template', [UserController::class, 'credentialEmailTemplate']);
+        Route::post('/users/send-credentials', [UserController::class, 'sendCredentialEmails']);
         Route::post('/users/import-excel', [UserController::class, 'importExcel']);
         Route::post('/users', [UserController::class, 'store']);
         Route::get('/users/{id}', [UserController::class, 'show']);
