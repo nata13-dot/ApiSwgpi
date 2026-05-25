@@ -154,7 +154,7 @@ class SystemSettingController extends Controller
     public function semesterPreview(Request $request)
     {
         $validated = $request->validate([
-            'from_semester' => 'required|integer|in:5,6,7,8',
+            'from_semester' => 'required|integer|in:5,6,7,8,9',
             'from_group' => 'nullable|string|max:20',
         ]);
 
@@ -172,14 +172,14 @@ class SystemSettingController extends Controller
     public function applySemesterChange(Request $request)
     {
         $validated = $request->validate([
-            'from_semester' => 'required|integer|in:5,6,7,8',
+            'from_semester' => 'required|integer|in:5,6,7,8,9',
             'from_group' => 'nullable|string|max:20',
-            'to_semester' => 'required|integer|in:5,6,7,8',
+            'to_semester' => 'required|integer|in:5,6,7,8,9',
             'to_group' => 'nullable|string|max:20',
             'update_subject_groups' => 'nullable|boolean',
             'exceptions' => 'nullable|array',
             'exceptions.*.user_id' => ['required', 'string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
-            'exceptions.*.semester' => 'required|integer|in:5,6,7,8',
+            'exceptions.*.semester' => 'required|integer|in:5,6,7,8,9',
         ]);
 
         $exceptions = collect($validated['exceptions'] ?? [])

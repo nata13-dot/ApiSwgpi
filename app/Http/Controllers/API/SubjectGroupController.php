@@ -163,7 +163,7 @@ class SubjectGroupController extends Controller
     {
         $validated = $request->validate([
             'nombre' => 'required|string|max:255',
-            'semestre' => 'required|integer|in:5,6,7,8',
+            'semestre' => 'required|integer|in:5,6,7,8,9',
             'grupo' => 'required|string|max:20',
             'periodo' => 'nullable|string|max:100',
             'asignatura_ids' => 'nullable|array',

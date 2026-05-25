@@ -39,6 +39,8 @@ Route::prefix('repositorio')->group(function () {
     Route::middleware(['auth:api', 'active'])->group(function () {
         Route::get('/evaluation-documents', [RepositoryController::class, 'evaluationDocuments']);
         Route::post('/evaluation-documents', [RepositoryController::class, 'storeEvaluationDocument']);
+        Route::get('/thesis-documents', [RepositoryController::class, 'thesisDocuments']);
+        Route::post('/thesis-documents', [RepositoryController::class, 'storeThesisDocument']);
     });
     Route::get('/{id}/download', [RepositoryController::class, 'download']);
     Route::get('/{id}/view', [RepositoryController::class, 'view']);

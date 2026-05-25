@@ -21,6 +21,19 @@ class RepositoryController extends Controller
             ->where('activo', true)
             ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC);
 
+        if ($request->filled('categoria')) {
+            $categories = match ($request->query('categoria')) {
+                'tesis' => [RepositoryDocument::CATEGORY_THESIS_GENERAL],
+                'residencias' => [RepositoryDocument::CATEGORY_THESIS_RESIDENCY],
+                'desarrollo' => [RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT],
+                'general' => [RepositoryDocument::CATEGORY_REPOSITORY],
+                default => null,
+            };
+            if ($categories) {
+                $query->whereIn('document_category', $categories);
+            }
+        }
+
         if ($request->filled('buscar')) {
             $term = $request->buscar;
             $query->where(function($q) use ($term) {
@@ -182,6 +195,82 @@ class RepositoryController extends Controller
             return response()->json([
                 'message' => 'Documento guardado en repositorio privado para revision.',
                 'document' => $this->shapeEvaluationRepositoryDocument($document->load(['uploader', 'publisher'])),
+            ], 201);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
+    }
+
+    public function thesisDocuments()
+    {
+        $user = auth('api')->user();
+        $query = RepositoryDocument::with(['uploader:id,nombres,apa,ama,semestre,grupo', 'publisher:id,nombres,apa,ama'])
+            ->where('activo', true)
+            ->whereIn('document_category', [
+                RepositoryDocument::CATEGORY_THESIS_GENERAL,
+                RepositoryDocument::CATEGORY_THESIS_RESIDENCY,
+            ])
+            ->orderByDesc('created_at');
+
+        if ((int) $user->perfil_id === 3) {
+            $query->where('uploaded_by', $user->id);
+        } elseif (!in_array((int) $user->perfil_id, [1, 2], true)) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        return response()->json([
+            'data' => $query->paginate(12),
+        ]);
+    }
+
+    public function storeThesisDocument(Request $request)
+    {
+        try {
+            $user = auth('api')->user();
+            if ((int) $user->perfil_id !== 3) {
+                return response()->json(['error' => 'Solo estudiantes pueden subir avances de tesis o residencias.'], 403);
+            }
+
+            if ((int) $user->semestre !== 9) {
+                return response()->json(['error' => 'Solo estudiantes de 9no semestre pueden subir avances de tesis o residencias.'], 403);
+            }
+
+            $validated = $request->validate([
+                'tipo' => 'required|in:tesis,residencias',
+                'nombre' => 'required|string|max:255',
+                'descripcion' => 'nullable|string|max:5000',
+                'autores' => 'nullable|string|max:1000',
+                'archivo' => $this->fileValidationRule(true, ['pdf', 'doc', 'docx']),
+            ], [], [
+                'tipo' => 'tipo de documento',
+                'nombre' => 'nombre del documento',
+                'archivo' => 'archivo',
+            ]);
+
+            [$path, $extension] = $this->storeRepositoryFile($request->file('archivo'));
+            if (!$path) {
+                return response()->json(['message' => 'No se pudo guardar el archivo.'], 500);
+            }
+
+            $category = $validated['tipo'] === 'residencias'
+                ? RepositoryDocument::CATEGORY_THESIS_RESIDENCY
+                : RepositoryDocument::CATEGORY_THESIS_GENERAL;
+
+            $document = RepositoryDocument::create([
+                'nombre' => trim($validated['nombre']),
+                'descripcion' => trim((string) ($validated['descripcion'] ?? '')),
+                'autores' => trim((string) ($validated['autores'] ?? '')) ?: trim("{$user->nombres} {$user->apa} {$user->ama}"),
+                'archivo_path' => $path,
+                'archivo_tipo' => $extension,
+                'document_category' => $category,
+                'visibility' => RepositoryDocument::VISIBILITY_PRIVATE,
+                'uploaded_by' => $user->id,
+                'activo' => true,
+            ]);
+
+            return response()->json([
+                'message' => 'Avance guardado en repositorio privado para revision.',
+                'document' => $document->load(['uploader', 'publisher']),
             ], 201);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -412,10 +501,18 @@ class RepositoryController extends Controller
                 ->exists();
         }
 
+        if ((int) $user->perfil_id === 2 && in_array($document->document_category, [RepositoryDocument::CATEGORY_THESIS_GENERAL, RepositoryDocument::CATEGORY_THESIS_RESIDENCY], true)) {
+            return true;
+        }
+
         if ((int) $user->perfil_id === 3 && $document->project_id) {
             return Project::where('id', $document->project_id)
                 ->whereHas('students', fn ($query) => $query->where('users.id', $user->id))
                 ->exists();
+        }
+
+        if ((int) $user->perfil_id === 3 && in_array($document->document_category, [RepositoryDocument::CATEGORY_THESIS_GENERAL, RepositoryDocument::CATEGORY_THESIS_RESIDENCY], true)) {
+            return (string) $document->uploaded_by === (string) $user->id;
         }
 
         return false;

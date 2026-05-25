@@ -27,7 +27,7 @@ class ProfileController extends Controller
             'nombres' => 'required|string|max:200',
             'apa' => 'required|string|max:100',
             'ama' => 'nullable|string|max:100',
-            'semestre' => 'required|integer|in:5,6,7,8',
+            'semestre' => 'required|integer|in:5,6,7,8,9',
             'grupo' => 'required|string|max:20',
             'photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
@@ -54,7 +54,7 @@ class ProfileController extends Controller
         $validated = $request->validate([
             'telefonos' => 'nullable|string|max:200',
             'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
-            'semestre' => [(int) $user->perfil_id === 3 ? 'nullable' : 'prohibited', 'integer', Rule::in([5, 6, 7, 8])],
+            'semestre' => [(int) $user->perfil_id === 3 ? 'nullable' : 'prohibited', 'integer', Rule::in([5, 6, 7, 8, 9])],
             'grupo' => [(int) $user->perfil_id === 3 ? 'nullable' : 'prohibited', 'string', 'max:20'],
             'photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
             'current_password' => 'nullable|string|max:72',

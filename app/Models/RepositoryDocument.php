@@ -13,6 +13,8 @@ class RepositoryDocument extends Model
 
     public const CATEGORY_REPOSITORY = 'repository';
     public const CATEGORY_EVALUATION_DOCUMENT = 'evaluation_document';
+    public const CATEGORY_THESIS_GENERAL = 'thesis_general';
+    public const CATEGORY_THESIS_RESIDENCY = 'thesis_residency';
     public const VISIBILITY_PUBLIC = 'public';
     public const VISIBILITY_PRIVATE = 'private';
 
