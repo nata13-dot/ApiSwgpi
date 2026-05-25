@@ -304,6 +304,7 @@ class RepositoryController extends Controller
                 'autores' => 'required|string|max:1000',
                 'tag_ids' => 'nullable|array',
                 'tag_ids.*' => 'integer|exists:document_tags,id',
+                'visibility' => 'nullable|in:public,private',
                 'archivo' => $this->fileValidationRule(true),
             ]);
 
@@ -324,10 +325,11 @@ class RepositoryController extends Controller
             ];
 
             if ($this->repositoryVisibilityEnabled()) {
+                $visibility = $validated['visibility'] ?? RepositoryDocument::VISIBILITY_PUBLIC;
                 $documentData['document_category'] = RepositoryDocument::CATEGORY_REPOSITORY;
-                $documentData['visibility'] = RepositoryDocument::VISIBILITY_PUBLIC;
-                $documentData['published_at'] = now();
-                $documentData['published_by'] = auth('api')->id();
+                $documentData['visibility'] = $visibility;
+                $documentData['published_at'] = $visibility === RepositoryDocument::VISIBILITY_PUBLIC ? now() : null;
+                $documentData['published_by'] = $visibility === RepositoryDocument::VISIBILITY_PUBLIC ? auth('api')->id() : null;
             }
 
             $document = RepositoryDocument::create($documentData);
@@ -356,6 +358,7 @@ class RepositoryController extends Controller
                 'autores' => 'required|string|max:1000',
                 'tag_ids' => 'nullable|array',
                 'tag_ids.*' => 'integer|exists:document_tags,id',
+                'visibility' => 'nullable|in:public,private',
                 'archivo' => $this->fileValidationRule(false),
             ]);
 
@@ -364,6 +367,12 @@ class RepositoryController extends Controller
                 'descripcion' => trim($validated['descripcion']),
                 'autores' => trim($validated['autores']),
             ];
+
+            if ($this->repositoryVisibilityEnabled() && isset($validated['visibility'])) {
+                $updates['visibility'] = $validated['visibility'];
+                $updates['published_at'] = $validated['visibility'] === RepositoryDocument::VISIBILITY_PUBLIC ? now() : null;
+                $updates['published_by'] = $validated['visibility'] === RepositoryDocument::VISIBILITY_PUBLIC ? auth('api')->id() : null;
+            }
 
             if ($request->hasFile('archivo')) {
                 [$path, $extension] = $this->storeRepositoryFile($request->file('archivo'));
