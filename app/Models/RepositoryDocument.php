@@ -11,18 +11,29 @@ class RepositoryDocument extends Model
 {
     use HasFactory;
 
+    public const CATEGORY_REPOSITORY = 'repository';
+    public const CATEGORY_EVALUATION_DOCUMENT = 'evaluation_document';
+    public const VISIBILITY_PUBLIC = 'public';
+    public const VISIBILITY_PRIVATE = 'private';
+
     protected $fillable = [
+        'project_id',
         'nombre',
         'descripcion',
         'autores',
         'archivo_path',
         'archivo_tipo',
+        'document_category',
+        'visibility',
+        'published_at',
+        'published_by',
         'uploaded_by',
         'activo',
     ];
 
     protected $casts = [
         'activo' => 'boolean',
+        'published_at' => 'datetime',
     ];
 
     public function tags(): BelongsToMany
@@ -33,5 +44,15 @@ class RepositoryDocument extends Model
     public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by', 'id')->where('activo', true);
+    }
+
+    public function publisher(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'published_by', 'id')->where('activo', true);
+    }
+
+    public function project(): BelongsTo
+    {
+        return $this->belongsTo(Project::class, 'project_id');
     }
 }

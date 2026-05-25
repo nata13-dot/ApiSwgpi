@@ -36,6 +36,10 @@ Route::prefix('repositorio')->group(function () {
     Route::get('/buscar', [RepositoryController::class, 'search']);
     Route::get('/proyecto/{projectId}', [RepositoryController::class, 'byProject']);
     Route::get('/etiqueta/{tagId}', [RepositoryController::class, 'byTag']);
+    Route::middleware(['auth:api', 'active'])->group(function () {
+        Route::get('/evaluation-documents', [RepositoryController::class, 'evaluationDocuments']);
+        Route::post('/evaluation-documents', [RepositoryController::class, 'storeEvaluationDocument']);
+    });
     Route::get('/{id}/download', [RepositoryController::class, 'download']);
     Route::get('/{id}/view', [RepositoryController::class, 'view']);
     Route::get('/{id}', [RepositoryController::class, 'show']);
@@ -115,6 +119,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::post('/settings/apply-semester-change', [SystemSettingController::class, 'applySemesterChange']);
         Route::post('/repositorio', [RepositoryController::class, 'store']);
         Route::post('/repositorio/{id}', [RepositoryController::class, 'update']);
+        Route::post('/repositorio/{id}/publish', [RepositoryController::class, 'publish']);
         Route::delete('/repositorio/{id}', [RepositoryController::class, 'destroy']);
         Route::get('/users', [UserController::class, 'index']);
         Route::get('/users/credential-email-template', [UserController::class, 'credentialEmailTemplate']);

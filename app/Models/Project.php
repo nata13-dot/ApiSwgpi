@@ -62,6 +62,11 @@ class Project extends Model
         return $this->hasMany(Deliverable::class, 'project_id');
     }
 
+    public function repositoryDocuments(): HasMany
+    {
+        return $this->hasMany(RepositoryDocument::class, 'project_id');
+    }
+
     public function evaluations(): HasMany
     {
         return $this->hasMany(Evaluation::class, 'project_id');

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\DocumentTag;
+use App\Models\Project;
 use App\Models\RepositoryDocument;
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
@@ -17,7 +18,8 @@ class RepositoryController extends Controller
     public function index(Request $request)
     {
         $query = RepositoryDocument::with(['tags', 'uploader'])
-            ->where('activo', true);
+            ->where('activo', true)
+            ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC);
 
         if ($request->filled('buscar')) {
             $term = $request->buscar;
@@ -57,6 +59,7 @@ class RepositoryController extends Controller
                                         $q->where('document_tags.id', $tagId);
                                     })
                                    ->where('activo', true)
+                                   ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
                                    ->with(['tags', 'uploader'])
                                    ->paginate(12);
         return response()->json($documents);
@@ -65,10 +68,124 @@ class RepositoryController extends Controller
     public function show($id)
     {
         $document = RepositoryDocument::with(['tags', 'uploader'])->find($id);
-        if (!$document || !$document->activo) {
+        if (!$document || !$document->activo || $document->visibility !== RepositoryDocument::VISIBILITY_PUBLIC) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }
         return response()->json($document);
+    }
+
+    public function evaluationDocuments()
+    {
+        $user = auth('api')->user();
+        $projectsQuery = Project::select(['id', 'title', 'description', 'semestre', 'year', 'authors', 'subject_group_id'])
+            ->with([
+                'students:id,nombres,apa,ama,semestre,grupo',
+                'advisors:id,nombres,apa,ama',
+                'asignaturas:id,nombre,clave',
+                'repositoryDocuments' => fn ($query) => $query
+                    ->where('activo', true)
+                    ->where('document_category', RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT)
+                    ->with(['uploader:id,nombres,apa,ama', 'publisher:id,nombres,apa,ama'])
+                    ->orderByDesc('created_at'),
+            ])
+            ->where('activo', true);
+
+        if ((int) $user->perfil_id === 2) {
+            $projectsQuery->whereHas('advisors', fn ($query) => $query->where('users.id', $user->id));
+        } elseif ((int) $user->perfil_id === 3) {
+            $projectsQuery->whereHas('students', fn ($query) => $query->where('users.id', $user->id));
+        } elseif ((int) $user->perfil_id !== 1) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $projects = $projectsQuery->orderBy('title')->get()
+            ->filter(fn (Project $project) => $this->requiresResearchDocument($project))
+            ->values();
+
+        return response()->json([
+            'data' => $projects->map(fn (Project $project) => [
+                'project' => [
+                    'id' => $project->id,
+                    'title' => $project->title,
+                    'description' => $project->description,
+                    'semestre' => $project->semestre,
+                    'year' => $project->year,
+                    'authors' => $project->authors,
+                ],
+                'integrantes' => $project->students->map(fn ($student) => [
+                    'id' => $student->id,
+                    'nombres' => $student->nombres,
+                    'apa' => $student->apa,
+                    'ama' => $student->ama,
+                    'semestre' => $student->semestre,
+                    'grupo' => $student->grupo,
+                ])->values(),
+                'asignaturas' => $project->asignaturas->map(fn ($subject) => [
+                    'id' => $subject->id,
+                    'nombre' => $subject->nombre,
+                    'clave' => $subject->clave,
+                ])->values(),
+                'puede_subir' => (int) $user->perfil_id === 3
+                    && $project->students->contains(fn ($student) => (string) $student->id === (string) $user->id),
+                'puede_publicar' => (int) $user->perfil_id === 1,
+                'documents' => $project->repositoryDocuments->map(fn (RepositoryDocument $document) => $this->shapeEvaluationRepositoryDocument($document))->values(),
+            ])->values(),
+        ]);
+    }
+
+    public function storeEvaluationDocument(Request $request)
+    {
+        try {
+            $user = auth('api')->user();
+            if ((int) $user->perfil_id !== 3) {
+                return response()->json(['error' => 'Solo estudiantes pueden subir documentos de evaluacion al repositorio.'], 403);
+            }
+
+            $validated = $request->validate([
+                'project_id' => 'required|integer|exists:projects,id',
+                'nombre' => 'required|string|max:255',
+                'descripcion' => 'nullable|string|max:5000',
+                'autores' => 'nullable|string|max:1000',
+                'archivo' => $this->fileValidationRule(true, ['pdf', 'doc', 'docx']),
+            ]);
+
+            $project = Project::with(['students:id,nombres,apa,ama', 'asignaturas:id,nombre,clave'])
+                ->where('activo', true)
+                ->find($validated['project_id']);
+
+            if (!$project || !$project->students->contains(fn ($student) => (string) $student->id === (string) $user->id)) {
+                return response()->json(['error' => 'No puedes subir documentos para este proyecto.'], 403);
+            }
+
+            if (!$this->requiresResearchDocument($project)) {
+                return response()->json(['error' => 'Este proyecto no tiene cargada Taller de Investigacion I o II.'], 403);
+            }
+
+            [$path, $extension] = $this->storeRepositoryFile($request->file('archivo'));
+            if (!$path) {
+                return response()->json(['message' => 'No se pudo guardar el archivo.'], 500);
+            }
+
+            $document = RepositoryDocument::create([
+                'project_id' => $project->id,
+                'nombre' => trim($validated['nombre']),
+                'descripcion' => trim((string) ($validated['descripcion'] ?? '')),
+                'autores' => trim((string) ($validated['autores'] ?? '')) ?: $this->projectAuthors($project),
+                'archivo_path' => $path,
+                'archivo_tipo' => $extension,
+                'document_category' => RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT,
+                'visibility' => RepositoryDocument::VISIBILITY_PRIVATE,
+                'uploaded_by' => $user->id,
+                'activo' => true,
+            ]);
+
+            return response()->json([
+                'message' => 'Documento guardado en repositorio privado para revision.',
+                'document' => $this->shapeEvaluationRepositoryDocument($document->load(['uploader', 'publisher'])),
+            ], 201);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
     }
 
     public function store(Request $request)
@@ -95,6 +212,10 @@ class RepositoryController extends Controller
                 'autores' => trim($validated['autores']),
                 'archivo_path' => $path,
                 'archivo_tipo' => $extension,
+                'document_category' => RepositoryDocument::CATEGORY_REPOSITORY,
+                'visibility' => RepositoryDocument::VISIBILITY_PUBLIC,
+                'published_at' => now(),
+                'published_by' => auth('api')->id(),
                 'uploaded_by' => auth('api')->id(),
                 'activo' => true,
             ]);
@@ -175,10 +296,35 @@ class RepositoryController extends Controller
         return response()->json(['message' => 'Documento eliminado']);
     }
 
+    public function publish(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        if ((int) $user->perfil_id !== 1) {
+            return response()->json(['error' => 'Solo administradores pueden publicar documentos.'], 403);
+        }
+
+        $document = RepositoryDocument::where('activo', true)->find($id);
+        if (!$document) {
+            return response()->json(['error' => 'Documento no encontrado'], 404);
+        }
+
+        $makePublic = $request->boolean('public', true);
+        $document->update([
+            'visibility' => $makePublic ? RepositoryDocument::VISIBILITY_PUBLIC : RepositoryDocument::VISIBILITY_PRIVATE,
+            'published_at' => $makePublic ? now() : null,
+            'published_by' => $makePublic ? $user->id : null,
+        ]);
+
+        return response()->json([
+            'message' => $makePublic ? 'Documento publicado en el repositorio.' : 'Documento marcado como privado.',
+            'document' => $document->fresh()->load(['tags', 'uploader', 'publisher']),
+        ]);
+    }
+
     public function download($id)
     {
         $document = RepositoryDocument::find($id);
-        if (!$document || !$document->activo || !$document->archivo_path) {
+        if (!$document || !$document->activo || !$document->archivo_path || !$this->canAccessDocument($document)) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }
 
@@ -192,7 +338,7 @@ class RepositoryController extends Controller
     public function view($id)
     {
         $document = RepositoryDocument::find($id);
-        if (!$document || !$document->activo || !$document->archivo_path) {
+        if (!$document || !$document->activo || !$document->archivo_path || !$this->canAccessDocument($document)) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }
 
@@ -221,12 +367,13 @@ class RepositoryController extends Controller
         ]);
     }
 
-    private function fileValidationRule(bool $required): string
+    private function fileValidationRule(bool $required, ?array $extensions = null): string
     {
         $maxFileSizeKb = ((int) SystemSetting::valueFor('max_file_size_mb', 50)) * 1024;
         $presence = $required ? 'required' : 'nullable';
+        $extensions = $extensions ?: self::ALLOWED_EXTENSIONS;
 
-        return $presence . '|file|mimes:' . implode(',', self::ALLOWED_EXTENSIONS) . '|max:' . $maxFileSizeKb;
+        return $presence . '|file|mimes:' . implode(',', $extensions) . '|max:' . $maxFileSizeKb;
     }
 
     private function storeRepositoryFile($file): array
@@ -242,5 +389,98 @@ class RepositoryController extends Controller
         $path = Storage::disk('public')->putFileAs('repositorio', $file, $fileName);
 
         return [$path, $extension];
+    }
+
+    private function canAccessDocument(RepositoryDocument $document): bool
+    {
+        if ($document->visibility === RepositoryDocument::VISIBILITY_PUBLIC) {
+            return true;
+        }
+
+        $user = auth('api')->user();
+        if (!$user) {
+            return false;
+        }
+
+        if ((int) $user->perfil_id === 1) {
+            return true;
+        }
+
+        if ((int) $user->perfil_id === 2 && $document->project_id) {
+            return Project::where('id', $document->project_id)
+                ->whereHas('advisors', fn ($query) => $query->where('users.id', $user->id))
+                ->exists();
+        }
+
+        if ((int) $user->perfil_id === 3 && $document->project_id) {
+            return Project::where('id', $document->project_id)
+                ->whereHas('students', fn ($query) => $query->where('users.id', $user->id))
+                ->exists();
+        }
+
+        return false;
+    }
+
+    private function requiresResearchDocument(Project $project): bool
+    {
+        $project->loadMissing('asignaturas:id,nombre,clave');
+
+        return $project->asignaturas->contains(function ($subject) {
+            $name = $this->normalizeText((string) $subject->nombre);
+            $key = $this->normalizeText((string) $subject->clave);
+
+            return preg_match('/\btaller de investigacion( i| ii| 1| 2)?\b/', $name) === 1
+                || in_array($key, ['ac009', 'ac010'], true);
+        });
+    }
+
+    private function normalizeText(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = strtr($value, [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n',
+            'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u', 'Ü' => 'u', 'Ñ' => 'n',
+        ]);
+
+        return preg_replace('/\s+/', ' ', $value) ?? $value;
+    }
+
+    private function projectAuthors(Project $project): string
+    {
+        $names = $project->students
+            ->map(fn ($student) => trim("{$student->nombres} {$student->apa} {$student->ama}"))
+            ->filter()
+            ->values();
+
+        return $names->isNotEmpty() ? $names->join(', ') : (string) $project->authors;
+    }
+
+    private function shapeEvaluationRepositoryDocument(RepositoryDocument $document): array
+    {
+        return [
+            'id' => $document->id,
+            'project_id' => $document->project_id,
+            'nombre' => $document->nombre,
+            'descripcion' => $document->descripcion,
+            'autores' => $document->autores,
+            'archivo_tipo' => $document->archivo_tipo,
+            'visibility' => $document->visibility,
+            'is_public' => $document->visibility === RepositoryDocument::VISIBILITY_PUBLIC,
+            'created_at' => optional($document->created_at)->toDateTimeString(),
+            'published_at' => optional($document->published_at)->toDateTimeString(),
+            'uploaded_by' => $document->uploader ? [
+                'id' => $document->uploader->id,
+                'nombres' => $document->uploader->nombres,
+                'apa' => $document->uploader->apa,
+                'ama' => $document->uploader->ama,
+            ] : null,
+            'published_by' => $document->publisher ? [
+                'id' => $document->publisher->id,
+                'nombres' => $document->publisher->nombres,
+                'apa' => $document->publisher->apa,
+                'ama' => $document->publisher->ama,
+            ] : null,
+            'allowed_extensions' => ['pdf', 'doc', 'docx'],
+        ];
     }
 }
