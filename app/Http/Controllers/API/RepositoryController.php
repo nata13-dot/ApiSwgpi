@@ -21,9 +21,17 @@ class RepositoryController extends Controller
         $query = RepositoryDocument::with(['tags', 'uploader'])
             ->where('activo', true);
 
-        if ($this->repositoryVisibilityEnabled()) {
-            $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC);
+        if (!$this->repositoryDocumentsHas('visibility')) {
+            return response()->json([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => 12,
+                'total' => 0,
+            ]);
         }
+
+        $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC);
 
         if ($request->filled('categoria') && $this->repositoryDocumentsHas('document_category')) {
             $categories = match ($request->query('categoria')) {
@@ -72,12 +80,22 @@ class RepositoryController extends Controller
 
     public function byTag($tagId)
     {
+        if (!$this->repositoryDocumentsHas('visibility')) {
+            return response()->json([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => 12,
+                'total' => 0,
+            ]);
+        }
+
         $documents = RepositoryDocument::whereHas('tags', function($q) use ($tagId) {
                                         $q->where('document_tags.id', $tagId);
                                    })
                                    ->where('activo', true)
                                    ->with(['tags', 'uploader'])
-                                   ->when($this->repositoryVisibilityEnabled(), fn ($query) => $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC))
+                                   ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
                                    ->paginate(12);
         return response()->json($documents);
     }
@@ -85,7 +103,7 @@ class RepositoryController extends Controller
     public function show($id)
     {
         $document = RepositoryDocument::with(['tags', 'uploader'])->find($id);
-        if (!$document || !$document->activo || ($this->repositoryVisibilityEnabled() && $document->visibility !== RepositoryDocument::VISIBILITY_PUBLIC)) {
+        if (!$document || !$document->activo || !$this->canAccessDocument($document)) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }
         return response()->json($document);
@@ -519,7 +537,7 @@ class RepositoryController extends Controller
     private function canAccessDocument(RepositoryDocument $document): bool
     {
         if (!$this->repositoryVisibilityEnabled()) {
-            return true;
+            return false;
         }
 
         if ($document->visibility === RepositoryDocument::VISIBILITY_PUBLIC) {
@@ -535,11 +553,7 @@ class RepositoryController extends Controller
             return true;
         }
 
-        if ((int) $user->perfil_id === 2 && $document->document_category === RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT) {
-            return true;
-        }
-
-        if ((int) $user->perfil_id === 2 && in_array($document->document_category, [RepositoryDocument::CATEGORY_THESIS_GENERAL, RepositoryDocument::CATEGORY_THESIS_RESIDENCY], true)) {
+        if ((int) $user->perfil_id === 2) {
             return true;
         }
 
