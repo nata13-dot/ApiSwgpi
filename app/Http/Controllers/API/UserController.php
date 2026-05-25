@@ -242,6 +242,8 @@ class UserController extends Controller
                 'user_ids' => 'nullable|array|max:200',
                 'user_ids.*' => ['string', 'max:10', 'exists:users,id'],
                 'perfil_id' => 'nullable|integer|in:1,2,3',
+                'perfil_ids' => 'nullable|array|max:3',
+                'perfil_ids.*' => 'integer|in:1,2,3',
                 'status' => 'nullable|in:active,inactive,all',
                 'semestre' => 'nullable|integer|in:5,6,7,8',
                 'grupo' => 'nullable|string|max:20',
@@ -500,7 +502,9 @@ class UserController extends Controller
                 $query->where('activo', true);
             }
 
-            if ($request->filled('perfil_id')) {
+            if ($request->filled('perfil_ids')) {
+                $query->whereIn('perfil_id', array_map('intval', $request->input('perfil_ids', [])));
+            } elseif ($request->filled('perfil_id')) {
                 $query->where('perfil_id', $request->input('perfil_id'));
             }
 
