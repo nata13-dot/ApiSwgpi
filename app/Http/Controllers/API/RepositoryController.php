@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\RepositoryDocument;
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
@@ -18,10 +19,13 @@ class RepositoryController extends Controller
     public function index(Request $request)
     {
         $query = RepositoryDocument::with(['tags', 'uploader'])
-            ->where('activo', true)
-            ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC);
+            ->where('activo', true);
 
-        if ($request->filled('categoria')) {
+        if ($this->repositoryVisibilityEnabled()) {
+            $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC);
+        }
+
+        if ($request->filled('categoria') && $this->repositoryDocumentsHas('document_category')) {
             $categories = match ($request->query('categoria')) {
                 'tesis' => [RepositoryDocument::CATEGORY_THESIS_GENERAL],
                 'residencias' => [RepositoryDocument::CATEGORY_THESIS_RESIDENCY],
@@ -70,10 +74,10 @@ class RepositoryController extends Controller
     {
         $documents = RepositoryDocument::whereHas('tags', function($q) use ($tagId) {
                                         $q->where('document_tags.id', $tagId);
-                                    })
+                                   })
                                    ->where('activo', true)
-                                   ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
                                    ->with(['tags', 'uploader'])
+                                   ->when($this->repositoryVisibilityEnabled(), fn ($query) => $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC))
                                    ->paginate(12);
         return response()->json($documents);
     }
@@ -81,7 +85,7 @@ class RepositoryController extends Controller
     public function show($id)
     {
         $document = RepositoryDocument::with(['tags', 'uploader'])->find($id);
-        if (!$document || !$document->activo || $document->visibility !== RepositoryDocument::VISIBILITY_PUBLIC) {
+        if (!$document || !$document->activo || ($this->repositoryVisibilityEnabled() && $document->visibility !== RepositoryDocument::VISIBILITY_PUBLIC)) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }
         return response()->json($document);
@@ -89,6 +93,10 @@ class RepositoryController extends Controller
 
     public function evaluationDocuments()
     {
+        if (!$this->repositoryVisibilityEnabled() || !$this->repositoryDocumentsHas('project_id')) {
+            return response()->json(['error' => 'El repositorio privado requiere ejecutar las migraciones pendientes en la API.'], 503);
+        }
+
         $user = auth('api')->user();
         $projectsQuery = Project::select(['id', 'title', 'description', 'semestre', 'year', 'authors', 'subject_group_id'])
             ->with([
@@ -149,6 +157,10 @@ class RepositoryController extends Controller
     public function storeEvaluationDocument(Request $request)
     {
         try {
+            if (!$this->repositoryVisibilityEnabled() || !$this->repositoryDocumentsHas('project_id')) {
+                return response()->json(['error' => 'El repositorio privado requiere ejecutar las migraciones pendientes en la API.'], 503);
+            }
+
             $user = auth('api')->user();
             if ((int) $user->perfil_id !== 3) {
                 return response()->json(['error' => 'Solo estudiantes pueden subir documentos de evaluacion al repositorio.'], 403);
@@ -203,6 +215,10 @@ class RepositoryController extends Controller
 
     public function thesisDocuments()
     {
+        if (!$this->repositoryVisibilityEnabled()) {
+            return response()->json(['error' => 'El apartado de tesis y residencias requiere ejecutar las migraciones pendientes en la API.'], 503);
+        }
+
         $user = auth('api')->user();
         $query = RepositoryDocument::with(['uploader:id,nombres,apa,ama,semestre,grupo', 'publisher:id,nombres,apa,ama'])
             ->where('activo', true)
@@ -226,6 +242,10 @@ class RepositoryController extends Controller
     public function storeThesisDocument(Request $request)
     {
         try {
+            if (!$this->repositoryVisibilityEnabled()) {
+                return response()->json(['error' => 'El apartado de tesis y residencias requiere ejecutar las migraciones pendientes en la API.'], 503);
+            }
+
             $user = auth('api')->user();
             if ((int) $user->perfil_id !== 3) {
                 return response()->json(['error' => 'Solo estudiantes pueden subir avances de tesis o residencias.'], 403);
@@ -295,19 +315,24 @@ class RepositoryController extends Controller
                 return response()->json(['message' => 'No se pudo guardar el archivo.'], 500);
             }
 
-            $document = RepositoryDocument::create([
+            $documentData = [
                 'nombre' => trim($validated['nombre']),
                 'descripcion' => trim($validated['descripcion']),
                 'autores' => trim($validated['autores']),
                 'archivo_path' => $path,
                 'archivo_tipo' => $extension,
-                'document_category' => RepositoryDocument::CATEGORY_REPOSITORY,
-                'visibility' => RepositoryDocument::VISIBILITY_PUBLIC,
-                'published_at' => now(),
-                'published_by' => auth('api')->id(),
                 'uploaded_by' => auth('api')->id(),
                 'activo' => true,
-            ]);
+            ];
+
+            if ($this->repositoryVisibilityEnabled()) {
+                $documentData['document_category'] = RepositoryDocument::CATEGORY_REPOSITORY;
+                $documentData['visibility'] = RepositoryDocument::VISIBILITY_PUBLIC;
+                $documentData['published_at'] = now();
+                $documentData['published_by'] = auth('api')->id();
+            }
+
+            $document = RepositoryDocument::create($documentData);
             $document->tags()->sync($validated['tag_ids'] ?? []);
 
             return response()->json([
@@ -387,6 +412,10 @@ class RepositoryController extends Controller
 
     public function publish(Request $request, $id)
     {
+        if (!$this->repositoryVisibilityEnabled()) {
+            return response()->json(['error' => 'Publicar documentos requiere ejecutar las migraciones pendientes en la API.'], 503);
+        }
+
         $user = auth('api')->user();
         if ((int) $user->perfil_id !== 1) {
             return response()->json(['error' => 'Solo administradores pueden publicar documentos.'], 403);
@@ -482,6 +511,10 @@ class RepositoryController extends Controller
 
     private function canAccessDocument(RepositoryDocument $document): bool
     {
+        if (!$this->repositoryVisibilityEnabled()) {
+            return true;
+        }
+
         if ($document->visibility === RepositoryDocument::VISIBILITY_PUBLIC) {
             return true;
         }
@@ -579,5 +612,21 @@ class RepositoryController extends Controller
             ] : null,
             'allowed_extensions' => ['pdf', 'doc', 'docx'],
         ];
+    }
+
+    private function repositoryVisibilityEnabled(): bool
+    {
+        return $this->repositoryDocumentsHas('visibility') && $this->repositoryDocumentsHas('document_category');
+    }
+
+    private function repositoryDocumentsHas(string $column): bool
+    {
+        static $columns = [];
+
+        if (!array_key_exists($column, $columns)) {
+            $columns[$column] = Schema::hasColumn('repository_documents', $column);
+        }
+
+        return $columns[$column];
     }
 }
