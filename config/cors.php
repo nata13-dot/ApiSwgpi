@@ -40,6 +40,7 @@ return [
         'http://localhost:8001',
         'http://frontend_swgpi.test',
         'http://127.0.0.1:8000',
+        'swgpi.online',
         'https://frontsgwpi-production.up.railway.app',
     ], $frontendOrigins))),
 
