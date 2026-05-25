@@ -193,7 +193,10 @@ class EvaluationController extends Controller
     public function index(Request $request)
     {
         $user = auth('api')->user();
+        $archived = $request->boolean('archived');
         $query = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher'])
+            ->when($archived, fn ($scope) => $scope->whereNotNull('archived_at'))
+            ->when(!$archived, fn ($scope) => $scope->whereNull('archived_at'))
             ->orderBy('evaluation_room_id')
             ->orderBy('presentation_order')
             ->orderByDesc('created_at');
@@ -213,6 +216,42 @@ class EvaluationController extends Controller
         $evaluations->getCollection()->transform(fn ($evaluation) => $this->shapeEvaluation($evaluation));
 
         return response()->json($evaluations);
+    }
+
+    public function archive($id)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        $evaluation = Evaluation::find($id);
+        if (!$evaluation) {
+            return response()->json(['error' => 'Evaluacion no encontrada'], 404);
+        }
+
+        $evaluation->update([
+            'archived_at' => now(),
+            'archived_by' => $user->id,
+        ]);
+
+        return response()->json(['message' => 'Evaluacion archivada']);
+    }
+
+    public function unarchive($id)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        $evaluation = Evaluation::find($id);
+        if (!$evaluation) {
+            return response()->json(['error' => 'Evaluacion no encontrada'], 404);
+        }
+
+        $evaluation->update([
+            'archived_at' => null,
+            'archived_by' => null,
+        ]);
+
+        return response()->json(['message' => 'Evaluacion restaurada']);
     }
 
     public function store(Request $request)
@@ -1172,6 +1211,8 @@ class EvaluationController extends Controller
             'resultado' => $evaluation->resultado,
             'room_feedback' => $evaluation->room_feedback,
             'feedback_at' => optional($evaluation->feedback_at)->toDateTimeString(),
+            'archived_at' => optional($evaluation->archived_at)->toDateTimeString(),
+            'archived_by' => $evaluation->archived_by,
             'apto_titulacion' => $evaluation->apto_titulacion,
             'global_average' => $globalAverage,
             'score_mode' => $scoreMode,

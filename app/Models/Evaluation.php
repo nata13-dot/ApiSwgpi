@@ -11,7 +11,8 @@ class Evaluation extends Model
     protected $fillable = [
         'project_id', 'evaluation_room_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
         'presentation_order', 'sequence_status', 'estado', 'resultado', 'room_feedback',
-        'feedback_by', 'feedback_at', 'finalized_at', 'apto_titulacion', 'created_by',
+        'feedback_by', 'feedback_at', 'finalized_at', 'archived_at', 'archived_by',
+        'apto_titulacion', 'created_by',
     ];
 
     protected $casts = [
@@ -19,6 +20,7 @@ class Evaluation extends Model
         'fecha_exposicion' => 'datetime',
         'feedback_at' => 'datetime',
         'finalized_at' => 'datetime',
+        'archived_at' => 'datetime',
         'apto_titulacion' => 'boolean',
     ];
 

@@ -77,6 +77,8 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::get('/evaluations/{id}/report.pdf', [EvaluationController::class, 'exportEvaluationPdf']);
         Route::put('/evaluations/{id}', [EvaluationController::class, 'update']);
         Route::delete('/evaluations/{id}', [EvaluationController::class, 'destroy']);
+        Route::post('/evaluations/{id}/archive', [EvaluationController::class, 'archive']);
+        Route::post('/evaluations/{id}/unarchive', [EvaluationController::class, 'unarchive']);
         Route::post('/evaluations/{id}/score', [EvaluationController::class, 'score']);
         Route::post('/evaluations/{id}/feedback', [EvaluationController::class, 'feedback']);
     });
