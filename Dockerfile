@@ -181,7 +181,8 @@ sed -i "s/listen 8000;/listen ${PORT:-8000};/" /etc/nginx/sites-available/defaul
 # Public storage symlink for Laravel files
 php artisan storage:link || true
 
-# Run database migrations before serving traffic.
+# Run database migrations. Keep serving traffic if Railway's database is not ready yet;
+# API endpoints that depend on new columns return a clear 503 until migrations complete.
 echo "📊 Running database migrations..."
 for attempt in 1 2 3 4 5; do
     if php artisan migrate --force; then
@@ -189,8 +190,8 @@ for attempt in 1 2 3 4 5; do
     fi
 
     if [ "$attempt" = "5" ]; then
-        echo "❌ Database migrations failed after 5 attempts."
-        exit 1
+        echo "⚠️ Database migrations failed after 5 attempts. Continuing startup."
+        break
     fi
 
     echo "Database not ready or migration failed. Retrying in 5 seconds..."
