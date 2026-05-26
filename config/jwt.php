@@ -18,7 +18,8 @@ return [
         'passphrase' => env('JWT_PASSPHRASE'),
     ],
 
-    'ttl' => env('JWT_TTL', 60),
+    'ttl' => env('JWT_TTL', env('JWT_ABSOLUTE_TTL', 480)),
+    'absolute_ttl' => env('JWT_ABSOLUTE_TTL', 480),
     'refresh_ttl' => env('JWT_REFRESH_TTL', 20160),
     'algo' => env('JWT_ALGO', Tymon\JWTAuth\Providers\JWT\Provider::ALGO_HS256),
 
