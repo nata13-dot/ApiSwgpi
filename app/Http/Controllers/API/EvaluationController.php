@@ -1318,7 +1318,7 @@ class EvaluationController extends Controller
         ]);
 
         $ignoreId = $request->route('id');
-        $duplicateName = EvaluationRoom::where('activo', true)
+        $duplicateName = $this->schedulableRoomQuery()
             ->whereRaw('LOWER(nombre) = ?', [mb_strtolower($validated['nombre'])])
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->exists();
@@ -1331,7 +1331,7 @@ class EvaluationController extends Controller
             throw ValidationException::withMessages(['project_ids' => ['No puedes asignar el mismo proyecto mas de una vez en la sala.']]);
         }
 
-        $duplicateProjectRoom = EvaluationRoom::where('activo', true)
+        $duplicateProjectRoom = $this->schedulableRoomQuery()
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->whereHas('projects', fn ($query) => $query->whereIn('projects.id', $projectIds))
             ->exists();
@@ -1343,7 +1343,7 @@ class EvaluationController extends Controller
         }
 
         $selectedHour = \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion'])->startOfHour();
-        $conflictingRooms = EvaluationRoom::where('activo', true)
+        $conflictingRooms = $this->schedulableRoomQuery()
             ->whereBetween('fecha_evaluacion', [$selectedHour, $selectedHour->copy()->endOfHour()])
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->where(function ($query) use ($validated) {
@@ -1364,6 +1364,20 @@ class EvaluationController extends Controller
         }
 
         return $validated;
+    }
+
+    private function schedulableRoomQuery()
+    {
+        $query = EvaluationRoom::query()->where('activo', true);
+
+        if (Schema::hasColumn('evaluations', 'archived_at')) {
+            $query->where(function ($scope) {
+                $scope->whereDoesntHave('evaluations')
+                    ->orWhereHas('evaluations', fn ($evaluationQuery) => $evaluationQuery->whereNull('archived_at'));
+            });
+        }
+
+        return $query;
     }
 
     private function projectSyncPayload(array $projectIds, array $projectOrder): array
