@@ -440,14 +440,21 @@ class EvaluationController extends Controller
                         ]
                     );
                 }
-                $attempt->update([
+                $attemptPayload = [
                     'attempts_count' => $attempt->attempts_count + 1,
-                    'general_comment' => $validated['general_comment'] ?? $attempt->general_comment,
                     'last_submitted_at' => now(),
-                ]);
+                ];
+                if (Schema::hasColumn('evaluation_attempts', 'general_comment')) {
+                    $attemptPayload['general_comment'] = $validated['general_comment'] ?? $attempt->general_comment;
+                }
+                $attempt->update($attemptPayload);
             });
 
-            if ((int) $evaluation->semestre === 8 && $request->has('apto_titulacion')) {
+            if (
+                (int) $evaluation->semestre === 8
+                && $request->has('apto_titulacion')
+                && Schema::hasColumn('evaluations', 'apto_titulacion')
+            ) {
                 $evaluation->update(['apto_titulacion' => $request->boolean('apto_titulacion')]);
             }
 
@@ -457,6 +464,9 @@ class EvaluationController extends Controller
             ]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['error' => 'No se pudo guardar la rubrica. Revisa que las migraciones de evaluaciones esten aplicadas.'], 500);
         }
     }
 
