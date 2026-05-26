@@ -225,7 +225,8 @@ class EvaluationController extends Controller
             $query->where('project_id', $request->project_id);
         }
 
-        $evaluations = $query->paginate(15);
+        $perPage = min(max((int) $request->input('per_page', 100), 1), 200);
+        $evaluations = $query->paginate($perPage);
         $evaluations->getCollection()->transform(fn ($evaluation) => $this->shapeEvaluation($evaluation));
 
         return response()->json($evaluations);
@@ -669,6 +670,16 @@ class EvaluationController extends Controller
         $room = EvaluationRoom::with('projects')->findOrFail($id);
         if (!$this->isRoomResponsible($room, $user) && !$this->isEvaluationManager($user)) {
             return response()->json(['error' => 'Solo el responsable de la sala puede avanzar el turno.'], 403);
+        }
+        if (!$room->sequence_locked) {
+            throw ValidationException::withMessages([
+                'sequence_locked' => ['Primero debes bloquear el orden de la sala.'],
+            ]);
+        }
+        if ($room->completed_at || !$room->current_order) {
+            throw ValidationException::withMessages([
+                'current_order' => ['La sala ya no tiene proyectos pendientes por avanzar.'],
+            ]);
         }
 
         $validated = $request->validate([
@@ -1429,6 +1440,11 @@ class EvaluationController extends Controller
     private function syncRoomEvaluations(EvaluationRoom $room): void
     {
         $room->load('projects');
+        $projectIds = $room->projects->pluck('id')->map(fn ($id) => (int) $id)->values();
+        Evaluation::where('evaluation_room_id', $room->id)
+            ->whereNotIn('project_id', $projectIds)
+            ->delete();
+
         foreach ($room->projects as $project) {
             Evaluation::updateOrCreate(
                 ['project_id' => $project->id, 'evaluation_room_id' => $room->id],
