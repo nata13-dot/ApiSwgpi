@@ -394,9 +394,8 @@ class EvaluationController extends Controller
             return response()->json(['error' => 'No estas asignado como evaluador de esta sala.'], 403);
         }
 
-        $validCriteria = $this->criteriaForEvaluation($evaluation)->pluck('clave')->all();
-
         try {
+            $validCriteria = $this->criteriaForEvaluation($evaluation)->pluck('clave')->all();
             $validated = $request->validate([
                 'scores' => 'required|array',
                 'scores.*.criterio' => ['required', 'string', Rule::in($validCriteria)],
@@ -427,6 +426,7 @@ class EvaluationController extends Controller
 
                 foreach ($validated['scores'] as $score) {
                     $scoreMode = $this->rubricScoreModeForSemester((int) $evaluation->semestre);
+                    $storageLevel = $this->storageLevelForScore($score['nivel']);
                     EvaluationScore::updateOrCreate(
                         [
                             'evaluation_id' => $evaluation->id,
@@ -434,8 +434,8 @@ class EvaluationController extends Controller
                             'criterio' => $score['criterio'],
                         ],
                         [
-                            'nivel' => $score['nivel'],
-                            'puntaje' => $this->pointsForLevel($score['nivel'], $scoreMode),
+                            'nivel' => $storageLevel,
+                            'puntaje' => $this->pointsForStoredLevel($score['nivel'], $storageLevel, $scoreMode),
                             'comentario' => $score['comentario'] ?? null,
                         ]
                     );
@@ -1092,6 +1092,48 @@ class EvaluationController extends Controller
         }
 
         return $this->levels[$level] ?? 0;
+    }
+
+    private function pointsForStoredLevel(string $submittedLevel, string $storageLevel, string $mode): int
+    {
+        if ($submittedLevel !== $storageLevel && $this->isLegacyLevel($storageLevel)) {
+            return $this->legacyLevels[$storageLevel];
+        }
+
+        return $this->pointsForLevel($submittedLevel, $mode);
+    }
+
+    private function storageLevelForScore(string $level): string
+    {
+        if ($this->supportsModernScoreLevels()) {
+            return $level;
+        }
+
+        return match ($level) {
+            'totalmente_de_acuerdo' => 'mucho',
+            'de_acuerdo' => 'bastante',
+            'neutral' => 'poco',
+            'en_desacuerdo' => 'poco',
+            'totalmente_en_desacuerdo' => 'nada',
+            default => $level,
+        };
+    }
+
+    private function supportsModernScoreLevels(): bool
+    {
+        static $supports = null;
+        if ($supports !== null) {
+            return $supports;
+        }
+
+        try {
+            $column = DB::selectOne("SHOW COLUMNS FROM evaluation_scores LIKE 'nivel'");
+            $type = strtolower((string) ($column->Type ?? $column->type ?? ''));
+            return $supports = str_contains($type, 'totalmente_de_acuerdo');
+        } catch (\Throwable $e) {
+            report($e);
+            return $supports = true;
+        }
     }
 
     private function isLegacyLevel(?string $level): bool
