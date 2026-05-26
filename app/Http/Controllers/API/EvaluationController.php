@@ -1241,6 +1241,7 @@ class EvaluationController extends Controller
 
     private function shapeEvaluation(Evaluation $evaluation): array
     {
+        $currentUser = auth('api')->user();
         $scores = $this->activeScoresForEvaluation($evaluation);
         $labels = $this->criteriaLabelsForEvaluation($evaluation);
         $scoreMode = $this->rubricScoreModeForSemester((int) $evaluation->semestre);
@@ -1249,9 +1250,10 @@ class EvaluationController extends Controller
 
         $teacherBreakdown = $scores
             ->groupBy('teacher_id')
-            ->map(function ($teacherScores) use ($labels, $evaluation) {
+            ->map(function ($teacherScores) use ($labels, $evaluation, $currentUser) {
                 $teacher = $teacherScores->first()->teacher;
                 $attempt = $evaluation->attempts?->firstWhere('teacher_id', $teacher?->id);
+                $canViewScoreDetail = $this->canViewTeacherScoreDetail($currentUser, $teacher?->id);
                 return [
                     'teacher_id' => $teacher?->id,
                     'teacher_name' => trim(($teacher?->nombres ?? '') . ' ' . ($teacher?->apa ?? '') . ' ' . ($teacher?->ama ?? '')) ?: 'Docente',
@@ -1263,7 +1265,8 @@ class EvaluationController extends Controller
                         ? 3
                         : $this->maxScoreForSemester((int) $evaluation->semestre),
                     'general_comment' => $attempt?->general_comment,
-                    'scores' => $teacherScores->map(fn ($score) => [
+                    'can_view_score_detail' => $canViewScoreDetail,
+                    'scores' => $canViewScoreDetail ? $teacherScores->map(fn ($score) => [
                         'criterio' => $score->criterio,
                         'criterio_label' => $labels[$score->criterio] ?? $score->criterio,
                         'nivel' => $score->nivel,
@@ -1272,7 +1275,7 @@ class EvaluationController extends Controller
                         'puntaje_max' => $this->maxScoreForScore($score, (int) $evaluation->semestre),
                         'score_mode' => $this->scoreModeForScore($score, (int) $evaluation->semestre),
                         'comentario' => $score->comentario,
-                    ])->values(),
+                    ])->values() : collect(),
                 ];
             })
             ->values();
@@ -1318,6 +1321,15 @@ class EvaluationController extends Controller
             'is_room_responsible' => $this->isRoomResponsible($evaluation->room, auth('api')->user()),
             'can_manage_evaluations' => $this->isEvaluationManager(auth('api')->user()),
         ];
+    }
+
+    private function canViewTeacherScoreDetail($user, ?string $teacherId): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        return $this->isEvaluationManager($user) || ((string) $user->id === (string) $teacherId);
     }
 
     private function roomRules(Request $request): array
