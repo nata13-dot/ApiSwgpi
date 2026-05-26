@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class EvaluationRoom extends Model
 {
     protected $fillable = [
-        'nombre', 'salon', 'semestre', 'responsible_teacher_id', 'fecha_evaluacion',
+        'nombre', 'salon', 'semestre', 'responsible_teacher_id', 'fecha_evaluacion', 'fecha_fin_evaluacion',
         'teacher_evaluation_minutes', 'project_presentation_minutes',
         'max_attempts', 'sequence_locked', 'current_order', 'completed_at', 'activo',
     ];
@@ -17,6 +17,7 @@ class EvaluationRoom extends Model
     protected $casts = [
         'semestre' => 'integer',
         'fecha_evaluacion' => 'datetime',
+        'fecha_fin_evaluacion' => 'datetime',
         'teacher_evaluation_minutes' => 'integer',
         'project_presentation_minutes' => 'integer',
         'max_attempts' => 'integer',

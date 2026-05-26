@@ -1306,6 +1306,7 @@ class EvaluationController extends Controller
             'semestre' => 'required|integer|in:5,6,7,8',
             'responsible_teacher_id' => ['nullable', Rule::exists('users', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
             'fecha_evaluacion' => 'required|date|after:now',
+            'fecha_fin_evaluacion' => 'required|date|after:fecha_evaluacion',
             'teacher_evaluation_minutes' => 'required|integer|min:1|max:240',
             'project_presentation_minutes' => 'required|integer|min:1|max:240',
             'max_attempts' => 'required|integer|min:1|max:10',
@@ -1318,12 +1319,15 @@ class EvaluationController extends Controller
         ]);
 
         $ignoreId = $request->route('id');
-        $duplicateName = $this->schedulableRoomQuery()
+        $startsAt = \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion']);
+        $endsAt = \Illuminate\Support\Carbon::parse($validated['fecha_fin_evaluacion']);
+
+        $duplicateName = $this->overlappingRoomQuery($this->schedulableRoomQuery(), $startsAt, $endsAt)
             ->whereRaw('LOWER(nombre) = ?', [mb_strtolower($validated['nombre'])])
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->exists();
         if ($duplicateName) {
-            throw ValidationException::withMessages(['nombre' => ['Ya existe una sala activa con ese nombre.']]);
+            throw ValidationException::withMessages(['nombre' => ['Ya existe una sala activa con ese nombre en ese horario.']]);
         }
 
         $projectIds = collect($validated['project_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->values();
@@ -1331,20 +1335,18 @@ class EvaluationController extends Controller
             throw ValidationException::withMessages(['project_ids' => ['No puedes asignar el mismo proyecto mas de una vez en la sala.']]);
         }
 
-        $duplicateProjectRoom = $this->schedulableRoomQuery()
+        $duplicateProjectRoom = $this->overlappingRoomQuery($this->schedulableRoomQuery(), $startsAt, $endsAt)
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->whereHas('projects', fn ($query) => $query->whereIn('projects.id', $projectIds))
             ->exists();
 
         if ($duplicateProjectRoom) {
             throw ValidationException::withMessages([
-                'project_ids' => ['Uno o mas proyectos ya estan asignados a otra sala activa.'],
+                'project_ids' => ['Uno o mas proyectos ya estan asignados a otra sala activa en ese horario.'],
             ]);
         }
 
-        $selectedHour = \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion'])->startOfHour();
-        $conflictingRooms = $this->schedulableRoomQuery()
-            ->whereBetween('fecha_evaluacion', [$selectedHour, $selectedHour->copy()->endOfHour()])
+        $conflictingRooms = $this->overlappingRoomQuery($this->schedulableRoomQuery(), $startsAt, $endsAt)
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->where(function ($query) use ($validated) {
                 $teacherIds = $validated['teacher_ids'] ?? [];
@@ -1359,7 +1361,7 @@ class EvaluationController extends Controller
 
         if ($conflictingRooms->isNotEmpty()) {
             throw ValidationException::withMessages([
-                'fecha_evaluacion' => ['Hay docentes o proyectos ya asignados en otra sala para la misma fecha y hora.'],
+                'fecha_evaluacion' => ['Hay docentes ya asignados en otra sala dentro de ese rango de horario.'],
             ]);
         }
 
@@ -1378,6 +1380,23 @@ class EvaluationController extends Controller
         }
 
         return $query;
+    }
+
+    private function overlappingRoomQuery($query, $startsAt, $endsAt)
+    {
+        if (Schema::hasColumn('evaluation_rooms', 'fecha_fin_evaluacion')) {
+            return $query
+                ->where('fecha_evaluacion', '<', $endsAt)
+                ->whereRaw(
+                    'COALESCE(fecha_fin_evaluacion, DATE_ADD(fecha_evaluacion, INTERVAL 1 HOUR)) > ?',
+                    [$startsAt->toDateTimeString()]
+                );
+        }
+
+        return $query->whereBetween('fecha_evaluacion', [
+            $startsAt->copy()->startOfHour(),
+            $startsAt->copy()->endOfHour(),
+        ]);
     }
 
     private function projectSyncPayload(array $projectIds, array $projectOrder): array
@@ -1429,6 +1448,7 @@ class EvaluationController extends Controller
             'responsible_teacher_id' => $room->responsible_teacher_id,
             'responsible_teacher' => $room->responsibleTeacher,
             'fecha_evaluacion' => optional($room->fecha_evaluacion)->toDateTimeString(),
+            'fecha_fin_evaluacion' => optional($room->fecha_fin_evaluacion)->toDateTimeString(),
             'teacher_evaluation_minutes' => $room->teacher_evaluation_minutes,
             'project_presentation_minutes' => $room->project_presentation_minutes,
             'max_attempts' => $room->max_attempts,
