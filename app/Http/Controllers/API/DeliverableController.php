@@ -28,6 +28,23 @@ class DeliverableController extends Controller
         }
 
         $subjectFilter = $request->query('asignatura_id');
+        $deliverableColumns = [
+            'id', 'project_id', 'competencia_id', 'nombre', 'descripcion', 'estado',
+            'archivo_path', 'tipo_documento', 'submitted_by',
+        ];
+        foreach (['calificacion', 'fecha_calificacion', 'calificado_por'] as $column) {
+            if (Schema::hasColumn('deliverables', $column)) {
+                $deliverableColumns[] = $column;
+            }
+        }
+        $deliverableRelations = [
+            'competencia:id,asignatura_id,nombre,fecha_inicio,fecha_fin',
+            'competencia.asignatura:id,nombre,clave',
+            'submittedBy:id,nombres,apa,ama',
+        ];
+        if (Schema::hasColumn('deliverables', 'calificado_por')) {
+            $deliverableRelations[] = 'calificadoPor:id,nombres,apa,ama';
+        }
 
         $projects = Project::select(['id', 'title', 'semestre', 'year', 'subject_group_id'])
             ->with([
@@ -40,17 +57,8 @@ class DeliverableController extends Controller
                         $query->where('asignatura_id', $subjectFilter);
                     }
                 },
-                'deliverables' => function ($query) use ($subjectFilter) {
-                    $query->select([
-                        'id', 'project_id', 'competencia_id', 'nombre', 'descripcion', 'estado',
-                        'archivo_path', 'tipo_documento', 'submitted_by', 'calificacion',
-                        'fecha_calificacion', 'calificado_por',
-                    ])->with([
-                        'competencia:id,asignatura_id,nombre,fecha_inicio,fecha_fin',
-                        'competencia.asignatura:id,nombre,clave',
-                        'submittedBy:id,nombres,apa,ama',
-                        'calificadoPor:id,nombres,apa,ama',
-                    ]);
+                'deliverables' => function ($query) use ($subjectFilter, $deliverableColumns, $deliverableRelations) {
+                    $query->select($deliverableColumns)->with($deliverableRelations);
 
                     if ($subjectFilter) {
                         $query->whereHas('competencia', fn ($competenciaQuery) => $competenciaQuery->where('asignatura_id', $subjectFilter));
