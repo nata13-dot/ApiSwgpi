@@ -572,8 +572,19 @@ class EvaluationController extends Controller
     {
         if ($guard = $this->guardEvaluationManager()) return $guard;
 
-        EvaluationRoom::findOrFail($id)->update(['activo' => false]);
-        return response()->json(['message' => 'Sala desactivada']);
+        $room = EvaluationRoom::findOrFail($id);
+        $deletedEvaluations = 0;
+
+        DB::transaction(function () use ($room, &$deletedEvaluations) {
+            $deletedEvaluations = Evaluation::where('evaluation_room_id', $room->id)->count();
+            Evaluation::where('evaluation_room_id', $room->id)->delete();
+            $room->delete();
+        });
+
+        return response()->json([
+            'message' => 'Sala y evaluaciones eliminadas',
+            'deleted_evaluations' => $deletedEvaluations,
+        ]);
     }
 
     public function archiveRoom($id)
