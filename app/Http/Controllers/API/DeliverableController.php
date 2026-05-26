@@ -187,6 +187,32 @@ class DeliverableController extends Controller
         return response()->json($query->paginate(12));
     }
 
+    public function myDeliverables()
+    {
+        $user = auth('api')->user();
+        if ((int) $user->perfil_id !== 3) {
+            return response()->json(['error' => 'Solo estudiantes pueden consultar sus entregables'], 403);
+        }
+
+        $query = Deliverable::with([
+                'project:id,title,semestre,year',
+                'competencia:id,nombre,asignatura_id',
+                'competencia.asignatura:id,nombre,clave',
+                'calificadoPor:id,nombres,apa,ama',
+            ])
+            ->where('activo', true)
+            ->where(function ($scope) use ($user) {
+                $scope->where('submitted_by', $user->id)
+                    ->orWhereHas('project.students', fn ($studentQuery) => $studentQuery->where('users.id', $user->id));
+            })
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json([
+            'data' => $query->map(fn (Deliverable $deliverable) => $this->shapeStudentDeliverable($deliverable))->values(),
+        ]);
+    }
+
     public function evaluationDocuments()
     {
         $user = auth('api')->user();
@@ -534,6 +560,28 @@ class DeliverableController extends Controller
                 'fecha_calificacion' => optional($deliverable->fecha_calificacion)->toDateTimeString(),
                 'calificado_por' => $deliverable->calificadoPor,
             ] : null,
+        ];
+    }
+
+    private function shapeStudentDeliverable(Deliverable $deliverable): array
+    {
+        return [
+            'id' => $deliverable->id,
+            'project_id' => $deliverable->project_id,
+            'competencia_id' => $deliverable->competencia_id,
+            'nombre' => $deliverable->nombre,
+            'descripcion' => $deliverable->descripcion,
+            'estado' => $deliverable->estado,
+            'archivo_path' => $deliverable->archivo_path,
+            'file_path' => $deliverable->archivo_path,
+            'tipo_documento' => $deliverable->tipo_documento,
+            'calificacion' => $deliverable->calificacion,
+            'fecha_calificacion' => optional($deliverable->fecha_calificacion)->toDateTimeString(),
+            'created_at' => optional($deliverable->created_at)->toDateTimeString(),
+            'project' => $deliverable->project,
+            'competencia' => $deliverable->competencia,
+            'calificado_por' => $deliverable->calificadoPor,
+            'calificadoPor' => $deliverable->calificadoPor,
         ];
     }
 

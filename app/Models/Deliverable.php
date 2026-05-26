@@ -24,6 +24,7 @@ class Deliverable extends Model
     protected $casts = [
         'activo' => 'boolean',
         'calificacion' => 'float',
+        'created_at' => 'datetime',
         'fecha_calificacion' => 'datetime',
     ];
 
