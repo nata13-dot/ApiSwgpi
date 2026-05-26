@@ -2,6 +2,8 @@
 
 ## [Unreleased](https://github.com/laravel/laravel/compare/v13.4.0...13.x)
 
+* Deploy marker: refresh Railway deployment after session inactivity update.
+
 ## [v13.4.0](https://github.com/laravel/laravel/compare/v13.3.0...v13.4.0) - 2026-04-28
 
 * Add @no_additional_args to composer test script config clear by [@jnoordsij](https://github.com/jnoordsij) in https://github.com/laravel/laravel/pull/6799
