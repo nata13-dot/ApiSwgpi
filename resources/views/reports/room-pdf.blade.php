@@ -4,22 +4,33 @@
     <meta charset="utf-8">
     <title>Reporte de Sala</title>
     <style>
-        body { font-family: DejaVu Sans, sans-serif; color: #111827; font-size: 10.5px; }
-        h1 { font-size: 22px; margin: 0 0 6px; }
-        h2 { font-size: 15px; margin: 20px 0 8px; color: #1f2937; }
-        h3 { font-size: 13px; margin: 18px 0 7px; color: #374151; }
+        @page { margin: 18px 16px; size: letter landscape; }
+        body { font-family: DejaVu Sans, sans-serif; color: #111827; font-size: 8.8px; }
+        h1 { font-size: 18px; margin: 0 0 5px; }
+        h2 { font-size: 12px; margin: 15px 0 6px; color: #1f2937; }
+        h3 { font-size: 11px; margin: 14px 0 6px; color: #374151; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #d1d5db; padding: 6px; vertical-align: top; }
+        th, td { border: 1px solid #d1d5db; padding: 4px; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
         th { background: #e5eefc; font-weight: bold; }
         .muted { color: #6b7280; }
         .summary td:first-child { width: 30%; font-weight: bold; background: #f9fafb; }
+        .projects-table { table-layout: fixed; }
+        .projects-table th:nth-child(1), .projects-table td:nth-child(1) { width: 7%; }
+        .projects-table th:nth-child(4), .projects-table td:nth-child(4),
+        .projects-table th:nth-child(5), .projects-table td:nth-child(5),
+        .projects-table th:nth-child(6), .projects-table td:nth-child(6),
+        .projects-table th:nth-child(7), .projects-table td:nth-child(7) { width: 10%; }
+        .matrix-table { table-layout: fixed; }
+        .matrix-table th, .matrix-table td { font-size: 7px; line-height: 1.25; }
+        .matrix-table th:first-child, .matrix-table td:first-child { width: 18%; font-weight: bold; }
+        .matrix-table th:last-child, .matrix-table td:last-child { width: 8%; }
         .chart { text-align: center; margin-top: 8px; }
         .chart img { max-width: 100%; height: auto; border: 1px solid #e5e7eb; }
         .project-block { page-break-inside: avoid; margin-top: 14px; }
-        .comment { border: 1px solid #d1d5db; padding: 7px; margin-bottom: 6px; }
+        .comment { border: 1px solid #d1d5db; padding: 6px; margin-bottom: 6px; page-break-inside: avoid; }
         .comment strong { display: block; margin-bottom: 3px; }
         .criterion-comment { margin: 3px 0 0 10px; }
-        .score { white-space: nowrap; }
+        .score { white-space: normal; }
     </style>
 </head>
 <body>
@@ -42,7 +53,7 @@
     </table>
 
     <h2>Proyectos Evaluados</h2>
-    <table>
+    <table class="projects-table">
         <thead>
             <tr>
                 <th>Orden</th>
@@ -85,7 +96,7 @@
                     Apto para titulacion: <strong>{{ $report['titulationAptSummary']['label'] }}</strong>
                 </p>
             @endif
-            <table>
+            <table class="matrix-table">
                 <thead>
                     <tr>
                         <th>Criterio</th>

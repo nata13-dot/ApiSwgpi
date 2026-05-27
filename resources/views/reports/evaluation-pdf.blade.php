@@ -4,18 +4,23 @@
     <meta charset="utf-8">
     <title>Reporte de Evaluacion</title>
     <style>
-        body { font-family: DejaVu Sans, sans-serif; color: #111827; font-size: 11px; }
-        h1 { font-size: 22px; margin: 0 0 6px; }
-        h2 { font-size: 15px; margin: 22px 0 8px; color: #1f2937; }
+        @page { margin: 18px 16px; size: letter landscape; }
+        body { font-family: DejaVu Sans, sans-serif; color: #111827; font-size: 9px; }
+        h1 { font-size: 18px; margin: 0 0 5px; }
+        h2 { font-size: 12px; margin: 15px 0 6px; color: #1f2937; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #d1d5db; padding: 7px; vertical-align: top; }
+        th, td { border: 1px solid #d1d5db; padding: 4px; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
         th { background: #e5eefc; font-weight: bold; }
         .muted { color: #6b7280; }
         .summary td:first-child { width: 32%; font-weight: bold; background: #f9fafb; }
-        .score { white-space: nowrap; }
+        .matrix-table { table-layout: fixed; }
+        .matrix-table th, .matrix-table td { font-size: 7.2px; line-height: 1.25; }
+        .matrix-table th:first-child, .matrix-table td:first-child { width: 18%; font-weight: bold; }
+        .matrix-table th:last-child, .matrix-table td:last-child { width: 8%; }
+        .score { white-space: normal; }
         .chart { text-align: center; margin-top: 8px; }
         .chart img { max-width: 100%; height: auto; border: 1px solid #e5e7eb; }
-        .comment { border: 1px solid #d1d5db; padding: 8px; margin-bottom: 8px; }
+        .comment { border: 1px solid #d1d5db; padding: 6px; margin-bottom: 6px; page-break-inside: avoid; }
         .comment strong { display: block; margin-bottom: 4px; }
         .criterion-comment { margin: 4px 0 0 12px; }
     </style>
@@ -45,7 +50,7 @@
     </table>
 
     <h2>Tabla de Calificaciones por Criterio</h2>
-    <table>
+    <table class="matrix-table">
         <thead>
             <tr>
                 <th>Criterio</th>
