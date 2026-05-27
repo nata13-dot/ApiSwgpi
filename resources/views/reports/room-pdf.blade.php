@@ -50,6 +50,7 @@
                 <th>Equipo</th>
                 <th>Docentes</th>
                 <th>Promedio</th>
+                <th>Apto titulacion</th>
                 <th>Estado</th>
             </tr>
         </thead>
@@ -61,10 +62,11 @@
                     <td>{{ $project['students'] ?: '-' }}</td>
                     <td>{{ $project['teachers_count'] }}</td>
                     <td><strong>{{ $project['average'] }}%</strong></td>
+                    <td>{{ $project['titulation_apt_result'] }}</td>
                     <td>{{ $project['status'] ?: '-' }}</td>
                 </tr>
             @empty
-                <tr><td colspan="6" class="muted">No hay proyectos evaluados en esta sala.</td></tr>
+                <tr><td colspan="7" class="muted">No hay proyectos evaluados en esta sala.</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -78,6 +80,13 @@
     @foreach ($evaluationReports as $report)
         <div class="project-block">
             <h3>{{ $report['project']?->title ?? 'Proyecto sin titulo' }} · {{ $report['globalAverage'] }}%</h3>
+            @if ($report['titulationAptSummary']['applies'])
+                <p class="muted">
+                    Apto para titulacion: <strong>{{ $report['titulationAptSummary']['label'] }}</strong>
+                    ({{ $report['titulationAptSummary']['yes'] }} si / {{ $report['titulationAptSummary']['no'] }} no,
+                    requiere {{ $report['titulationAptSummary']['required_yes'] }} de {{ $report['titulationAptSummary']['total'] }})
+                </p>
+            @endif
             <table>
                 <thead>
                     <tr>
@@ -112,6 +121,16 @@
             @forelse ($report['comments'] as $comment)
                 <div class="comment">
                     <strong>{{ $comment['teacher_name'] }}</strong>
+                    @if ($report['titulationAptSummary']['applies'])
+                        <div class="muted">
+                            Apto para titulacion:
+                            @if ($comment['apto_titulacion'] === null)
+                                Sin respuesta
+                            @else
+                                {{ $comment['apto_titulacion'] ? 'Si' : 'No' }}
+                            @endif
+                        </div>
+                    @endif
                     <div>{{ $comment['general_comment'] ?: 'Sin comentario general.' }}</div>
                     @foreach ($comment['criterion_comments'] as $criterionComment)
                         <div class="criterion-comment">

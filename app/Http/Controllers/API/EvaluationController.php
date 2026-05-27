@@ -447,15 +447,21 @@ class EvaluationController extends Controller
                 if (Schema::hasColumn('evaluation_attempts', 'general_comment')) {
                     $attemptPayload['general_comment'] = $validated['general_comment'] ?? $attempt->general_comment;
                 }
+                if (
+                    (int) $evaluation->semestre === 8
+                    && $request->has('apto_titulacion')
+                    && Schema::hasColumn('evaluation_attempts', 'apto_titulacion')
+                ) {
+                    $attemptPayload['apto_titulacion'] = $request->boolean('apto_titulacion');
+                }
                 $attempt->update($attemptPayload);
             });
 
             if (
                 (int) $evaluation->semestre === 8
-                && $request->has('apto_titulacion')
                 && Schema::hasColumn('evaluations', 'apto_titulacion')
             ) {
-                $evaluation->update(['apto_titulacion' => $request->boolean('apto_titulacion')]);
+                $this->syncTitulationAptResult($evaluation->fresh(['attempts']));
             }
 
             return response()->json([
@@ -857,6 +863,7 @@ class EvaluationController extends Controller
             ->filter()
             ->unique('id')
             ->values();
+        $titulationAptSummary = $this->titulationAptSummary($evaluation);
 
         $matrix = collect($criteriaLabels)->map(function ($label, $criterion) use ($evaluation, $teachers, $scores) {
             $teacherScores = [];
@@ -910,6 +917,7 @@ class EvaluationController extends Controller
                 'teacher_id' => $teacher->id,
                 'teacher_name' => $this->fullName($teacher),
                 'general_comment' => $attempt?->general_comment,
+                'apto_titulacion' => $this->attemptTitulationVote($attempt),
                 'criterion_comments' => $criterionComments,
             ];
         })->values()->all();
@@ -924,6 +932,7 @@ class EvaluationController extends Controller
             'teachers' => $teachers,
             'matrix' => $matrix,
             'comments' => $comments,
+            'titulationAptSummary' => $titulationAptSummary,
             'globalAverage' => $this->scoreCollectionAverage($scores, (int) $evaluation->semestre),
             'chartUrl' => $this->quickChartUrl($chartLabels, $chartValues),
             'generatedAt' => now(),
@@ -953,6 +962,7 @@ class EvaluationController extends Controller
                 'average' => $report['globalAverage'],
                 'status' => $evaluation->sequence_status ?? $evaluation->estado,
                 'result' => $evaluation->resultado,
+                'titulation_apt_result' => $report['titulationAptSummary']['label'],
             ];
         })->all();
 
@@ -1013,6 +1023,7 @@ class EvaluationController extends Controller
         ?string $criterionLabel = null
     ): void {
         $students = $evaluation->project?->students ?? collect();
+        $titulationAptSummary = $this->titulationAptSummary($evaluation);
 
         fputcsv($handle, [
             $room->id,
@@ -1042,8 +1053,78 @@ class EvaluationController extends Controller
             $this->csvCell($teacherGeneralComment),
             $this->csvCell($evaluation->room_feedback),
             optional($evaluation->feedback_at)->format('Y-m-d H:i:s'),
-            $evaluation->apto_titulacion === null ? null : ($evaluation->apto_titulacion ? 1 : 0),
+            $titulationAptSummary['result'] === null
+                ? null
+                : ($titulationAptSummary['result'] ? 1 : 0),
         ], ';');
+    }
+
+    private function syncTitulationAptResult(Evaluation $evaluation): void
+    {
+        if ((int) $evaluation->semestre !== 8 || !Schema::hasColumn('evaluations', 'apto_titulacion')) {
+            return;
+        }
+
+        $summary = $this->titulationAptSummary($evaluation);
+        if ($summary['result'] !== null) {
+            $evaluation->update(['apto_titulacion' => (bool) $summary['result']]);
+        }
+    }
+
+    private function titulationAptSummary(Evaluation $evaluation): array
+    {
+        if ((int) $evaluation->semestre !== 8) {
+            return [
+                'applies' => false,
+                'yes' => 0,
+                'no' => 0,
+                'total' => 0,
+                'required_yes' => 0,
+                'result' => null,
+                'label' => 'No aplica',
+            ];
+        }
+
+        $votes = collect();
+        if (Schema::hasColumn('evaluation_attempts', 'apto_titulacion')) {
+            $attempts = $evaluation->relationLoaded('attempts')
+                ? $evaluation->attempts
+                : $evaluation->attempts()->get();
+
+            $votes = $attempts
+                ->filter(fn ($attempt) => $attempt->apto_titulacion !== null)
+                ->map(fn ($attempt) => (bool) $attempt->apto_titulacion)
+                ->values();
+        }
+
+        if ($votes->isEmpty() && $evaluation->apto_titulacion !== null) {
+            $votes = collect([(bool) $evaluation->apto_titulacion]);
+        }
+
+        $total = $votes->count();
+        $yes = $votes->filter()->count();
+        $no = $total - $yes;
+        $requiredYes = $total > 0 ? (int) floor($total / 2) + 1 : 0;
+        $result = $total > 0 ? $yes >= $requiredYes : null;
+
+        return [
+            'applies' => true,
+            'yes' => $yes,
+            'no' => $no,
+            'total' => $total,
+            'required_yes' => $requiredYes,
+            'result' => $result,
+            'label' => $result === null ? 'Sin votos' : ($result ? 'Apto' : 'No apto'),
+        ];
+    }
+
+    private function attemptTitulationVote(?EvaluationAttempt $attempt): ?bool
+    {
+        if (!$attempt || !Schema::hasColumn('evaluation_attempts', 'apto_titulacion')) {
+            return null;
+        }
+
+        return $attempt->apto_titulacion === null ? null : (bool) $attempt->apto_titulacion;
     }
 
     private function fullName(User $user): string
@@ -1317,6 +1398,7 @@ class EvaluationController extends Controller
                         ? 3
                         : $this->maxScoreForSemester((int) $evaluation->semestre),
                     'general_comment' => $attempt?->general_comment,
+                    'apto_titulacion' => $this->attemptTitulationVote($attempt),
                     'can_view_score_detail' => $canViewScoreDetail,
                     'scores' => $canViewScoreDetail ? $teacherScores->map(fn ($score) => [
                         'criterio' => $score->criterio,
@@ -1337,6 +1419,8 @@ class EvaluationController extends Controller
         $completedEvaluatorIds = $teacherBreakdown->pluck('teacher_id')->filter()->map(fn ($id) => (string) $id)->unique()->values();
         $expectedEvaluatorsCount = $expectedEvaluatorIds->count();
         $evaluatedByAll = $expectedEvaluatorsCount > 0 && $expectedEvaluatorIds->diff($completedEvaluatorIds)->isEmpty();
+        $currentTeacherAttempt = $evaluation->attempts->firstWhere('teacher_id', auth('api')->id());
+        $titulationAptSummary = $this->titulationAptSummary($evaluation);
 
         return [
             'id' => $evaluation->id,
@@ -1357,6 +1441,7 @@ class EvaluationController extends Controller
             'archived_at' => optional($evaluation->archived_at)->toDateTimeString(),
             'archived_by' => $evaluation->archived_by,
             'apto_titulacion' => $evaluation->apto_titulacion,
+            'titulation_apt_summary' => $titulationAptSummary,
             'global_average' => $globalAverage,
             'score_mode' => $scoreMode,
             'max_score' => $maxScore,
@@ -1366,7 +1451,8 @@ class EvaluationController extends Controller
             'evaluated_by_all' => $evaluatedByAll,
             'evaluation_badge_color' => $evaluatedByAll ? 'success' : ($evaluation->sequence_status === 'activo' ? 'primary' : 'secondary'),
             'teacher_breakdown' => $teacherBreakdown,
-            'current_teacher_attempts' => optional($evaluation->attempts->firstWhere('teacher_id', auth('api')->id()))->attempts_count ?? 0,
+            'current_teacher_attempts' => optional($currentTeacherAttempt)->attempts_count ?? 0,
+            'current_teacher_apto_titulacion' => $this->attemptTitulationVote($currentTeacherAttempt),
             'current_teacher_has_scores' => $scores->where('teacher_id', auth('api')->id())->isNotEmpty(),
             'max_attempts' => $evaluation->room?->max_attempts ?? 1,
             'can_score_now' => $this->canScoreEvaluation($evaluation, auth('api')->user()),

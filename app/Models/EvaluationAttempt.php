@@ -7,10 +7,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EvaluationAttempt extends Model
 {
-    protected $fillable = ['evaluation_id', 'teacher_id', 'attempts_count', 'general_comment', 'last_submitted_at'];
+    protected $fillable = [
+        'evaluation_id', 'teacher_id', 'attempts_count', 'general_comment',
+        'apto_titulacion', 'last_submitted_at',
+    ];
 
     protected $casts = [
         'attempts_count' => 'integer',
+        'apto_titulacion' => 'boolean',
         'last_submitted_at' => 'datetime',
     ];
 

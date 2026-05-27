@@ -34,6 +34,18 @@
             <tr><td>Sala</td><td>{{ $evaluation->room?->nombre ?? $evaluation->sala ?? '-' }}</td></tr>
             <tr><td>Fecha de evaluacion</td><td>{{ optional($evaluation->fecha_exposicion)->format('d/m/Y H:i') ?? '-' }}</td></tr>
             <tr><td>Promedio global</td><td>{{ $globalAverage }}%</td></tr>
+            @if ($titulationAptSummary['applies'])
+                <tr>
+                    <td>Apto para titulacion</td>
+                    <td>
+                        {{ $titulationAptSummary['label'] }}
+                        <span class="muted">
+                            ({{ $titulationAptSummary['yes'] }} si / {{ $titulationAptSummary['no'] }} no,
+                            requiere {{ $titulationAptSummary['required_yes'] }} de {{ $titulationAptSummary['total'] }})
+                        </span>
+                    </td>
+                </tr>
+            @endif
             <tr><td>Fecha de reporte</td><td>{{ $generatedAt->format('d/m/Y H:i') }}</td></tr>
         </tbody>
     </table>
@@ -78,6 +90,16 @@
     @forelse ($comments as $comment)
         <div class="comment">
             <strong>{{ $comment['teacher_name'] }}</strong>
+            @if ($titulationAptSummary['applies'])
+                <div class="muted">
+                    Apto para titulacion:
+                    @if ($comment['apto_titulacion'] === null)
+                        Sin respuesta
+                    @else
+                        {{ $comment['apto_titulacion'] ? 'Si' : 'No' }}
+                    @endif
+                </div>
+            @endif
             <div>{{ $comment['general_comment'] ?: 'Sin comentario general.' }}</div>
             @foreach ($comment['criterion_comments'] as $criterionComment)
                 <div class="criterion-comment">
