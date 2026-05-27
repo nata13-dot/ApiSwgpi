@@ -50,7 +50,7 @@
             <tr>
                 <th>Criterio</th>
                 @foreach ($teachers as $teacher)
-                    <th>{{ trim(collect([$teacher->nombres, $teacher->apa])->filter()->join(' ')) ?: $teacher->id }}</th>
+                    <th>{{ $teacherLabels[(string) $teacher->id] ?? (trim(collect([$teacher->nombres, $teacher->apa])->filter()->join(' ')) ?: $teacher->id) }}</th>
                 @endforeach
                 <th>Promedio</th>
             </tr>

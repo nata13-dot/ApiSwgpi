@@ -43,10 +43,10 @@ class EvaluationController extends Controller
         'neutral' => 'Neutral',
         'en_desacuerdo' => 'En desacuerdo',
         'totalmente_en_desacuerdo' => 'Totalmente en desacuerdo',
-        'nada' => 'Nada',
-        'poco' => 'Poco',
-        'bastante' => 'Bastante',
-        'mucho' => 'Mucho',
+        'nada' => 'Totalmente en desacuerdo',
+        'poco' => 'En desacuerdo',
+        'bastante' => 'De acuerdo',
+        'mucho' => 'Totalmente de acuerdo',
     ];
 
     public function criteria(Request $request)
@@ -736,7 +736,7 @@ class EvaluationController extends Controller
         return response()->json(['message' => 'Turno actualizado', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
     }
 
-    public function exportEvaluationPdf($id)
+    public function exportEvaluationPdf(Request $request, $id)
     {
         $evaluation = $this->reportEvaluationQuery()->findOrFail($id);
         if ($guard = $this->guardEvaluationReport($evaluation)) return $guard;
@@ -747,7 +747,8 @@ class EvaluationController extends Controller
             ], 501);
         }
 
-        $report = $this->evaluationReportData($evaluation);
+        $anonymizeTeachers = $this->shouldAnonymizeTeacherReport($request);
+        $report = $this->evaluationReportData($evaluation, $anonymizeTeachers);
         $pdf = app('dompdf.wrapper');
         $pdf->setOptions([
             'isRemoteEnabled' => true,
@@ -755,10 +756,11 @@ class EvaluationController extends Controller
         ]);
         $pdf->loadHTML(view('reports.evaluation-pdf', $report)->render());
 
-        return $pdf->download('reporte_evaluacion_' . $evaluation->id . '.pdf');
+        $suffix = $anonymizeTeachers ? '_docentes' : '';
+        return $pdf->download('reporte_evaluacion_' . $evaluation->id . $suffix . '.pdf');
     }
 
-    public function exportRoomPdf($id)
+    public function exportRoomPdf(Request $request, $id)
     {
         $room = $this->reportRoomQuery()->findOrFail($id);
         if ($guard = $this->guardRoomReport($room)) return $guard;
@@ -769,7 +771,8 @@ class EvaluationController extends Controller
             ], 501);
         }
 
-        $report = $this->roomReportData($room);
+        $anonymizeTeachers = $this->shouldAnonymizeTeacherReport($request);
+        $report = $this->roomReportData($room, $anonymizeTeachers);
         $pdf = app('dompdf.wrapper');
         $pdf->setOptions([
             'isRemoteEnabled' => true,
@@ -777,7 +780,8 @@ class EvaluationController extends Controller
         ]);
         $pdf->loadHTML(view('reports.room-pdf', $report)->render());
 
-        return $pdf->download('reporte_sala_' . $room->id . '.pdf');
+        $suffix = $anonymizeTeachers ? '_docentes' : '';
+        return $pdf->download('reporte_sala_' . $room->id . $suffix . '.pdf');
     }
 
     public function managers()
@@ -820,6 +824,27 @@ class EvaluationController extends Controller
         ]);
     }
 
+    private function shouldAnonymizeTeacherReport(Request $request): bool
+    {
+        return $request->boolean('anonymize_teachers')
+            || $request->query('audience') === 'teachers';
+    }
+
+    private function teacherReportLabels($teachers, bool $anonymizeTeachers): array
+    {
+        return collect($teachers)
+            ->filter()
+            ->values()
+            ->mapWithKeys(function ($teacher, int $index) use ($anonymizeTeachers) {
+                $label = $anonymizeTeachers
+                    ? 'Docente ' . ($index + 1)
+                    : $this->fullName($teacher);
+
+                return [(string) $teacher->id => $label ?: 'Docente ' . ($index + 1)];
+            })
+            ->all();
+    }
+
     private function guardEvaluationReport(Evaluation $evaluation)
     {
         $user = auth('api')->user();
@@ -849,7 +874,7 @@ class EvaluationController extends Controller
         return response()->json(['error' => 'No autorizado para exportar esta sala.'], 403);
     }
 
-    private function evaluationReportData(Evaluation $evaluation): array
+    private function evaluationReportData(Evaluation $evaluation, bool $anonymizeTeachers = false, array $teacherLabelsOverride = []): array
     {
         $scores = $this->activeScoresForEvaluation($evaluation);
         $labels = $this->criteriaLabelsForEvaluation($evaluation);
@@ -863,6 +888,7 @@ class EvaluationController extends Controller
             ->filter()
             ->unique('id')
             ->values();
+        $teacherLabels = $teacherLabelsOverride ?: $this->teacherReportLabels($teachers, $anonymizeTeachers);
         $titulationAptSummary = $this->titulationAptSummary($evaluation);
 
         $matrix = collect($criteriaLabels)->map(function ($label, $criterion) use ($evaluation, $teachers, $scores) {
@@ -915,7 +941,7 @@ class EvaluationController extends Controller
 
             return [
                 'teacher_id' => $teacher->id,
-                'teacher_name' => $this->fullName($teacher),
+                'teacher_name' => $teacherLabels[(string) $teacher->id] ?? $this->fullName($teacher),
                 'general_comment' => $attempt?->general_comment,
                 'apto_titulacion' => $this->attemptTitulationVote($attempt),
                 'criterion_comments' => $criterionComments,
@@ -930,6 +956,7 @@ class EvaluationController extends Controller
             'project' => $evaluation->project,
             'students' => $evaluation->project?->students ?? collect(),
             'teachers' => $teachers,
+            'teacherLabels' => $teacherLabels,
             'matrix' => $matrix,
             'comments' => $comments,
             'titulationAptSummary' => $titulationAptSummary,
@@ -939,13 +966,19 @@ class EvaluationController extends Controller
         ];
     }
 
-    private function roomReportData(EvaluationRoom $room): array
+    private function roomReportData(EvaluationRoom $room, bool $anonymizeTeachers = false): array
     {
+        $roomTeachers = collect($room->teachers ?? collect());
+        if ($room->responsibleTeacher) {
+            $roomTeachers = $roomTeachers->push($room->responsibleTeacher);
+        }
+        $roomTeachers = $roomTeachers->filter()->unique('id')->values();
+        $roomTeacherLabels = $this->teacherReportLabels($roomTeachers, $anonymizeTeachers);
         $evaluations = $room->evaluations
             ->sortBy(fn ($evaluation) => (int) ($evaluation->presentation_order ?? 0))
             ->values();
         $evaluationReports = $evaluations
-            ->map(fn ($evaluation) => $this->evaluationReportData($evaluation))
+            ->map(fn ($evaluation) => $this->evaluationReportData($evaluation, $anonymizeTeachers, $roomTeacherLabels))
             ->values();
         $evaluated = $evaluations->filter(fn ($evaluation) => $evaluation->scores->isNotEmpty());
 
@@ -971,6 +1004,7 @@ class EvaluationController extends Controller
 
         return [
             'room' => $room,
+            'roomTeacherLabels' => $roomTeacherLabels,
             'evaluations' => $evaluations,
             'evaluationReports' => $evaluationReports,
             'projectRows' => $projectRows,

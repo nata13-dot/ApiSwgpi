@@ -33,8 +33,8 @@
             <tr><td>Salon</td><td>{{ $room->salon ?: '-' }}</td></tr>
             <tr><td>Semestre</td><td>{{ $room->semestre }}</td></tr>
             <tr><td>Fecha de evaluacion</td><td>{{ optional($room->fecha_evaluacion)->format('d/m/Y H:i') ?? '-' }}</td></tr>
-            <tr><td>Responsable</td><td>{{ $room->responsibleTeacher ? trim(collect([$room->responsibleTeacher->nombres, $room->responsibleTeacher->apa, $room->responsibleTeacher->ama])->filter()->join(' ')) : '-' }}</td></tr>
-            <tr><td>Docentes</td><td>{{ $room->teachers->map(fn ($teacher) => trim(collect([$teacher->nombres, $teacher->apa, $teacher->ama])->filter()->join(' ')))->filter()->join(', ') ?: '-' }}</td></tr>
+            <tr><td>Responsable</td><td>{{ $room->responsibleTeacher ? ($roomTeacherLabels[(string) $room->responsibleTeacher->id] ?? trim(collect([$room->responsibleTeacher->nombres, $room->responsibleTeacher->apa, $room->responsibleTeacher->ama])->filter()->join(' '))) : '-' }}</td></tr>
+            <tr><td>Docentes</td><td>{{ $room->teachers->map(fn ($teacher) => $roomTeacherLabels[(string) $teacher->id] ?? trim(collect([$teacher->nombres, $teacher->apa, $teacher->ama])->filter()->join(' ')))->filter()->join(', ') ?: '-' }}</td></tr>
             <tr><td>Proyectos evaluados</td><td>{{ count($projectRows) }}</td></tr>
             <tr><td>Promedio global de sala</td><td>{{ $roomAverage }}%</td></tr>
             <tr><td>Fecha de reporte</td><td>{{ $generatedAt->format('d/m/Y H:i') }}</td></tr>
@@ -90,7 +90,7 @@
                     <tr>
                         <th>Criterio</th>
                         @foreach ($report['teachers'] as $teacher)
-                            <th>{{ trim(collect([$teacher->nombres, $teacher->apa])->filter()->join(' ')) ?: $teacher->id }}</th>
+                            <th>{{ $report['teacherLabels'][(string) $teacher->id] ?? (trim(collect([$teacher->nombres, $teacher->apa])->filter()->join(' ')) ?: $teacher->id) }}</th>
                         @endforeach
                         <th>Promedio</th>
                     </tr>
