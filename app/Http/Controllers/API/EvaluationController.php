@@ -927,7 +927,7 @@ class EvaluationController extends Controller
             ];
         })->values()->all();
 
-        $comments = $teachers->map(function ($teacher) use ($evaluation, $scores) {
+        $comments = $teachers->map(function ($teacher) use ($evaluation, $scores, $teacherLabels) {
             $attempt = $evaluation->attempts->firstWhere('teacher_id', $teacher->id);
             $criterionComments = $scores
                 ->where('teacher_id', $teacher->id)
