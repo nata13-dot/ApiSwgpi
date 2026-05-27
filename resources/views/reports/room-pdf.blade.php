@@ -83,8 +83,6 @@
             @if ($report['titulationAptSummary']['applies'])
                 <p class="muted">
                     Apto para titulacion: <strong>{{ $report['titulationAptSummary']['label'] }}</strong>
-                    ({{ $report['titulationAptSummary']['yes'] }} si / {{ $report['titulationAptSummary']['no'] }} no,
-                    requiere {{ $report['titulationAptSummary']['required_yes'] }} de {{ $report['titulationAptSummary']['total'] }})
                 </p>
             @endif
             <table>

@@ -37,13 +37,7 @@
             @if ($titulationAptSummary['applies'])
                 <tr>
                     <td>Apto para titulacion</td>
-                    <td>
-                        {{ $titulationAptSummary['label'] }}
-                        <span class="muted">
-                            ({{ $titulationAptSummary['yes'] }} si / {{ $titulationAptSummary['no'] }} no,
-                            requiere {{ $titulationAptSummary['required_yes'] }} de {{ $titulationAptSummary['total'] }})
-                        </span>
-                    </td>
+                    <td>{{ $titulationAptSummary['label'] }}</td>
                 </tr>
             @endif
             <tr><td>Fecha de reporte</td><td>{{ $generatedAt->format('d/m/Y H:i') }}</td></tr>
