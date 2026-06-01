@@ -112,23 +112,38 @@ class Project extends Model
                     ->withPivot('rol_asesor');
     }
     
-    /**
-     * Obtener asesor primario
-     */
-    public function getAsesorPrimario()
+    public function getAsesorTesis()
     {
         return $this->advisors()
-            ->where('rol_asesor', 'primario')
+            ->wherePivot('rol_asesor', 'asesor')
             ->first();
     }
-    
-    /**
-     * Obtener asesor secundario
-     */
-    public function getAsesorSecundario()
+
+    public function getRevisorUno()
     {
         return $this->advisors()
-            ->where('rol_asesor', 'secundario')
+            ->wherePivot('rol_asesor', 'revisor_1')
+            ->first();
+    }
+
+    public function getRevisorDos()
+    {
+        return $this->advisors()
+            ->wherePivot('rol_asesor', 'revisor_2')
+            ->first();
+    }
+
+    public function getAsesorPrimario()
+    {
+        return $this->getAsesorTesis() ?: $this->advisors()
+            ->wherePivot('rol_asesor', 'primario')
+            ->first();
+    }
+
+    public function getAsesorSecundario()
+    {
+        return $this->getRevisorUno() ?: $this->advisors()
+            ->wherePivot('rol_asesor', 'secundario')
             ->first();
     }
     

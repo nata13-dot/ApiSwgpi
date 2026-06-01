@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 
 class RepositoryController extends Controller
 {
-    private const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'epub'];
+    private const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'webp', 'epub'];
 
     public function index(Request $request)
     {
@@ -564,6 +564,7 @@ class RepositoryController extends Controller
             'jpg' => 'image/jpeg',
             'jpeg' => 'image/jpeg',
             'png' => 'image/png',
+            'webp' => 'image/webp',
             'epub' => 'application/epub+zip',
         ];
         $type = strtolower($document->archivo_tipo ?: pathinfo($document->archivo_path, PATHINFO_EXTENSION));

@@ -259,7 +259,7 @@ class ProjectController extends Controller
 
             $validated = $request->validate([
                 'user_id' => ['required', 'string', Rule::exists('users', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
-                'rol_asesor' => 'required|in:primario,secundario',
+                'rol_asesor' => 'required|in:asesor,revisor_1,revisor_2',
                 'admin_password' => 'required|string|max:72',
             ]);
 
@@ -274,10 +274,12 @@ class ProjectController extends Controller
                 return response()->json(['message' => 'El asesor seleccionado debe ser un docente o administrador activo.'], 422);
             }
 
-            $oppositeRole = $validated['rol_asesor'] === 'primario' ? 'secundario' : 'primario';
-            $alreadyInOtherRole = $project->advisors()->where('users.id', $validated['user_id'])->wherePivot('rol_asesor', $oppositeRole)->exists();
+            $alreadyInOtherRole = $project->advisors()
+                ->where('users.id', $validated['user_id'])
+                ->wherePivot('rol_asesor', '!=', $validated['rol_asesor'])
+                ->exists();
             if ($alreadyInOtherRole) {
-                return response()->json(['message' => 'La misma persona no puede ser asesor primario y secundario del proyecto.'], 422);
+                return response()->json(['message' => 'La misma persona no puede ocupar mas de un rol en la misma tesis.'], 422);
             }
 
             $project->advisors()->wherePivot('rol_asesor', $validated['rol_asesor'])->detach();
