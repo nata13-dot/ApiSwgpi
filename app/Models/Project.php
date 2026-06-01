@@ -16,10 +16,11 @@ class Project extends Model
     public $timestamps = true;
     const UPDATED_AT = null;
 
-    protected $fillable = ['title', 'description', 'created_by', 'activo', 'semestre', 'subject_group_id', 'year', 'file_path', 'authors', 'company_name', 'company_giro', 'company_contact_name', 'company_contact_position', 'company_address', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
+    protected $fillable = ['title', 'description', 'created_by', 'activo', 'is_thesis', 'semestre', 'subject_group_id', 'year', 'file_path', 'authors', 'company_name', 'company_giro', 'company_contact_name', 'company_contact_position', 'company_address', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
 
     protected $casts = [
         'activo' => 'boolean',
+        'is_thesis' => 'boolean',
         'created_at' => 'datetime',
         'year' => 'integer',
         'semestre' => 'integer',
@@ -135,14 +136,14 @@ class Project extends Model
 
     public function getAsesorPrimario()
     {
-        return $this->getAsesorTesis() ?: $this->advisors()
+        return $this->advisors()
             ->wherePivot('rol_asesor', 'primario')
             ->first();
     }
 
     public function getAsesorSecundario()
     {
-        return $this->getRevisorUno() ?: $this->advisors()
+        return $this->advisors()
             ->wherePivot('rol_asesor', 'secundario')
             ->first();
     }

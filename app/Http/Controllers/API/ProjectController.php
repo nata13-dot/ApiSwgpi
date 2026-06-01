@@ -21,7 +21,7 @@ class ProjectController extends Controller
     {
         if ($request->boolean('compact')) {
             $query = Project::query()
-                ->select(['id', 'title', 'semestre', 'year', 'authors', 'subject_group_id', 'activo', 'created_at'])
+                ->select(['id', 'title', 'semestre', 'year', 'authors', 'subject_group_id', 'activo', 'is_thesis', 'created_at'])
                 ->with([
                     'students:id,nombres,apa,ama,semestre,grupo',
                     'advisors:id,nombres,apa,ama,perfil_id',
@@ -40,6 +40,9 @@ class ProjectController extends Controller
             if ($request->filled('semestre')) {
                 $query->where('semestre', $request->semestre);
             }
+            if ($request->filled('is_thesis')) {
+                $query->where('is_thesis', $request->boolean('is_thesis'));
+            }
 
             $perPage = min((int) $request->query('per_page', 100), 500);
             return response()->json($query->orderByDesc('created_at')->paginate($perPage));
@@ -47,7 +50,7 @@ class ProjectController extends Controller
 
         $query = Project::query()
             ->select([
-                'id', 'title', 'description', 'created_by', 'created_at', 'activo',
+                'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'is_thesis',
                 'semestre', 'subject_group_id', 'year', 'authors',
                 'company_name', 'company_giro', 'company_contact_name',
                 'company_contact_position', 'company_address',
@@ -77,6 +80,10 @@ class ProjectController extends Controller
 
         if ($request->filled('semestre')) {
             $query->where('semestre', $request->semestre);
+        }
+
+        if ($request->filled('is_thesis')) {
+            $query->where('is_thesis', $request->boolean('is_thesis'));
         }
 
         if ($request->filled('q')) {
@@ -112,7 +119,7 @@ class ProjectController extends Controller
         $user = auth('api')->user();
         $query = Project::query()
             ->select([
-                'id', 'title', 'description', 'created_by', 'created_at', 'activo',
+                'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'is_thesis',
                 'semestre', 'subject_group_id', 'year', 'authors',
                 'company_name', 'company_contact_name', 'company_contact_position',
                 'proposal_status', 'proposal_reviewed_by',
@@ -172,6 +179,7 @@ class ProjectController extends Controller
                 'company_address' => $validated['company_address'] ?? null,
                 'proposal_status' => 'pendiente',
                 'created_by' => $user->id,
+                'is_thesis' => (bool) ($validated['is_thesis'] ?? false),
             ]);
 
             $this->syncSubjectsFromGroup($project);
@@ -219,6 +227,12 @@ class ProjectController extends Controller
             $previousGroupId = $project->subject_group_id;
             $projectData = collect($validated)->except('student_ids')->toArray();
             $project->update($projectData);
+            if (array_key_exists('is_thesis', $projectData) && !$project->is_thesis) {
+                DB::table('project_user')
+                    ->where('project_id', $project->id)
+                    ->whereIn('rol_asesor', ['asesor', 'revisor_1', 'revisor_2'])
+                    ->delete();
+            }
             if (array_key_exists('subject_group_id', $projectData) && (int) $previousGroupId !== (int) $project->subject_group_id) {
                 $this->syncSubjectsFromGroup($project);
             }
@@ -259,7 +273,7 @@ class ProjectController extends Controller
 
             $validated = $request->validate([
                 'user_id' => ['required', 'string', Rule::exists('users', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
-                'rol_asesor' => 'required|in:asesor,revisor_1,revisor_2',
+                'rol_asesor' => 'required|in:primario,secundario,asesor,revisor_1,revisor_2',
                 'admin_password' => 'required|string|max:72',
             ]);
 
@@ -274,12 +288,20 @@ class ProjectController extends Controller
                 return response()->json(['message' => 'El asesor seleccionado debe ser un docente o administrador activo.'], 422);
             }
 
+            $roleGroup = in_array($validated['rol_asesor'], ['primario', 'secundario'], true)
+                ? ['primario', 'secundario']
+                : ['asesor', 'revisor_1', 'revisor_2'];
+            if (in_array($validated['rol_asesor'], ['asesor', 'revisor_1', 'revisor_2'], true) && !$project->is_thesis) {
+                return response()->json(['message' => 'Solo las tesis pueden tener comite de tesis. Marca el proyecto como tesis primero.'], 422);
+            }
+
             $alreadyInOtherRole = $project->advisors()
                 ->where('users.id', $validated['user_id'])
                 ->wherePivot('rol_asesor', '!=', $validated['rol_asesor'])
+                ->wherePivotIn('rol_asesor', $roleGroup)
                 ->exists();
             if ($alreadyInOtherRole) {
-                return response()->json(['message' => 'La misma persona no puede ocupar mas de un rol en la misma tesis.'], 422);
+                return response()->json(['message' => 'La misma persona no puede ocupar mas de un rol dentro del mismo grupo de asignacion.'], 422);
             }
 
             $project->advisors()->wherePivot('rol_asesor', $validated['rol_asesor'])->detach();
@@ -450,6 +472,7 @@ class ProjectController extends Controller
             'subject_group_id' => [$creating ? 'required' : 'nullable', 'exists:subject_groups,id'],
             'year' => [$creating ? 'required' : 'nullable', 'integer', 'min:2000', 'max:2100'],
             'activo' => 'nullable|boolean',
+            'is_thesis' => 'nullable|boolean',
             'student_ids' => [$creating ? 'required' : 'nullable', 'array', 'min:1'],
             'student_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
             'company_name' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
