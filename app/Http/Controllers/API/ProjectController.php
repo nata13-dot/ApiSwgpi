@@ -179,7 +179,7 @@ class ProjectController extends Controller
                 'company_address' => $validated['company_address'] ?? null,
                 'proposal_status' => 'pendiente',
                 'created_by' => $user->id,
-                'is_thesis' => (bool) ($validated['is_thesis'] ?? false),
+                'is_thesis' => (int) $user->perfil_id === 1 && (bool) ($validated['is_thesis'] ?? false),
             ]);
 
             $this->syncSubjectsFromGroup($project);
@@ -213,10 +213,13 @@ class ProjectController extends Controller
 
             $user = auth('api')->user();
             $validated = $request->validate($this->projectRules(false));
+            if ((int) $user->perfil_id !== 1) {
+                unset($validated['is_thesis']);
+            }
 
             if ((int) $user->perfil_id === 3) {
                 $this->guardStudentCanEditProposal($user, $project);
-                $validated = collect($validated)->except(['student_ids', 'semestre', 'subject_group_id', 'year', 'activo'])->toArray();
+                $validated = collect($validated)->except(['student_ids', 'semestre', 'subject_group_id', 'year', 'activo', 'is_thesis'])->toArray();
                 $validated['proposal_status'] = 'pendiente';
                 $validated['proposal_review_comment'] = null;
                 $validated['proposal_reviewed_by'] = null;
