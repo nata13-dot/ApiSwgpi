@@ -178,7 +178,7 @@ class SystemSettingController extends Controller
             'to_group' => 'nullable|string|max:20',
             'update_subject_groups' => 'nullable|boolean',
             'exceptions' => 'nullable|array',
-            'exceptions.*.user_id' => ['required', 'string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
+            'exceptions.*.user_id' => ['required', 'string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
             'exceptions.*.semester' => 'required|integer|in:5,6,7,8,9',
         ]);
 

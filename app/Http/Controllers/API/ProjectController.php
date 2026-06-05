@@ -32,10 +32,10 @@ class ProjectController extends Controller
 
             $user = auth('api')->user();
             if ($user && (int) $user->perfil_id === 2) {
-                $query->whereHas('advisors', fn ($q) => $q->where('users.id', $user->id));
+                $query->whereHas('advisors', fn ($q) => $q->where('usuarios.id', $user->id));
             }
             if ($user && (int) $user->perfil_id === 3) {
-                $query->whereHas('students', fn ($q) => $q->where('users.id', $user->id));
+                $query->whereHas('students', fn ($q) => $q->where('usuarios.id', $user->id));
             }
             if ($request->filled('semestre')) {
                 $query->where('semestre', $request->semestre);
@@ -70,12 +70,12 @@ class ProjectController extends Controller
         $user = auth('api')->user();
         if ($user && (int) $user->perfil_id === 2) {
             $query->where(function ($scope) use ($user) {
-                $scope->whereHas('advisors', fn ($q) => $q->where('users.id', $user->id));
+                $scope->whereHas('advisors', fn ($q) => $q->where('usuarios.id', $user->id));
             });
         }
 
         if ($user && (int) $user->perfil_id === 3) {
-            $query->whereHas('students', fn ($q) => $q->where('users.id', $user->id));
+            $query->whereHas('students', fn ($q) => $q->where('usuarios.id', $user->id));
         }
 
         if ($request->filled('semestre')) {
@@ -96,16 +96,16 @@ class ProjectController extends Controller
                     ->orWhere('company_contact_name', 'like', "%{$search}%")
                     ->orWhere('year', 'like', "%{$search}%")
                     ->orWhereHas('students', function ($studentQuery) use ($search) {
-                        $studentQuery->where('users.id', 'like', "%{$search}%")
-                            ->orWhere('users.nombres', 'like', "%{$search}%")
-                            ->orWhere('users.apa', 'like', "%{$search}%")
-                            ->orWhere('users.ama', 'like', "%{$search}%");
+                        $studentQuery->where('usuarios.id', 'like', "%{$search}%")
+                            ->orWhere('usuarios.nombres', 'like', "%{$search}%")
+                            ->orWhere('usuarios.apa', 'like', "%{$search}%")
+                            ->orWhere('usuarios.ama', 'like', "%{$search}%");
                     })
                     ->orWhereHas('advisors', function ($advisorQuery) use ($search) {
-                        $advisorQuery->where('users.id', 'like', "%{$search}%")
-                            ->orWhere('users.nombres', 'like', "%{$search}%")
-                            ->orWhere('users.apa', 'like', "%{$search}%")
-                            ->orWhere('users.ama', 'like', "%{$search}%");
+                        $advisorQuery->where('usuarios.id', 'like', "%{$search}%")
+                            ->orWhere('usuarios.nombres', 'like', "%{$search}%")
+                            ->orWhere('usuarios.apa', 'like', "%{$search}%")
+                            ->orWhere('usuarios.ama', 'like', "%{$search}%");
                     });
             });
         }
@@ -140,10 +140,10 @@ class ProjectController extends Controller
 
         if ((int) $user->perfil_id === 2) {
             $query->where(function ($q) use ($user) {
-                $q->whereHas('advisors', fn ($advisorQuery) => $advisorQuery->where('users.id', $user->id));
+                $q->whereHas('advisors', fn ($advisorQuery) => $advisorQuery->where('usuarios.id', $user->id));
             });
         } elseif ((int) $user->perfil_id === 3) {
-            $query->whereHas('students', fn ($studentQuery) => $studentQuery->where('users.id', $user->id));
+            $query->whereHas('students', fn ($studentQuery) => $studentQuery->where('usuarios.id', $user->id));
         } else {
             return response()->json(['message' => 'No autorizado'], 403);
         }
@@ -231,7 +231,7 @@ class ProjectController extends Controller
             $projectData = collect($validated)->except('student_ids')->toArray();
             $project->update($projectData);
             if (array_key_exists('is_thesis', $projectData) && !$project->is_thesis) {
-                DB::table('project_user')
+                DB::table('proyectos_integrantes')
                     ->where('project_id', $project->id)
                     ->whereIn('rol_asesor', ['asesor', 'revisor_1', 'revisor_2'])
                     ->delete();
@@ -275,7 +275,7 @@ class ProjectController extends Controller
             }
 
             $validated = $request->validate([
-                'user_id' => ['required', 'string', Rule::exists('users', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
+                'user_id' => ['required', 'string', Rule::exists('usuarios', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
                 'rol_asesor' => 'required|in:primario,secundario,asesor,revisor_1,revisor_2',
                 'admin_password' => 'required|string|max:72',
             ]);
@@ -299,7 +299,7 @@ class ProjectController extends Controller
             }
 
             $alreadyInOtherRole = $project->advisors()
-                ->where('users.id', $validated['user_id'])
+                ->where('usuarios.id', $validated['user_id'])
                 ->wherePivot('rol_asesor', '!=', $validated['rol_asesor'])
                 ->wherePivotIn('rol_asesor', $roleGroup)
                 ->exists();
@@ -407,7 +407,7 @@ class ProjectController extends Controller
                         'semestre' => 'nullable|integer|in:5,6,7,8',
                         'year' => 'nullable|integer|min:2000|max:2100',
                         'student_ids' => 'required|array|min:1',
-                        'student_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
+                        'student_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
                     ],
                     $this->importValidationMessages(),
                     $this->importValidationAttributes()
@@ -472,12 +472,12 @@ class ProjectController extends Controller
             'description' => [$creating ? 'required_without:descripcion' : 'nullable', 'string', 'max:5000'],
             'descripcion' => [$creating ? 'required_without:description' : 'nullable', 'string', 'max:5000'],
             'semestre' => [$creating ? 'required' : 'nullable', 'integer', 'in:5,6,7,8'],
-            'subject_group_id' => [$creating ? 'required' : 'nullable', 'exists:subject_groups,id'],
+            'subject_group_id' => [$creating ? 'required' : 'nullable', 'exists:grupos_academicos,id'],
             'year' => [$creating ? 'required' : 'nullable', 'integer', 'min:2000', 'max:2100'],
             'activo' => 'nullable|boolean',
             'is_thesis' => 'nullable|boolean',
             'student_ids' => [$creating ? 'required' : 'nullable', 'array', 'min:1'],
-            'student_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
+            'student_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
             'company_name' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
             'company_giro' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
             'company_contact_name' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
@@ -506,7 +506,7 @@ class ProjectController extends Controller
             throw ValidationException::withMessages(['window' => ['El registro de proyectos no esta habilitado para tu grupo en este momento.']]);
         }
 
-        $already = Project::whereHas('students', fn ($q) => $q->where('users.id', $student->id))->exists();
+        $already = Project::whereHas('students', fn ($q) => $q->where('usuarios.id', $student->id))->exists();
         if ($already) {
             throw ValidationException::withMessages(['student_ids' => ['Ya estas ligado a un proyecto.']]);
         }
@@ -514,7 +514,7 @@ class ProjectController extends Controller
 
     private function guardStudentCanEditProposal(User $student, Project $project): void
     {
-        $belongs = $project->students()->where('users.id', $student->id)->exists();
+        $belongs = $project->students()->where('usuarios.id', $student->id)->exists();
         if (!$belongs) {
             throw ValidationException::withMessages(['project' => ['No perteneces a este proyecto.']]);
         }
@@ -555,12 +555,12 @@ class ProjectController extends Controller
             throw ValidationException::withMessages(['student_ids' => ['Solo se pueden agregar estudiantes activos como integrantes.']]);
         }
 
-        $assignedElsewhere = DB::table('project_user')
-            ->join('projects', 'projects.id', '=', 'project_user.project_id')
-            ->whereIn('project_user.user_id', $studentIds)
-            ->whereNull('project_user.rol_asesor')
-            ->where('project_user.project_id', '!=', $project->id)
-            ->select('project_user.user_id', 'projects.title')
+        $assignedElsewhere = DB::table('proyectos_integrantes')
+            ->join('proyectos', 'proyectos.id', '=', 'proyectos_integrantes.project_id')
+            ->whereIn('proyectos_integrantes.user_id', $studentIds)
+            ->whereNull('proyectos_integrantes.rol_asesor')
+            ->where('proyectos_integrantes.project_id', '!=', $project->id)
+            ->select('proyectos_integrantes.user_id', 'proyectos.title')
             ->get();
 
         if ($assignedElsewhere->isNotEmpty()) {
@@ -568,9 +568,9 @@ class ProjectController extends Controller
             throw ValidationException::withMessages(['student_ids' => ["Cada estudiante solo puede ser integrante de un proyecto. {$details}"]]);
         }
 
-        DB::table('project_user')->where('project_id', $project->id)->whereNull('rol_asesor')->delete();
+        DB::table('proyectos_integrantes')->where('project_id', $project->id)->whereNull('rol_asesor')->delete();
         foreach ($students as $student) {
-            DB::table('project_user')->insert(['project_id' => $project->id, 'user_id' => $student->id, 'rol_asesor' => null]);
+            DB::table('proyectos_integrantes')->insert(['project_id' => $project->id, 'user_id' => $student->id, 'rol_asesor' => null]);
         }
 
         $project->update(['authors' => $students->map(fn ($student) => trim("{$student->nombres} {$student->apa} {$student->ama}"))->implode(', ')]);

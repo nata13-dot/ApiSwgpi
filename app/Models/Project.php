@@ -12,7 +12,7 @@ class Project extends Model
 {
     use HasFactory;
 
-    protected $table = 'projects';
+    protected $table = 'proyectos';
     public $timestamps = true;
     const UPDATED_AT = null;
 
@@ -37,8 +37,8 @@ class Project extends Model
 
     public function advisors(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'project_user', 'project_id', 'user_id')
-                    ->where('users.activo', true)
+        return $this->belongsToMany(User::class, 'proyectos_integrantes', 'project_id', 'user_id')
+                    ->where('usuarios.activo', true)
                     ->wherePivotNotNull('rol_asesor')
                     ->withPivot('rol_asesor');
     }
@@ -55,7 +55,7 @@ class Project extends Model
 
     public function asignaturas(): BelongsToMany
     {
-        return $this->belongsToMany(Asignatura::class, 'project_asignatura', 'project_id', 'asignatura_id');
+        return $this->belongsToMany(Asignatura::class, 'proyectos_asignaturas', 'project_id', 'asignatura_id');
     }
 
     public function deliverables(): HasMany
@@ -96,8 +96,8 @@ class Project extends Model
      */
     public function students(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'project_user', 'project_id', 'user_id')
-                    ->where('users.activo', true)
+        return $this->belongsToMany(User::class, 'proyectos_integrantes', 'project_id', 'user_id')
+                    ->where('usuarios.activo', true)
                     ->whereNull('rol_asesor')
                     ->withPivot('rol_asesor');
     }
@@ -107,8 +107,8 @@ class Project extends Model
      */
     public function onlyAdvisors(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'project_user', 'project_id', 'user_id')
-                    ->where('users.activo', true)
+        return $this->belongsToMany(User::class, 'proyectos_integrantes', 'project_id', 'user_id')
+                    ->where('usuarios.activo', true)
                     ->wherePivotNotNull('rol_asesor')
                     ->withPivot('rol_asesor');
     }

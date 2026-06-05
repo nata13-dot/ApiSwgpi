@@ -11,6 +11,8 @@ class SubjectGroup extends Model
 {
     use HasFactory;
 
+    protected $table = 'grupos_academicos';
+
     protected $fillable = ['nombre', 'semestre', 'grupo', 'periodo', 'activo'];
 
     protected $casts = [
@@ -20,7 +22,7 @@ class SubjectGroup extends Model
 
     public function asignaturas(): BelongsToMany
     {
-        return $this->belongsToMany(Asignatura::class, 'subject_group_asignatura', 'subject_group_id', 'asignatura_id')
+        return $this->belongsToMany(Asignatura::class, 'grupos_asignaturas', 'subject_group_id', 'asignatura_id')
             ->withTimestamps();
     }
 

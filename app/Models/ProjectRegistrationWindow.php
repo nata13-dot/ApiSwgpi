@@ -10,6 +10,8 @@ class ProjectRegistrationWindow extends Model
 {
     use HasFactory;
 
+    protected $table = 'ventanas_registro_proyectos';
+
     protected $fillable = ['subject_group_id', 'starts_at', 'ends_at', 'activo', 'notes'];
 
     protected $casts = [

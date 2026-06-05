@@ -10,6 +10,8 @@ class TeacherGroupAssignment extends Model
 {
     use HasFactory;
 
+    protected $table = 'asignaciones_docentes_grupos';
+
     protected $fillable = ['subject_group_id', 'asignatura_id', 'teacher_id', 'labor', 'activo'];
 
     protected $casts = [

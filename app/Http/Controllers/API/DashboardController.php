@@ -67,7 +67,7 @@ class DashboardController extends Controller
     {
         $userId = auth('api')->id();
         $advisorProjectIds = Project::where('activo', true)->whereHas('advisors', function ($query) use ($userId) {
-            $query->where('users.id', $userId);
+            $query->where('usuarios.id', $userId);
         })->pluck('id');
         $responsibleGroupIds = TeacherGroupAssignment::where('teacher_id', $userId)
             ->where('activo', true)
@@ -114,7 +114,7 @@ class DashboardController extends Controller
                 'my_projects' => $projectIds->count(),
                 'students' => User::students()
                     ->where('activo', true)
-                    ->whereHas('projectsAsAdvisor', fn ($query) => $query->whereIn('projects.id', $projectIds)->whereNull('project_user.rol_asesor'))
+                    ->whereHas('projectsAsAdvisor', fn ($query) => $query->whereIn('proyectos.id', $projectIds)->whereNull('proyectos_integrantes.rol_asesor'))
                     ->count(),
                 'pending_deliverables' => $deliverableStatusCounts['pendiente'] ?? 0,
                 'approved_deliverables' => $approvedDeliverables,
@@ -135,7 +135,7 @@ class DashboardController extends Controller
         $userId = auth('api')->id();
         $projectIds = Project::where('activo', true)
             ->whereHas('students', function ($query) use ($userId) {
-                $query->where('users.id', $userId);
+                $query->where('usuarios.id', $userId);
             })
             ->pluck('id');
 

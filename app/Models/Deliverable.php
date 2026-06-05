@@ -12,7 +12,7 @@ class Deliverable extends Model
 {
     use HasFactory;
 
-    protected $table = 'deliverables';
+    protected $table = 'entregables_proyecto';
     public $timestamps = false;
 
     protected $fillable = [
@@ -51,7 +51,7 @@ class Deliverable extends Model
 
     public function tags(): BelongsToMany
     {
-        return $this->belongsToMany(DocumentTag::class, 'deliverable_document_tag', 'deliverable_id', 'document_tag_id');
+        return $this->belongsToMany(DocumentTag::class, 'entregables_etiquetas', 'deliverable_id', 'document_tag_id');
     }
 
     public function versions(): HasMany

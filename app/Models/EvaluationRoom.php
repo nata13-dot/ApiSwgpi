@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class EvaluationRoom extends Model
 {
+    protected $table = 'salas_evaluacion';
+
     protected $fillable = [
         'nombre', 'salon', 'semestre', 'responsible_teacher_id', 'fecha_evaluacion', 'fecha_fin_evaluacion',
         'teacher_evaluation_minutes', 'project_presentation_minutes',
@@ -29,18 +31,18 @@ class EvaluationRoom extends Model
 
     public function teachers(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'evaluation_room_teacher', 'evaluation_room_id', 'teacher_id')
-            ->where('users.activo', true)
+        return $this->belongsToMany(User::class, 'salas_evaluacion_docentes', 'evaluation_room_id', 'teacher_id')
+            ->where('usuarios.activo', true)
             ->withTimestamps();
     }
 
     public function projects(): BelongsToMany
     {
-        return $this->belongsToMany(Project::class, 'evaluation_room_project')
+        return $this->belongsToMany(Project::class, 'salas_evaluacion_proyectos')
             ->withPivot(['presentation_order', 'status'])
             ->withTimestamps()
-            ->orderBy('evaluation_room_project.presentation_order')
-            ->orderBy('projects.title');
+            ->orderBy('salas_evaluacion_proyectos.presentation_order')
+            ->orderBy('proyectos.title');
     }
 
     public function evaluations(): HasMany

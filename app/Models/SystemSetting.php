@@ -8,6 +8,8 @@ class SystemSetting extends Model
 {
     private static ?array $memoizedSettings = null;
 
+    protected $table = 'configuraciones_sistema';
+
     protected $primaryKey = 'key';
     public $incrementing = false;
     protected $keyType = 'string';

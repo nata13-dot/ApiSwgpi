@@ -22,8 +22,8 @@ class UserController extends Controller
             $query->select(['id', 'nombres', 'apa', 'ama', 'email', 'perfil_id', 'semestre', 'grupo', 'telefonos', 'activo']);
         } else {
             $query->withCount([
-                'projectsAsAdvisor as advising_projects_count' => fn ($q) => $q->whereNotNull('project_user.rol_asesor'),
-                'projectsAsAdvisor as student_projects_count' => fn ($q) => $q->whereNull('project_user.rol_asesor'),
+                'projectsAsAdvisor as advising_projects_count' => fn ($q) => $q->whereNotNull('proyectos_integrantes.rol_asesor'),
+                'projectsAsAdvisor as student_projects_count' => fn ($q) => $q->whereNull('proyectos_integrantes.rol_asesor'),
             ]);
         }
 
@@ -60,7 +60,7 @@ class UserController extends Controller
 
         if ($request->boolean('without_project')) {
             $query->where('perfil_id', 3)
-                ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->whereNull('project_user.rol_asesor'));
+                ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->whereNull('proyectos_integrantes.rol_asesor'));
         }
 
         $perPage = min((int) $request->query('per_page', $compact ? 100 : 15), $compact ? 500 : 100);
@@ -240,7 +240,7 @@ class UserController extends Controller
                 'subject' => 'nullable|string|max:150',
                 'body' => 'required|string|min:20|max:5000',
                 'user_ids' => 'nullable|array|max:200',
-                'user_ids.*' => ['string', 'max:10', 'exists:users,id'],
+                'user_ids.*' => ['string', 'max:10', 'exists:usuarios,id'],
                 'perfil_id' => 'nullable|integer|in:1,2,3',
                 'perfil_ids' => 'nullable|array|max:3',
                 'perfil_ids.*' => 'integer|in:1,2,3',

@@ -10,7 +10,7 @@ class Avance extends Model
 {
     use HasFactory;
 
-    protected $table = 'avances';
+    protected $table = 'avances_proyecto';
     public $timestamps = false;
 
     protected $fillable = ['project_id', 'descripcion', 'porcentaje', 'reportado_por'];

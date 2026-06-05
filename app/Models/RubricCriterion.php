@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class RubricCriterion extends Model
 {
-    protected $table = 'rubric_criteria';
+    protected $table = 'criterios_rubrica';
 
     protected $fillable = [
         'semestre', 'project_id', 'clave', 'pregunta', 'orden', 'activo',

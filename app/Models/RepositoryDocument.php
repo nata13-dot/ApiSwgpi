@@ -11,6 +11,8 @@ class RepositoryDocument extends Model
 {
     use HasFactory;
 
+    protected $table = 'documentos_repositorio';
+
     public const CATEGORY_REPOSITORY = 'repository';
     public const CATEGORY_EVALUATION_DOCUMENT = 'evaluation_document';
     public const CATEGORY_THESIS_GENERAL = 'thesis_general';
@@ -40,7 +42,7 @@ class RepositoryDocument extends Model
 
     public function tags(): BelongsToMany
     {
-        return $this->belongsToMany(DocumentTag::class, 'repository_document_tag', 'repository_document_id', 'document_tag_id');
+        return $this->belongsToMany(DocumentTag::class, 'documentos_repositorio_etiquetas', 'repository_document_id', 'document_tag_id');
     }
 
     public function uploader(): BelongsTo

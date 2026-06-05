@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Evaluation extends Model
 {
+    protected $table = 'evaluaciones';
+
     protected $fillable = [
         'project_id', 'evaluation_room_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
         'presentation_order', 'sequence_status', 'estado', 'resultado', 'room_feedback',

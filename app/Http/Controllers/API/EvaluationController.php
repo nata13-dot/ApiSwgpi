@@ -98,7 +98,7 @@ class EvaluationController extends Controller
         try {
             $validated = $request->validate([
                 'semestre' => 'required|integer|in:5,6,7,8',
-                'project_id' => 'nullable|integer|exists:projects,id',
+                'project_id' => 'nullable|integer|exists:proyectos,id',
                 'pregunta' => 'required|string|max:255',
                 'orden' => 'nullable|integer|min:0',
             ]);
@@ -195,7 +195,7 @@ class EvaluationController extends Controller
     {
         $user = auth('api')->user();
         $archived = $request->boolean('archived');
-        $supportsArchive = Schema::hasColumn('evaluations', 'archived_at');
+        $supportsArchive = Schema::hasColumn('evaluaciones', 'archived_at');
 
         if ($archived && !$supportsArchive) {
             return response()->json([
@@ -216,7 +216,7 @@ class EvaluationController extends Controller
 
         if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
             $query->where(function ($scope) use ($user) {
-                $scope->whereHas('room.teachers', fn ($teacherQuery) => $teacherQuery->where('users.id', $user->id))
+                $scope->whereHas('room.teachers', fn ($teacherQuery) => $teacherQuery->where('usuarios.id', $user->id))
                     ->orWhereHas('room', fn ($roomQuery) => $roomQuery->where('responsible_teacher_id', $user->id));
             });
         }
@@ -237,7 +237,7 @@ class EvaluationController extends Controller
         $user = auth('api')->user();
         if ($guard = $this->guardEvaluationManager($user)) return $guard;
 
-        if (!Schema::hasColumn('evaluations', 'archived_at')) {
+        if (!Schema::hasColumn('evaluaciones', 'archived_at')) {
             return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
         }
 
@@ -259,7 +259,7 @@ class EvaluationController extends Controller
         $user = auth('api')->user();
         if ($guard = $this->guardEvaluationManager($user)) return $guard;
 
-        if (!Schema::hasColumn('evaluations', 'archived_at')) {
+        if (!Schema::hasColumn('evaluaciones', 'archived_at')) {
             return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
         }
 
@@ -283,8 +283,8 @@ class EvaluationController extends Controller
 
         try {
             $validated = $request->validate([
-                'project_id' => 'required|exists:projects,id',
-                'evaluation_room_id' => 'nullable|exists:evaluation_rooms,id',
+                'project_id' => 'required|exists:proyectos,id',
+                'evaluation_room_id' => 'nullable|exists:salas_evaluacion,id',
                 'semestre' => 'required|integer|in:5,6,7,8',
                 'sala' => 'nullable|string|max:50',
                 'fecha_exposicion' => 'nullable|date',
@@ -339,7 +339,7 @@ class EvaluationController extends Controller
         try {
             $validated = $request->validate([
                 'semestre' => 'nullable|integer|in:5,6,7,8',
-                'evaluation_room_id' => 'nullable|exists:evaluation_rooms,id',
+                'evaluation_room_id' => 'nullable|exists:salas_evaluacion,id',
                 'sala' => 'nullable|string|max:50',
                 'fecha_exposicion' => 'nullable|date',
                 'estado' => 'nullable|in:programada,en_evaluacion,finalizada',
@@ -444,13 +444,13 @@ class EvaluationController extends Controller
                     'attempts_count' => $attempt->attempts_count + 1,
                     'last_submitted_at' => now(),
                 ];
-                if (Schema::hasColumn('evaluation_attempts', 'general_comment')) {
+                if (Schema::hasColumn('intentos_evaluacion', 'general_comment')) {
                     $attemptPayload['general_comment'] = $validated['general_comment'] ?? $attempt->general_comment;
                 }
                 if (
                     (int) $evaluation->semestre === 8
                     && $request->has('apto_titulacion')
-                    && Schema::hasColumn('evaluation_attempts', 'apto_titulacion')
+                    && Schema::hasColumn('intentos_evaluacion', 'apto_titulacion')
                 ) {
                     $attemptPayload['apto_titulacion'] = $request->boolean('apto_titulacion');
                 }
@@ -459,7 +459,7 @@ class EvaluationController extends Controller
 
             if (
                 (int) $evaluation->semestre === 8
-                && Schema::hasColumn('evaluations', 'apto_titulacion')
+                && Schema::hasColumn('evaluaciones', 'apto_titulacion')
             ) {
                 $this->syncTitulationAptResult($evaluation->fresh(['attempts']));
             }
@@ -505,7 +505,7 @@ class EvaluationController extends Controller
             ->orderBy('title');
         if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
             $projectIds = Evaluation::where(function ($scope) use ($user) {
-                $scope->whereHas('room.teachers', fn ($teacherQuery) => $teacherQuery->where('users.id', $user->id))
+                $scope->whereHas('room.teachers', fn ($teacherQuery) => $teacherQuery->where('usuarios.id', $user->id))
                     ->orWhereHas('room', fn ($roomQuery) => $roomQuery->where('responsible_teacher_id', $user->id));
             })->pluck('project_id');
             $query->whereIn('id', $projectIds);
@@ -532,7 +532,7 @@ class EvaluationController extends Controller
     public function rooms(Request $request)
     {
         $user = auth('api')->user();
-        $supportsArchive = Schema::hasColumn('evaluations', 'archived_at');
+        $supportsArchive = Schema::hasColumn('evaluaciones', 'archived_at');
         $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama,perfil_id', 'responsibleTeacher:id,nombres,apa,ama,perfil_id', 'projects:id,title,semestre,company_name'])
             ->where('activo', !$request->boolean('archived'))
             ->orderByDesc('fecha_evaluacion')
@@ -546,7 +546,7 @@ class EvaluationController extends Controller
 
         if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
             $query->where(function ($scope) use ($user) {
-                $scope->whereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('users.id', $user->id))
+                $scope->whereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('usuarios.id', $user->id))
                     ->orWhere('responsible_teacher_id', $user->id);
             });
         }
@@ -609,7 +609,7 @@ class EvaluationController extends Controller
         $user = auth('api')->user();
         if ($guard = $this->guardEvaluationManager($user)) return $guard;
 
-        if (!Schema::hasColumn('evaluations', 'archived_at')) {
+        if (!Schema::hasColumn('evaluaciones', 'archived_at')) {
             return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
         }
 
@@ -628,7 +628,7 @@ class EvaluationController extends Controller
         $user = auth('api')->user();
         if ($guard = $this->guardEvaluationManager($user)) return $guard;
 
-        if (!Schema::hasColumn('evaluations', 'archived_at')) {
+        if (!Schema::hasColumn('evaluaciones', 'archived_at')) {
             return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
         }
 
@@ -663,7 +663,7 @@ class EvaluationController extends Controller
             foreach ($ordered as $project) {
                 $order = (int) ($project->pivot->presentation_order ?: 0);
                 $status = $order === $firstOrder ? 'activo' : 'pendiente';
-                DB::table('evaluation_room_project')
+                DB::table('salas_evaluacion_proyectos')
                     ->where('evaluation_room_id', $room->id)
                     ->where('project_id', $project->id)
                     ->update(['status' => $status]);
@@ -710,7 +710,7 @@ class EvaluationController extends Controller
             $ordered = $room->projects->sortBy(fn ($project) => (int) ($project->pivot->presentation_order ?: 9999))->values();
             $next = $ordered->first(fn ($project) => (int) $project->pivot->presentation_order > $currentOrder);
 
-            DB::table('evaluation_room_project')
+            DB::table('salas_evaluacion_proyectos')
                 ->where('evaluation_room_id', $room->id)
                 ->where('presentation_order', $currentOrder)
                 ->update(['status' => 'evaluado']);
@@ -720,7 +720,7 @@ class EvaluationController extends Controller
 
             if ($next) {
                 $nextOrder = (int) $next->pivot->presentation_order;
-                DB::table('evaluation_room_project')
+                DB::table('salas_evaluacion_proyectos')
                     ->where('evaluation_room_id', $room->id)
                     ->where('project_id', $next->id)
                     ->update(['status' => 'activo']);
@@ -1005,7 +1005,7 @@ class EvaluationController extends Controller
         return [
             'room' => $room,
             'roomTeacherLabels' => $roomTeacherLabels,
-            'evaluations' => $evaluations,
+            'evaluaciones' => $evaluations,
             'evaluationReports' => $evaluationReports,
             'projectRows' => $projectRows,
             'roomAverage' => $evaluated->count()
@@ -1095,7 +1095,7 @@ class EvaluationController extends Controller
 
     private function syncTitulationAptResult(Evaluation $evaluation): void
     {
-        if ((int) $evaluation->semestre !== 8 || !Schema::hasColumn('evaluations', 'apto_titulacion')) {
+        if ((int) $evaluation->semestre !== 8 || !Schema::hasColumn('evaluaciones', 'apto_titulacion')) {
             return;
         }
 
@@ -1120,7 +1120,7 @@ class EvaluationController extends Controller
         }
 
         $votes = collect();
-        if (Schema::hasColumn('evaluation_attempts', 'apto_titulacion')) {
+        if (Schema::hasColumn('intentos_evaluacion', 'apto_titulacion')) {
             $attempts = $evaluation->relationLoaded('attempts')
                 ? $evaluation->attempts
                 : $evaluation->attempts()->get();
@@ -1154,7 +1154,7 @@ class EvaluationController extends Controller
 
     private function attemptTitulationVote(?EvaluationAttempt $attempt): ?bool
     {
-        if (!$attempt || !Schema::hasColumn('evaluation_attempts', 'apto_titulacion')) {
+        if (!$attempt || !Schema::hasColumn('intentos_evaluacion', 'apto_titulacion')) {
             return null;
         }
 
@@ -1242,7 +1242,7 @@ class EvaluationController extends Controller
         }
 
         try {
-            $column = DB::selectOne("SHOW COLUMNS FROM evaluation_scores LIKE 'nivel'");
+            $column = DB::selectOne("SHOW COLUMNS FROM respuestas_evaluacion LIKE 'nivel'");
             $type = strtolower((string) ($column->Type ?? $column->type ?? ''));
             return $supports = str_contains($type, 'totalmente_de_acuerdo');
         } catch (\Throwable $e) {
@@ -1299,7 +1299,7 @@ class EvaluationController extends Controller
 
         $validated = $request->validate([
             'teacher_ids' => 'present|array',
-            'teacher_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
+            'teacher_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 2)],
         ]);
 
         $teacherIds = collect($validated['teacher_ids'])
@@ -1320,7 +1320,7 @@ class EvaluationController extends Controller
     {
         $student = auth('api')->user();
         $evaluations = Evaluation::with(['project.students', 'room'])
-            ->whereHas('project.students', fn ($query) => $query->where('users.id', $student->id))
+            ->whereHas('project.students', fn ($query) => $query->where('usuarios.id', $student->id))
             ->whereNotNull('evaluation_room_id')
             ->orderBy('fecha_exposicion')
             ->get()
@@ -1510,16 +1510,16 @@ class EvaluationController extends Controller
             'nombre' => 'required|string|max:80',
             'salon' => 'nullable|string|max:120',
             'semestre' => 'required|integer|in:5,6,7,8',
-            'responsible_teacher_id' => ['nullable', Rule::exists('users', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
+            'responsible_teacher_id' => ['nullable', Rule::exists('usuarios', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
             'fecha_evaluacion' => 'required|date|after:now',
             'fecha_fin_evaluacion' => 'required|date|after:fecha_evaluacion',
             'teacher_evaluation_minutes' => 'required|integer|min:1|max:240',
             'project_presentation_minutes' => 'required|integer|min:1|max:240',
             'max_attempts' => 'required|integer|min:1|max:10',
             'teacher_ids' => 'nullable|array',
-            'teacher_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
+            'teacher_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
             'project_ids' => 'nullable|array',
-            'project_ids.*' => 'integer|distinct|exists:projects,id',
+            'project_ids.*' => 'integer|distinct|exists:proyectos,id',
             'project_order' => 'nullable|array',
             'project_order.*' => 'integer|min:1|distinct',
         ]);
@@ -1543,7 +1543,7 @@ class EvaluationController extends Controller
 
         $duplicateProjectRoom = $this->overlappingRoomQuery($this->schedulableRoomQuery(), $startsAt, $endsAt)
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
-            ->whereHas('projects', fn ($query) => $query->whereIn('projects.id', $projectIds))
+            ->whereHas('projects', fn ($query) => $query->whereIn('proyectos.id', $projectIds))
             ->exists();
 
         if ($duplicateProjectRoom) {
@@ -1557,7 +1557,7 @@ class EvaluationController extends Controller
             ->where(function ($query) use ($validated) {
                 $teacherIds = $validated['teacher_ids'] ?? [];
                 if ($teacherIds) {
-                    $query->whereHas('teachers', fn ($q) => $q->whereIn('users.id', $teacherIds));
+                    $query->whereHas('teachers', fn ($q) => $q->whereIn('usuarios.id', $teacherIds));
                     return;
                 }
                 $query->whereRaw('1 = 0');
@@ -1578,7 +1578,7 @@ class EvaluationController extends Controller
     {
         $query = EvaluationRoom::query()->where('activo', true);
 
-        if (Schema::hasColumn('evaluations', 'archived_at')) {
+        if (Schema::hasColumn('evaluaciones', 'archived_at')) {
             $query->where(function ($scope) {
                 $scope->whereDoesntHave('evaluations')
                     ->orWhereHas('evaluations', fn ($evaluationQuery) => $evaluationQuery->whereNull('archived_at'));
@@ -1590,7 +1590,7 @@ class EvaluationController extends Controller
 
     private function overlappingRoomQuery($query, $startsAt, $endsAt)
     {
-        if (Schema::hasColumn('evaluation_rooms', 'fecha_fin_evaluacion')) {
+        if (Schema::hasColumn('salas_evaluacion', 'fecha_fin_evaluacion')) {
             return $query
                 ->where('fecha_evaluacion', '<', $endsAt)
                 ->whereRaw(
@@ -1667,7 +1667,7 @@ class EvaluationController extends Controller
             'current_order' => $room->current_order,
             'completed_at' => optional($room->completed_at)->toDateTimeString(),
             'teachers' => $room->teachers ?? collect(),
-            'projects' => ($room->projects ?? collect())->map(function ($project) {
+            'proyectos' => ($room->projects ?? collect())->map(function ($project) {
                 $project->presentation_order = (int) ($project->pivot->presentation_order ?? 0);
                 $project->sequence_status = $project->pivot->status ?? 'pendiente';
                 return $project;

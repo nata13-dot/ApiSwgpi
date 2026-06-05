@@ -64,7 +64,7 @@ class RepositoryController extends Controller
             $query->where(function ($scope) use ($studentUser) {
                 $scope->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
                     ->orWhere('uploaded_by', $studentUser->id)
-                    ->orWhereHas('project.students', fn ($studentQuery) => $studentQuery->where('users.id', $studentUser->id));
+                    ->orWhereHas('project.students', fn ($studentQuery) => $studentQuery->where('usuarios.id', $studentUser->id));
             });
         }
 
@@ -126,7 +126,7 @@ class RepositoryController extends Controller
         }
 
         $documents = RepositoryDocument::whereHas('tags', function($q) use ($tagId) {
-                                        $q->where('document_tags.id', $tagId);
+                                        $q->where('etiquetas_documentos.id', $tagId);
                                    })
                                    ->where('activo', true)
                                    ->with(['tags', 'uploader'])
@@ -165,7 +165,7 @@ class RepositoryController extends Controller
             ->where('activo', true);
 
         if ((int) $user->perfil_id === 3) {
-            $projectsQuery->whereHas('students', fn ($query) => $query->where('users.id', $user->id));
+            $projectsQuery->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id));
         } elseif (!in_array((int) $user->perfil_id, [1, 2], true)) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
@@ -218,7 +218,7 @@ class RepositoryController extends Controller
             }
 
             $validated = $request->validate([
-                'project_id' => 'required|integer|exists:projects,id',
+                'project_id' => 'required|integer|exists:proyectos,id',
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'nullable|string|max:5000',
                 'autores' => 'nullable|string|max:1000',
@@ -360,9 +360,9 @@ class RepositoryController extends Controller
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'required|string|max:5000',
                 'autores' => 'required|string|max:1000',
-                'project_id' => 'nullable|integer|exists:projects,id',
+                'project_id' => 'nullable|integer|exists:proyectos,id',
                 'tag_ids' => 'nullable|array',
-                'tag_ids.*' => 'integer|exists:document_tags,id',
+                'tag_ids.*' => 'integer|exists:etiquetas_documentos,id',
                 'visibility' => 'nullable|in:public,private',
                 'archivo' => $this->fileValidationRule(true),
             ]);
@@ -375,7 +375,7 @@ class RepositoryController extends Controller
 
                 $project = Project::with('students:id,nombres,apa,ama')
                     ->where('activo', true)
-                    ->whereHas('students', fn ($query) => $query->where('users.id', $user->id))
+                    ->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id))
                     ->find($validated['project_id']);
 
                 if (!$project) {
@@ -439,7 +439,7 @@ class RepositoryController extends Controller
                 'descripcion' => 'required|string|max:5000',
                 'autores' => 'required|string|max:1000',
                 'tag_ids' => 'nullable|array',
-                'tag_ids.*' => 'integer|exists:document_tags,id',
+                'tag_ids.*' => 'integer|exists:etiquetas_documentos,id',
                 'visibility' => 'nullable|in:public,private',
                 'archivo' => $this->fileValidationRule(false),
             ]);
@@ -624,7 +624,7 @@ class RepositoryController extends Controller
 
         if ((int) $user->perfil_id === 3 && $document->project_id) {
             return Project::where('id', $document->project_id)
-                ->whereHas('students', fn ($query) => $query->where('users.id', $user->id))
+                ->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id))
                 ->exists();
         }
 
@@ -708,7 +708,7 @@ class RepositoryController extends Controller
         static $columns = [];
 
         if (!array_key_exists($column, $columns)) {
-            $columns[$column] = Schema::hasColumn('repository_documents', $column);
+            $columns[$column] = Schema::hasColumn('documentos_repositorio', $column);
         }
 
         return $columns[$column];

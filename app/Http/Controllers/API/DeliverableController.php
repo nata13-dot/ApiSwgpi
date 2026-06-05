@@ -33,7 +33,7 @@ class DeliverableController extends Controller
             'archivo_path', 'tipo_documento', 'submitted_by',
         ];
         foreach (['calificacion', 'fecha_calificacion', 'calificado_por'] as $column) {
-            if (Schema::hasColumn('deliverables', $column)) {
+            if (Schema::hasColumn('entregables_proyecto', $column)) {
                 $deliverableColumns[] = $column;
             }
         }
@@ -42,7 +42,7 @@ class DeliverableController extends Controller
             'competencia.asignatura:id,nombre,clave',
             'submittedBy:id,nombres,apa,ama',
         ];
-        if (Schema::hasColumn('deliverables', 'calificado_por')) {
+        if (Schema::hasColumn('entregables_proyecto', 'calificado_por')) {
             $deliverableRelations[] = 'calificadoPor:id,nombres,apa,ama';
         }
 
@@ -66,7 +66,7 @@ class DeliverableController extends Controller
                 },
             ])
             ->where('activo', true)
-            ->whereHas('advisors', fn ($query) => $query->where('users.id', $user->id))
+            ->whereHas('advisors', fn ($query) => $query->where('usuarios.id', $user->id))
             ->orderBy('title')
             ->get();
 
@@ -155,7 +155,7 @@ class DeliverableController extends Controller
         $user = auth('api')->user();
 
         if ((int) $user->perfil_id === 2) {
-            $query->whereHas('project.advisors', fn ($q) => $q->where('users.id', $user->id));
+            $query->whereHas('project.advisors', fn ($q) => $q->where('usuarios.id', $user->id));
         } elseif ((int) $user->perfil_id === 3) {
             $query->where('submitted_by', $user->id);
         }
@@ -203,7 +203,7 @@ class DeliverableController extends Controller
             ->where('activo', true)
             ->where(function ($scope) use ($user) {
                 $scope->where('submitted_by', $user->id)
-                    ->orWhereHas('project.students', fn ($studentQuery) => $studentQuery->where('users.id', $user->id));
+                    ->orWhereHas('project.students', fn ($studentQuery) => $studentQuery->where('usuarios.id', $user->id));
             })
             ->orderByDesc('created_at')
             ->get();
@@ -232,7 +232,7 @@ class DeliverableController extends Controller
         if ((int) $user->perfil_id === 2) {
             $roomProjectIds = EvaluationRoom::where(function ($query) use ($user) {
                     $query->where('responsible_teacher_id', $user->id)
-                        ->orWhereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('users.id', $user->id));
+                        ->orWhereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('usuarios.id', $user->id));
                 })
                 ->with('projects:id')
                 ->get()
@@ -241,13 +241,13 @@ class DeliverableController extends Controller
                 ->values();
 
             $projectsQuery->where(function ($query) use ($user, $roomProjectIds) {
-                $query->whereHas('advisors', fn ($advisorQuery) => $advisorQuery->where('users.id', $user->id));
+                $query->whereHas('advisors', fn ($advisorQuery) => $advisorQuery->where('usuarios.id', $user->id));
                 if ($roomProjectIds->isNotEmpty()) {
                     $query->orWhereIn('id', $roomProjectIds);
                 }
             });
         } elseif ((int) $user->perfil_id === 3) {
-            $projectsQuery->whereHas('students', fn ($query) => $query->where('users.id', $user->id));
+            $projectsQuery->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id));
         } elseif ((int) $user->perfil_id !== 1) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
@@ -295,7 +295,7 @@ class DeliverableController extends Controller
                         'fecha_evaluacion' => optional($evaluation->room->fecha_evaluacion)->toDateTimeString(),
                     ] : null,
                 ])->values(),
-                'deliverables' => $project->deliverables->map(fn ($deliverable) => $this->shapeEvaluationDocument($deliverable))->values(),
+                'entregables_proyecto' => $project->deliverables->map(fn ($deliverable) => $this->shapeEvaluationDocument($deliverable))->values(),
             ];
         })->values();
 
@@ -306,7 +306,7 @@ class DeliverableController extends Controller
     {
         try {
             $validated = $request->validate([
-                'project_id' => 'nullable|exists:projects,id',
+                'project_id' => 'nullable|exists:proyectos,id',
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'nullable|string|max:5000',
                 'tipo_documento' => 'nullable|in:reporte,video,presentacion,codigo,documento,otro',
@@ -343,7 +343,7 @@ class DeliverableController extends Controller
             }
 
             $validated = $request->validate([
-                'project_id' => 'nullable|exists:projects,id',
+                'project_id' => 'nullable|exists:proyectos,id',
                 'competencia_id' => 'nullable|exists:competencias,id',
                 'nombre' => 'nullable|string|max:255',
                 'descripcion' => 'nullable|string|max:5000',
@@ -686,7 +686,7 @@ class DeliverableController extends Controller
     {
         static $hasColumn = null;
         if ($hasColumn === null) {
-            $hasColumn = Schema::hasColumn('deliverables', 'categoria');
+            $hasColumn = Schema::hasColumn('entregables_proyecto', 'categoria');
         }
 
         return $hasColumn;

@@ -13,7 +13,7 @@ class User extends Authenticatable implements JWTSubject
 {
     use HasFactory, Notifiable;
 
-    protected $table = 'users';
+    protected $table = 'usuarios';
     public $incrementing = false;
     protected $keyType = 'string';
 
@@ -54,7 +54,7 @@ class User extends Authenticatable implements JWTSubject
     // RELACIONES
     public function projectsAsAdvisor(): BelongsToMany
     {
-        return $this->belongsToMany(Project::class, 'project_user', 'user_id', 'project_id')
+        return $this->belongsToMany(Project::class, 'proyectos_integrantes', 'user_id', 'project_id')
                     ->withPivot('rol_asesor');
     }
 

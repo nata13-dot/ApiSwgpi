@@ -109,10 +109,10 @@ class BusinessValidationService
                 ->where('user_id', $user_id)
                 ->where('rol_asesor', '!=', null)
                 ->exists()
-                || EvaluationRoom::whereHas('projects', fn ($query) => $query->where('projects.id', $project->id))
+                || EvaluationRoom::whereHas('projects', fn ($query) => $query->where('proyectos.id', $project->id))
                     ->where(function ($query) use ($user_id) {
                         $query->where('responsible_teacher_id', $user_id)
-                            ->orWhereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('users.id', $user_id));
+                            ->orWhereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('usuarios.id', $user_id));
                     })
                     ->exists();
         }

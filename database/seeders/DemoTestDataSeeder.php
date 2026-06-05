@@ -181,14 +181,14 @@ class DemoTestDataSeeder extends Seeder
             );
             $project->asignaturas()->sync($group->asignaturas()->pluck('asignaturas.id')->all());
 
-            DB::table('project_user')->where('project_id', $project->id)->delete();
+            DB::table('proyectos_integrantes')->where('project_id', $project->id)->delete();
 
             foreach ($item['students'] as $studentId) {
-                DB::table('project_user')->insert(['project_id' => $project->id, 'user_id' => $studentId, 'rol_asesor' => null]);
+                DB::table('proyectos_integrantes')->insert(['project_id' => $project->id, 'user_id' => $studentId, 'rol_asesor' => null]);
             }
 
-            DB::table('project_user')->insert(['project_id' => $project->id, 'user_id' => $item['primary'], 'rol_asesor' => 'primario']);
-            DB::table('project_user')->insert(['project_id' => $project->id, 'user_id' => $item['secondary'], 'rol_asesor' => 'secundario']);
+            DB::table('proyectos_integrantes')->insert(['project_id' => $project->id, 'user_id' => $item['primary'], 'rol_asesor' => 'primario']);
+            DB::table('proyectos_integrantes')->insert(['project_id' => $project->id, 'user_id' => $item['secondary'], 'rol_asesor' => 'secundario']);
         }
     }
 }

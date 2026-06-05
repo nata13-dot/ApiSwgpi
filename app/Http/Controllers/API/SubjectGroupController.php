@@ -144,7 +144,7 @@ class SubjectGroupController extends Controller
 
         $validated = $request->validate([
             'student_ids' => 'nullable|array',
-            'student_ids.*' => ['string', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
+            'student_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
         ]);
 
         $studentIds = array_values(array_unique($validated['student_ids'] ?? []));

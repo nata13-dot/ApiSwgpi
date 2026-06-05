@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EvaluationScore extends Model
 {
+    protected $table = 'respuestas_evaluacion';
+
     protected $fillable = [
         'evaluation_id', 'teacher_id', 'criterio', 'nivel', 'puntaje', 'comentario',
     ];

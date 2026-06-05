@@ -10,7 +10,7 @@ class DocumentVersion extends Model
 {
     use HasFactory;
 
-    protected $table = 'document_versions';
+    protected $table = 'versiones_documentos';
     public $timestamps = false;
 
     protected $fillable = ['deliverable_id', 'version_number', 'descripcion', 'archivo_path', 'uploaded_by'];

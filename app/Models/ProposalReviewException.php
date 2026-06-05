@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProposalReviewException extends Model
 {
+    protected $table = 'excepciones_revision_propuesta';
+
     protected $fillable = [
         'asignatura_id', 'subject_group_id', 'teacher_id', 'student_id', 'notes', 'activo',
     ];

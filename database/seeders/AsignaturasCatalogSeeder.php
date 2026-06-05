@@ -62,9 +62,9 @@ class AsignaturasCatalogSeeder extends Seeder
             ['clave' => null, 'nombre' => 'Taller de Sistemas Operativos'],
         ];
 
-        DB::table('subject_group_asignatura')->delete();
-        DB::table('project_asignatura')->delete();
-        DB::table('teacher_group_assignments')->update(['asignatura_id' => null]);
+        DB::table('grupos_asignaturas')->delete();
+        DB::table('proyectos_asignaturas')->delete();
+        DB::table('asignaciones_docentes_grupos')->update(['asignatura_id' => null]);
         DB::table('competencias')->delete();
         DB::table('asignaturas')->delete();
         DB::statement('ALTER TABLE asignaturas AUTO_INCREMENT = 1');

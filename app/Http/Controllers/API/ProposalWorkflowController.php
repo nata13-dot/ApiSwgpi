@@ -20,7 +20,7 @@ class ProposalWorkflowController extends Controller
     public function configIndex()
     {
         return response()->json([
-            'subject_groups' => SubjectGroup::with(['asignaturas', 'registrationWindows', 'teacherAssignments.teacher', 'teacherAssignments.asignatura'])->orderBy('semestre')->orderBy('nombre')->get(),
+            'grupos_academicos' => SubjectGroup::with(['asignaturas', 'registrationWindows', 'teacherAssignments.teacher', 'teacherAssignments.asignatura'])->orderBy('semestre')->orderBy('nombre')->get(),
             'teachers' => User::where('perfil_id', 2)->where('activo', true)->orderBy('nombres')->get(['id', 'nombres', 'apa', 'ama']),
             'asignaturas' => Asignatura::orderBy('nombre')->get(['id', 'clave', 'nombre']),
             'exceptions' => ProposalReviewException::with(['asignatura:id,nombre', 'subjectGroup:id,nombre,semestre,grupo', 'teacher:id,nombres,apa,ama', 'student:id,nombres,apa,ama,semestre,grupo'])
@@ -33,7 +33,7 @@ class ProposalWorkflowController extends Controller
     public function storeWindow(Request $request)
     {
         $validated = $request->validate([
-            'subject_group_id' => 'required|exists:subject_groups,id',
+            'subject_group_id' => 'required|exists:grupos_academicos,id',
             'starts_at' => 'required|date',
             'ends_at' => 'required|date|after:starts_at',
             'activo' => 'nullable|boolean',
@@ -66,9 +66,9 @@ class ProposalWorkflowController extends Controller
     public function storeAssignment(Request $request)
     {
         $validated = $request->validate([
-            'subject_group_id' => 'required|exists:subject_groups,id',
+            'subject_group_id' => 'required|exists:grupos_academicos,id',
             'asignatura_id' => 'required|integer|exists:asignaturas,id',
-            'teacher_id' => ['required', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
+            'teacher_id' => ['required', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 2)],
             'labor' => 'nullable|string|max:120',
             'activo' => 'nullable|boolean',
         ]);
@@ -78,7 +78,7 @@ class ProposalWorkflowController extends Controller
             throw ValidationException::withMessages(['teacher_id' => ['El responsable debe ser un docente activo.']]);
         }
 
-        $belongsToGroup = DB::table('subject_group_asignatura')
+        $belongsToGroup = DB::table('grupos_asignaturas')
             ->where('subject_group_id', $validated['subject_group_id'])
             ->where('asignatura_id', $validated['asignatura_id'])
             ->exists();
@@ -117,9 +117,9 @@ class ProposalWorkflowController extends Controller
     {
         $validated = $request->validate([
             'asignatura_id' => 'required|exists:asignaturas,id',
-            'subject_group_id' => 'nullable|exists:subject_groups,id',
-            'teacher_id' => ['required', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 2)],
-            'student_id' => ['required', Rule::exists('users', 'id')->where('activo', true)->where('perfil_id', 3)],
+            'subject_group_id' => 'nullable|exists:grupos_academicos,id',
+            'teacher_id' => ['required', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 2)],
+            'student_id' => ['required', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
             'notes' => 'nullable|string|max:1000',
         ]);
 
@@ -159,7 +159,7 @@ class ProposalWorkflowController extends Controller
             ->first();
 
         $project = Project::with(['students', 'subjectGroup'])
-            ->whereHas('students', fn ($query) => $query->where('users.id', $student->id))
+            ->whereHas('students', fn ($query) => $query->where('usuarios.id', $student->id))
             ->first();
 
         $window = $group?->registrationWindows()
@@ -195,7 +195,7 @@ class ProposalWorkflowController extends Controller
         $term = trim((string) $request->query('q', ''));
         $query = User::where('perfil_id', 3)->where('activo', true)
             ->when((int) $user->perfil_id === 3, fn ($q) => $q->where('id', '!=', $user->id))
-            ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->whereNull('project_user.rol_asesor'));
+            ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->whereNull('proyectos_integrantes.rol_asesor'));
 
         if ($term !== '') {
             $query->where(function ($q) use ($term) {
@@ -226,7 +226,7 @@ class ProposalWorkflowController extends Controller
             ->where(function ($query) use ($groupIds, $exceptionStudentIds) {
                 $query->whereIn('subject_group_id', $groupIds);
                 if ($exceptionStudentIds->isNotEmpty()) {
-                    $query->orWhereHas('students', fn ($studentQuery) => $studentQuery->whereIn('users.id', $exceptionStudentIds));
+                    $query->orWhereHas('students', fn ($studentQuery) => $studentQuery->whereIn('usuarios.id', $exceptionStudentIds));
                 }
             })
             ->orderByRaw("FIELD(proposal_status, 'pendiente', 'requiere_cambios', 'aprobado', 'rechazado')")
@@ -250,7 +250,7 @@ class ProposalWorkflowController extends Controller
                 ->where('activo', true)
                 ->exists();
             if (!$allowed) {
-                $studentIds = $project->students()->pluck('users.id');
+                $studentIds = $project->students()->pluck('usuarios.id');
                 $allowed = ProposalReviewException::where('teacher_id', $teacher->id)
                     ->where('activo', true)
                     ->whereIn('student_id', $studentIds)
