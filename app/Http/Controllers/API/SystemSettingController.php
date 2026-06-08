@@ -20,7 +20,7 @@ class SystemSettingController extends Controller
         $settings = SystemSetting::allWithDefaults();
         $today = now()->toDateString();
 
-        return response()->json([
+        $payload = [
             'session_timeout_minutes' => $settings['session_timeout_minutes'],
             'default_theme' => $settings['default_theme'],
             'global_notice' => $settings['global_notice'],
@@ -33,7 +33,13 @@ class SystemSettingController extends Controller
             'system_notices' => collect($settings['system_notices'] ?? [])
                 ->filter(fn ($notice) => ($notice['active'] ?? true) && !empty($notice['message']) && $this->noticeIsVisible($notice, $today))
                 ->values(),
-        ]);
+        ];
+        $payload['realtime_version'] = md5(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        return response()
+            ->json($payload)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache');
     }
 
     public function index()
