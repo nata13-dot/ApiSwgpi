@@ -4,17 +4,19 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\DocumentTag;
+use App\Models\EvaluationDocumentRelease;
 use App\Models\Project;
 use App\Models\RepositoryDocument;
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class RepositoryController extends Controller
 {
-    private const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'webp', 'epub'];
+    private const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'webp', 'epub'];
 
     public function index(Request $request)
     {
@@ -86,7 +88,8 @@ class RepositoryController extends Controller
             $query->where(function($q) use ($term) {
                 $q->where('nombre', 'like', "%{$term}%")
                   ->orWhere('descripcion', 'like', "%{$term}%")
-                  ->orWhere('autores', 'like', "%{$term}%");
+                  ->orWhereHas('authorRecords', fn ($authorQuery) => $authorQuery
+                      ->where('nombre_autor', 'like', "%{$term}%"));
             });
         }
 
@@ -158,8 +161,15 @@ class RepositoryController extends Controller
                 'asignaturas:id,nombre,clave',
                 'repositoryDocuments' => fn ($query) => $query
                     ->where('activo', true)
-                    ->where('document_category', RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT)
-                    ->with(['uploader:id,nombres,apa,ama', 'publisher:id,nombres,apa,ama'])
+                    ->whereIn('document_category', [
+                        RepositoryDocument::CATEGORY_EVALUATION_RELEASE,
+                        RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION,
+                    ])
+                    ->with([
+                        'uploader:id,nombres,apa,ama',
+                        'publisher:id,nombres,apa,ama',
+                        'releaseStatuses',
+                    ])
                     ->orderByDesc('created_at'),
             ])
             ->where('activo', true);
@@ -170,9 +180,7 @@ class RepositoryController extends Controller
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
-        $projects = $projectsQuery->orderBy('title')->get()
-            ->filter(fn (Project $project) => $this->requiresResearchDocument($project))
-            ->values();
+        $projects = $projectsQuery->orderBy('title')->get();
 
         return response()->json([
             'data' => $projects->map(fn (Project $project) => [
@@ -199,8 +207,23 @@ class RepositoryController extends Controller
                 ])->values(),
                 'puede_subir' => (int) $user->perfil_id === 3
                     && $project->students->contains(fn ($student) => (string) $student->id === (string) $user->id),
-                'puede_publicar' => (int) $user->perfil_id === 1,
-                'documents' => $project->repositoryDocuments->map(fn (RepositoryDocument $document) => $this->shapeEvaluationRepositoryDocument($document))->values(),
+                'puede_revisar' => in_array((int) $user->perfil_id, [1, 2], true),
+                'release_sheet' => $this->shapeEvaluationDelivery(
+                    $project,
+                    $project->repositoryDocuments->firstWhere(
+                        'document_category',
+                        RepositoryDocument::CATEGORY_EVALUATION_RELEASE
+                    ),
+                    'release_sheet'
+                ),
+                'presentation' => $this->shapeEvaluationDelivery(
+                    $project,
+                    $project->repositoryDocuments->firstWhere(
+                        'document_category',
+                        RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION
+                    ),
+                    'presentation'
+                ),
             ])->values(),
         ]);
     }
@@ -219,10 +242,16 @@ class RepositoryController extends Controller
 
             $validated = $request->validate([
                 'project_id' => 'required|integer|exists:proyectos,id',
-                'nombre' => 'required|string|max:255',
+                'document_type' => 'required|in:release_sheet,presentation',
+                'nombre' => 'nullable|string|max:255',
                 'descripcion' => 'nullable|string|max:5000',
                 'autores' => 'nullable|string|max:1000',
-                'archivo' => $this->fileValidationRule(true, ['pdf', 'doc', 'docx']),
+                'archivo' => $this->fileValidationRule(
+                    true,
+                    $request->input('document_type') === 'presentation'
+                        ? ['pdf', 'ppt', 'pptx']
+                        : ['pdf', 'doc', 'docx']
+                ),
             ]);
 
             $project = Project::with(['students:id,nombres,apa,ama', 'asignaturas:id,nombre,clave'])
@@ -233,35 +262,122 @@ class RepositoryController extends Controller
                 return response()->json(['error' => 'No puedes subir documentos para este proyecto.'], 403);
             }
 
-            if (!$this->requiresResearchDocument($project)) {
-                return response()->json(['error' => 'Este proyecto no tiene cargada Taller de Investigacion I o II.'], 403);
-            }
-
             [$path, $extension] = $this->storeRepositoryFile($request->file('archivo'));
             if (!$path) {
                 return response()->json(['message' => 'No se pudo guardar el archivo.'], 500);
             }
 
-            $document = RepositoryDocument::create([
-                'project_id' => $project->id,
-                'nombre' => trim($validated['nombre']),
-                'descripcion' => trim((string) ($validated['descripcion'] ?? '')),
-                'autores' => trim((string) ($validated['autores'] ?? '')) ?: $this->projectAuthors($project),
-                'archivo_path' => $path,
-                'archivo_tipo' => $extension,
-                'document_category' => RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT,
-                'visibility' => RepositoryDocument::VISIBILITY_PRIVATE,
-                'uploaded_by' => $user->id,
-                'activo' => true,
-            ]);
+            $category = $validated['document_type'] === 'release_sheet'
+                ? RepositoryDocument::CATEGORY_EVALUATION_RELEASE
+                : RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION;
+            $defaultName = $validated['document_type'] === 'release_sheet'
+                ? 'Hoja de liberacion'
+                : 'Presentacion';
+
+            $document = DB::transaction(function () use (
+                $category,
+                $defaultName,
+                $extension,
+                $path,
+                $project,
+                $user,
+                $validated
+            ) {
+                RepositoryDocument::where('project_id', $project->id)
+                    ->where('document_category', $category)
+                    ->where('activo', true)
+                    ->update(['activo' => false]);
+
+                $document = RepositoryDocument::create([
+                    'project_id' => $project->id,
+                    'nombre' => trim((string) ($validated['nombre'] ?? '')) ?: $defaultName,
+                    'descripcion' => trim((string) ($validated['descripcion'] ?? '')),
+                    'autores' => trim((string) ($validated['autores'] ?? '')) ?: $this->projectAuthors($project),
+                    'archivo_path' => $path,
+                    'archivo_tipo' => $extension,
+                    'document_category' => $category,
+                    'visibility' => RepositoryDocument::VISIBILITY_PRIVATE,
+                    'uploaded_by' => $user->id,
+                    'activo' => true,
+                ]);
+
+                if ($category === RepositoryDocument::CATEGORY_EVALUATION_RELEASE) {
+                    $document->releaseStatuses()->createMany(
+                        $project->students->map(fn ($student) => [
+                            'alumno_id' => $student->id,
+                            'liberado' => false,
+                        ])->all()
+                    );
+                }
+
+                return $document;
+            });
 
             return response()->json([
-                'message' => 'Documento guardado en repositorio privado para revision.',
-                'document' => $this->shapeEvaluationRepositoryDocument($document->load(['uploader', 'publisher'])),
+                'message' => 'Entrega guardada para revision.',
+                'document' => $this->shapeEvaluationDelivery(
+                    $project,
+                    $document->load(['uploader', 'publisher', 'releaseStatuses']),
+                    $validated['document_type']
+                ),
             ], 201);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }
+    }
+
+    public function reviewEvaluationRelease(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        if (!in_array((int) $user->perfil_id, [1, 2], true)) {
+            return response()->json(['error' => 'Solo administradores y docentes pueden revisar la liberacion.'], 403);
+        }
+
+        $document = RepositoryDocument::with(['project.students', 'releaseStatuses'])
+            ->where('activo', true)
+            ->where('document_category', RepositoryDocument::CATEGORY_EVALUATION_RELEASE)
+            ->find($id);
+        if (!$document || !$document->project) {
+            return response()->json(['error' => 'Hoja de liberacion no encontrada.'], 404);
+        }
+
+        $validated = $request->validate([
+            'students' => 'required|array',
+            'students.*.student_id' => 'required|string|distinct',
+            'students.*.released' => 'required|boolean',
+        ]);
+        $projectStudentIds = $document->project->students->pluck('id')->map(fn ($id) => (string) $id);
+        $submittedIds = collect($validated['students'])->pluck('student_id')->map(fn ($id) => (string) $id);
+        if ($submittedIds->diff($projectStudentIds)->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'students' => ['La revision contiene alumnos que no pertenecen al proyecto.'],
+            ]);
+        }
+
+        DB::transaction(function () use ($document, $validated, $user) {
+            foreach ($validated['students'] as $student) {
+                EvaluationDocumentRelease::updateOrCreate(
+                    [
+                        'documento_repositorio_id' => $document->id,
+                        'alumno_id' => $student['student_id'],
+                    ],
+                    [
+                        'liberado' => $student['released'],
+                        'revisado_por' => $user->id,
+                        'revisado_en' => now(),
+                    ]
+                );
+            }
+        });
+
+        return response()->json([
+            'message' => 'Liberacion actualizada.',
+            'document' => $this->shapeEvaluationDelivery(
+                $document->project,
+                $document->fresh(['uploader', 'publisher', 'releaseStatuses']),
+                'release_sheet'
+            ),
+        ]);
     }
 
     public function thesisDocuments()
@@ -669,6 +785,37 @@ class RepositoryController extends Controller
         return $names->isNotEmpty() ? $names->join(', ') : (string) $project->authors;
     }
 
+    private function shapeEvaluationDelivery(
+        Project $project,
+        ?RepositoryDocument $document,
+        string $type
+    ): array
+    {
+        $isReleaseSheet = $type === 'release_sheet';
+        $statuses = $document?->releaseStatuses?->keyBy(fn ($status) => (string) $status->alumno_id)
+            ?? collect();
+
+        return [
+            'uploaded' => $document !== null,
+            'document' => $document ? $this->shapeEvaluationRepositoryDocument($document) : null,
+            'allowed_extensions' => $isReleaseSheet
+                ? ['pdf', 'doc', 'docx']
+                : ['pdf', 'ppt', 'pptx'],
+            'students' => $project->students->map(function ($student) use ($statuses) {
+                $status = $statuses->get((string) $student->id);
+
+                return [
+                    'id' => $student->id,
+                    'nombres' => $student->nombres,
+                    'apa' => $student->apa,
+                    'ama' => $student->ama,
+                    'released' => (bool) ($status?->liberado ?? false),
+                    'reviewed' => $status?->revisado_en !== null,
+                ];
+            })->values(),
+        ];
+    }
+
     private function shapeEvaluationRepositoryDocument(RepositoryDocument $document): array
     {
         return [
@@ -678,6 +825,7 @@ class RepositoryController extends Controller
             'descripcion' => $document->descripcion,
             'autores' => $document->autores,
             'archivo_tipo' => $document->archivo_tipo,
+            'document_category' => $document->document_category,
             'visibility' => $document->visibility,
             'is_public' => $document->visibility === RepositoryDocument::VISIBILITY_PUBLIC,
             'created_at' => optional($document->created_at)->toDateTimeString(),
@@ -694,7 +842,9 @@ class RepositoryController extends Controller
                 'apa' => $document->publisher->apa,
                 'ama' => $document->publisher->ama,
             ] : null,
-            'allowed_extensions' => ['pdf', 'doc', 'docx'],
+            'allowed_extensions' => $document->document_category === RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION
+                ? ['pdf', 'ppt', 'pptx']
+                : ['pdf', 'doc', 'docx'],
         ];
     }
 
@@ -706,9 +856,20 @@ class RepositoryController extends Controller
     private function repositoryDocumentsHas(string $column): bool
     {
         static $columns = [];
+        $normalizedColumns = [
+            'project_id' => 'proyecto_id',
+            'document_category' => 'categoria',
+            'visibility' => 'visibilidad',
+            'published_at' => 'publicado_en',
+            'published_by' => 'publicado_por',
+            'uploaded_by' => 'subido_por',
+            'created_at' => 'creado_en',
+            'updated_at' => 'actualizado_en',
+        ];
+        $databaseColumn = $normalizedColumns[$column] ?? $column;
 
         if (!array_key_exists($column, $columns)) {
-            $columns[$column] = Schema::hasColumn('documentos_repositorio', $column);
+            $columns[$column] = Schema::hasColumn('documentos_repositorio', $databaseColumn);
         }
 
         return $columns[$column];

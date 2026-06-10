@@ -2,22 +2,34 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasLegacyAliases;
 use Illuminate\Database\Eloquent\Model;
 
 class SystemSetting extends Model
 {
+    use HasLegacyAliases;
+
     private static ?array $memoizedSettings = null;
 
     protected $table = 'configuraciones_sistema';
 
-    protected $primaryKey = 'key';
+    protected $primaryKey = 'clave';
     public $incrementing = false;
     protected $keyType = 'string';
+
+    protected array $legacyAliases = [
+        'key' => 'clave',
+        'value' => 'valor',
+        'type' => 'tipo',
+        'description' => 'descripcion',
+        'created_at' => 'creada_en',
+        'updated_at' => 'actualizada_en',
+    ];
 
     protected $fillable = ['key', 'value', 'type', 'description'];
 
     protected $casts = [
-        'value' => 'array',
+        'valor' => 'array',
     ];
 
     public const DEFAULTS = [

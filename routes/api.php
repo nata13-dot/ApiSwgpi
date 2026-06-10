@@ -20,6 +20,7 @@ use App\Http\Controllers\API\SystemSettingController;
 // AUTENTICACIÓN (sin protección)
 // ========================
 Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/refresh', [AuthController::class, 'refresh']);
 Route::post('/auth/password/request-token', [AuthController::class, 'requestPasswordReset']);
 Route::post('/auth/password/verify-token', [AuthController::class, 'verifyPasswordResetToken']);
 Route::post('/auth/password/reset', [AuthController::class, 'resetPasswordWithToken']);
@@ -39,6 +40,7 @@ Route::prefix('repositorio')->group(function () {
     Route::middleware(['auth:api', 'active'])->group(function () {
         Route::get('/evaluation-documents', [RepositoryController::class, 'evaluationDocuments']);
         Route::post('/evaluation-documents', [RepositoryController::class, 'storeEvaluationDocument']);
+        Route::put('/evaluation-documents/{id}/release-status', [RepositoryController::class, 'reviewEvaluationRelease']);
         Route::get('/thesis-documents', [RepositoryController::class, 'thesisDocuments']);
         Route::post('/thesis-documents', [RepositoryController::class, 'storeThesisDocument']);
     });
@@ -75,6 +77,8 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::get('/evaluations/rooms/{id}/report.pdf', [EvaluationController::class, 'exportRoomPdf']);
         Route::get('/evaluations', [EvaluationController::class, 'index']);
         Route::post('/evaluations', [EvaluationController::class, 'store']);
+        Route::post('/evaluations/archive-selected', [EvaluationController::class, 'archiveSelected']);
+        Route::post('/evaluations/unarchive-selected', [EvaluationController::class, 'unarchiveSelected']);
         Route::get('/evaluations/{id}', [EvaluationController::class, 'show']);
         Route::get('/evaluations/{id}/report.pdf', [EvaluationController::class, 'exportEvaluationPdf']);
         Route::put('/evaluations/{id}', [EvaluationController::class, 'update']);
@@ -82,6 +86,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::post('/evaluations/{id}/archive', [EvaluationController::class, 'archive']);
         Route::post('/evaluations/{id}/unarchive', [EvaluationController::class, 'unarchive']);
         Route::post('/evaluations/{id}/score', [EvaluationController::class, 'score']);
+        Route::post('/evaluations/{id}/mark-completed', [EvaluationController::class, 'markCompleted']);
         Route::post('/evaluations/{id}/feedback', [EvaluationController::class, 'feedback']);
     });
 
@@ -92,8 +97,8 @@ Route::middleware(['auth:api', 'active'])->group(function () {
 
     // Auth
     Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::post('/auth/heartbeat', [AuthController::class, 'heartbeat']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
-    Route::post('/auth/refresh', [AuthController::class, 'refresh']);
 
     // Perfil propio
     Route::get('/profile', [ProfileController::class, 'show']);
@@ -106,15 +111,18 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/proposal/students/search', [ProposalWorkflowController::class, 'searchStudents']);
     Route::get('/proposal/teacher-projects', [ProposalWorkflowController::class, 'teacherProjects']);
     Route::post('/proposal/projects/{id}/review', [ProposalWorkflowController::class, 'review']);
+    Route::middleware('role:admin,teacher')->group(function () {
+        Route::get('/proposal/window-groups', [ProposalWorkflowController::class, 'windowGroups']);
+        Route::post('/proposal/windows', [ProposalWorkflowController::class, 'storeWindow']);
+        Route::put('/proposal/windows/{id}', [ProposalWorkflowController::class, 'updateWindow']);
+        Route::delete('/proposal/windows/{id}', [ProposalWorkflowController::class, 'destroyWindow']);
+    });
     Route::get('/repositorio/student/list', [RepositoryController::class, 'studentIndex']);
     Route::post('/repositorio', [RepositoryController::class, 'store']);
 
     // Users (solo Admin)
     Route::middleware('role:admin')->group(function () {
         Route::get('/proposal/config', [ProposalWorkflowController::class, 'configIndex']);
-        Route::post('/proposal/windows', [ProposalWorkflowController::class, 'storeWindow']);
-        Route::put('/proposal/windows/{id}', [ProposalWorkflowController::class, 'updateWindow']);
-        Route::delete('/proposal/windows/{id}', [ProposalWorkflowController::class, 'destroyWindow']);
         Route::post('/proposal/assignments', [ProposalWorkflowController::class, 'storeAssignment']);
         Route::delete('/proposal/assignments/{id}', [ProposalWorkflowController::class, 'destroyAssignment']);
         Route::post('/proposal/exceptions', [ProposalWorkflowController::class, 'storeException']);

@@ -22,12 +22,12 @@ class DocumentTag extends Model
     // RELACIONES
     public function deliverables(): BelongsToMany
     {
-        return $this->belongsToMany(Deliverable::class, 'entregables_etiquetas', 'document_tag_id', 'deliverable_id');
+        return $this->belongsToMany(Deliverable::class, 'entregables_etiquetas', 'etiqueta_id', 'entregable_proyecto_id');
     }
 
     public function repositoryDocuments(): BelongsToMany
     {
-        return $this->belongsToMany(RepositoryDocument::class, 'documentos_repositorio_etiquetas', 'document_tag_id', 'repository_document_id');
+        return $this->belongsToMany(RepositoryDocument::class, 'documentos_repositorio_etiquetas', 'etiqueta_id', 'documento_repositorio_id');
     }
 
     // SCOPES

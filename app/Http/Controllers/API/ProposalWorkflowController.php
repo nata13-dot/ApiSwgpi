@@ -17,10 +17,22 @@ use Illuminate\Validation\ValidationException;
 
 class ProposalWorkflowController extends Controller
 {
+    private const DEFAULT_PROPOSAL_SUBJECT = 'Fundamentos de Ingeniería de Software';
+
     public function configIndex()
     {
+        $defaultSubject = $this->defaultProposalSubject();
+        $subjectGroups = SubjectGroup::with(['asignaturas', 'registrationWindows', 'teacherAssignments.teacher', 'teacherAssignments.asignatura'])
+            ->where('semestre', 5)
+            ->whereHas('asignaturas', fn ($query) => $query->where('asignaturas.id', $defaultSubject->id))
+            ->orderBy('semestre')
+            ->orderBy('nombre')
+            ->get();
+
         return response()->json([
-            'grupos_academicos' => SubjectGroup::with(['asignaturas', 'registrationWindows', 'teacherAssignments.teacher', 'teacherAssignments.asignatura'])->orderBy('semestre')->orderBy('nombre')->get(),
+            'default_subject' => $defaultSubject,
+            'subject_groups' => $subjectGroups,
+            'grupos_academicos' => $subjectGroups,
             'teachers' => User::where('perfil_id', 2)->where('activo', true)->orderBy('nombres')->get(['id', 'nombres', 'apa', 'ama']),
             'asignaturas' => Asignatura::orderBy('nombre')->get(['id', 'clave', 'nombre']),
             'exceptions' => ProposalReviewException::with(['asignatura:id,nombre', 'subjectGroup:id,nombre,semestre,grupo', 'teacher:id,nombres,apa,ama', 'student:id,nombres,apa,ama,semestre,grupo'])
@@ -40,6 +52,7 @@ class ProposalWorkflowController extends Controller
             'notes' => 'nullable|string|max:1000',
         ]);
 
+        $this->guardCanManageWindow((int) $validated['subject_group_id']);
         $window = ProjectRegistrationWindow::create($validated);
         return response()->json(['message' => 'Ventana de registro creada', 'window' => $window], 201);
     }
@@ -47,6 +60,7 @@ class ProposalWorkflowController extends Controller
     public function updateWindow(Request $request, $id)
     {
         $window = ProjectRegistrationWindow::findOrFail($id);
+        $this->guardCanManageWindow((int) $window->subject_group_id);
         $validated = $request->validate([
             'starts_at' => 'required|date',
             'ends_at' => 'required|date|after:starts_at',
@@ -59,7 +73,9 @@ class ProposalWorkflowController extends Controller
 
     public function destroyWindow($id)
     {
-        ProjectRegistrationWindow::findOrFail($id)->delete();
+        $window = ProjectRegistrationWindow::findOrFail($id);
+        $this->guardCanManageWindow((int) $window->subject_group_id);
+        $window->delete();
         return response()->json(['message' => 'Ventana de registro eliminada']);
     }
 
@@ -79,7 +95,7 @@ class ProposalWorkflowController extends Controller
         }
 
         $belongsToGroup = DB::table('grupos_asignaturas')
-            ->where('subject_group_id', $validated['subject_group_id'])
+            ->where('grupo_academico_id', $validated['subject_group_id'])
             ->where('asignatura_id', $validated['asignatura_id'])
             ->exists();
 
@@ -115,22 +131,32 @@ class ProposalWorkflowController extends Controller
 
     public function storeException(Request $request)
     {
+        $defaultSubject = $this->defaultProposalSubject();
         $validated = $request->validate([
-            'asignatura_id' => 'required|exists:asignaturas,id',
-            'subject_group_id' => 'nullable|exists:grupos_academicos,id',
-            'teacher_id' => ['required', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 2)],
+            'subject_group_id' => 'required|exists:grupos_academicos,id',
             'student_id' => ['required', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
             'notes' => 'nullable|string|max:1000',
         ]);
 
+        $group = SubjectGroup::where('id', $validated['subject_group_id'])
+            ->where('semestre', 5)
+            ->where('activo', true)
+            ->whereHas('asignaturas', fn ($query) => $query->where('asignaturas.id', $defaultSubject->id))
+            ->first();
+        if (!$group) {
+            throw ValidationException::withMessages([
+                'subject_group_id' => ['Selecciona una carga activa de quinto semestre que incluya la materia predeterminada.'],
+            ]);
+        }
+
         $exception = ProposalReviewException::updateOrCreate(
             [
-                'asignatura_id' => $validated['asignatura_id'],
-                'teacher_id' => $validated['teacher_id'],
                 'student_id' => $validated['student_id'],
+                'asignatura_id' => $defaultSubject->id,
             ],
             [
-                'subject_group_id' => $validated['subject_group_id'] ?? null,
+                'subject_group_id' => $group->id,
+                'teacher_id' => null,
                 'notes' => $validated['notes'] ?? null,
                 'activo' => true,
             ]
@@ -152,10 +178,21 @@ class ProposalWorkflowController extends Controller
             return response()->json(['message' => 'Solo estudiantes.'], 403);
         }
 
-        $group = SubjectGroup::with('registrationWindows')
-            ->where('semestre', $student->semestre)
-            ->where('grupo', strtoupper((string) $student->grupo))
+        $defaultSubject = $this->defaultProposalSubject();
+        $exception = ProposalReviewException::where('student_id', $student->id)
+            ->where('asignatura_id', $defaultSubject->id)
             ->where('activo', true)
+            ->latest('creado_en')
+            ->first();
+
+        $group = SubjectGroup::with('registrationWindows')
+            ->where('activo', true)
+            ->whereHas('asignaturas', fn ($query) => $query->where('asignaturas.id', $defaultSubject->id))
+            ->when(
+                $exception,
+                fn ($query) => $query->where('id', $exception->subject_group_id),
+                fn ($query) => $query->where('semestre', 5)->where('grupo', strtoupper((string) $student->grupo))
+            )
             ->first();
 
         $project = Project::with(['students', 'subjectGroup'])
@@ -179,6 +216,8 @@ class ProposalWorkflowController extends Controller
             'profile_required' => $profileRequired,
             'student' => $student,
             'subject_group' => $group,
+            'default_subject' => $defaultSubject,
+            'has_exception' => (bool) $exception,
             'active_window' => $window,
             'project' => $project,
             'can_register' => !$project && (bool) $window && !$profileRequired,
@@ -195,7 +234,7 @@ class ProposalWorkflowController extends Controller
         $term = trim((string) $request->query('q', ''));
         $query = User::where('perfil_id', 3)->where('activo', true)
             ->when((int) $user->perfil_id === 3, fn ($q) => $q->where('id', '!=', $user->id))
-            ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->whereNull('proyectos_integrantes.rol_asesor'));
+            ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->where('proyectos_integrantes.rol', 'integrante'));
 
         if ($term !== '') {
             $query->where(function ($q) use ($term) {
@@ -223,6 +262,7 @@ class ProposalWorkflowController extends Controller
             ->pluck('student_id');
 
         $projects = Project::with(['students', 'subjectGroup', 'creator', 'proposalReviewer'])
+            ->where('is_proposal', true)
             ->where(function ($query) use ($groupIds, $exceptionStudentIds) {
                 $query->whereIn('subject_group_id', $groupIds);
                 if ($exceptionStudentIds->isNotEmpty()) {
@@ -236,6 +276,28 @@ class ProposalWorkflowController extends Controller
         return response()->json($projects);
     }
 
+    public function windowGroups()
+    {
+        $user = auth('api')->user();
+        $defaultSubject = $this->defaultProposalSubject();
+        $query = SubjectGroup::with(['registrationWindows', 'teacherAssignments.teacher'])
+            ->where('semestre', 5)
+            ->whereHas('asignaturas', fn ($subjectQuery) => $subjectQuery->where('asignaturas.id', $defaultSubject->id));
+
+        if ((int) $user->perfil_id === 2) {
+            $query->whereHas('teacherAssignments', function ($assignmentQuery) use ($user, $defaultSubject) {
+                $assignmentQuery->where('docente_id', $user->id)
+                    ->where('asignatura_id', $defaultSubject->id)
+                    ->where('activo', true);
+            });
+        }
+
+        return response()->json([
+            'default_subject' => $defaultSubject,
+            'groups' => $query->orderBy('nombre')->get(),
+        ]);
+    }
+
     public function review(Request $request, $id)
     {
         $teacher = auth('api')->user();
@@ -244,6 +306,9 @@ class ProposalWorkflowController extends Controller
         }
 
         $project = Project::findOrFail($id);
+        if (!$project->is_proposal) {
+            return response()->json(['message' => 'El registro seleccionado no es una propuesta.'], 422);
+        }
         if ((int) $teacher->perfil_id === 2) {
             $allowed = TeacherGroupAssignment::where('teacher_id', $teacher->id)
                 ->where('subject_group_id', $project->subject_group_id)
@@ -276,5 +341,29 @@ class ProposalWorkflowController extends Controller
         ]);
 
         return response()->json(['message' => 'Revision registrada', 'project' => $project->load(['students', 'subjectGroup', 'proposalReviewer'])]);
+    }
+
+    private function defaultProposalSubject(): Asignatura
+    {
+        return Asignatura::where('nombre', self::DEFAULT_PROPOSAL_SUBJECT)->firstOrFail();
+    }
+
+    private function guardCanManageWindow(int $groupId): void
+    {
+        $user = auth('api')->user();
+        if ((int) $user->perfil_id === 1) {
+            return;
+        }
+
+        $defaultSubject = $this->defaultProposalSubject();
+        $allowed = TeacherGroupAssignment::where('subject_group_id', $groupId)
+            ->where('asignatura_id', $defaultSubject->id)
+            ->where('teacher_id', $user->id)
+            ->where('activo', true)
+            ->exists();
+
+        if (!$allowed) {
+            abort(403, 'Solo los docentes responsables de esta carga pueden administrar su ventana.');
+        }
     }
 }

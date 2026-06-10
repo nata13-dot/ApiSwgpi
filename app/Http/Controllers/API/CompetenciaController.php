@@ -26,7 +26,7 @@ class CompetenciaController extends Controller
         try {
             $validated = $request->validate([
                 'nombre' => 'required|string|max:255',
-                'asignatura_id' => 'nullable|exists:asignaturas,id',
+                'asignatura_id' => 'required|exists:asignaturas,id',
                 'fecha_inicio' => 'nullable|date',
                 'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
             ]);
@@ -57,7 +57,7 @@ class CompetenciaController extends Controller
 
             $validated = $request->validate([
                 'nombre' => 'required|string|max:255',
-                'asignatura_id' => 'nullable|exists:asignaturas,id',
+                'asignatura_id' => 'required|exists:asignaturas,id',
                 'fecha_inicio' => 'nullable|date',
                 'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
             ]);
@@ -74,6 +74,11 @@ class CompetenciaController extends Controller
         $competencia = Competencia::find($id);
         if (!$competencia) {
             return response()->json(['error' => 'Competencia no encontrada'], 404);
+        }
+        if ($competencia->deliverables()->exists()) {
+            return response()->json([
+                'message' => 'No puedes eliminar una competencia que tiene entregables. Elimina o reasigna primero sus entregables.',
+            ], 422);
         }
         $competencia->delete();
         return response()->json(['message' => 'Competencia eliminada']);

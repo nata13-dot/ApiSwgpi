@@ -22,6 +22,7 @@ class AuthController extends Controller
             $credentials = $request->validate([
                 'id' => 'required|string',
                 'password' => 'required|string',
+                'remember' => 'nullable|boolean',
             ]);
 
             $user = User::find($credentials['id']);
@@ -34,12 +35,14 @@ class AuthController extends Controller
                 return response()->json(['error' => 'Cuenta desactivada'], 403);
             }
 
-            $token = JWTAuth::fromUser($user);
+            $remember = $request->boolean('remember');
+            $token = JWTAuth::claims(['remember' => $remember])->fromUser($user);
 
             return response()->json([
                 'access_token' => $token,
                 'token_type' => 'bearer',
                 'user' => $this->userPayload($user),
+                'remember' => $remember,
             ]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -72,10 +75,26 @@ class AuthController extends Controller
     {
         try {
             $token = JWTAuth::refresh(JWTAuth::getToken());
-            return response()->json(['access_token' => $token, 'token_type' => 'bearer']);
+            $user = JWTAuth::setToken($token)->authenticate();
+            if (!$user || !$user->activo) {
+                return response()->json(['error' => 'Cuenta no disponible'], 403);
+            }
+            return response()->json([
+                'access_token' => $token,
+                'token_type' => 'bearer',
+                'user' => $this->userPayload($user),
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'No se pudo refrescar token'], 500);
+            return response()->json(['error' => 'La sesion ya no puede renovarse'], 401);
         }
+    }
+
+    public function heartbeat()
+    {
+        return response()->json([
+            'message' => 'Sesion activa',
+            'server_time' => now()->toIso8601String(),
+        ]);
     }
 
     public function requestPasswordReset(Request $request)
@@ -90,7 +109,7 @@ class AuthController extends Controller
             ]);
 
             $user = User::where('id', $validated['id'])
-                ->whereRaw('LOWER(email) = ?', [strtolower($validated['email'])])
+                ->whereRaw('LOWER(correo) = ?', [strtolower($validated['email'])])
                 ->where('activo', true)
                 ->first();
 
@@ -170,16 +189,17 @@ class AuthController extends Controller
                 return response()->json(['error' => 'El token no es valido o ya expiro.'], 422);
             }
 
-            $user->update(['password' => Hash::make($validated['password'])]);
+            $user->update(['contrasena' => Hash::make($validated['password'])]);
             DB::table('password_reset_tokens')->where('email', $user->email)->delete();
 
-            $jwt = JWTAuth::fromUser($user);
+            $jwt = JWTAuth::claims(['remember' => true])->fromUser($user);
 
             return response()->json([
                 'message' => 'Contraseña actualizada correctamente.',
                 'access_token' => $jwt,
                 'token_type' => 'bearer',
                 'user' => $this->userPayload($user),
+                'remember' => true,
             ]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -189,7 +209,7 @@ class AuthController extends Controller
     private function validResetUser(string $id, string $email): ?User
     {
         return User::where('id', $id)
-            ->whereRaw('LOWER(email) = ?', [strtolower($email)])
+            ->whereRaw('LOWER(correo) = ?', [strtolower($email)])
             ->where('activo', true)
             ->first();
     }
@@ -206,7 +226,18 @@ class AuthController extends Controller
 
     private function userPayload(User $user): array
     {
-        $payload = $user->only(['id', 'nombres', 'apa', 'ama', 'email', 'perfil_id', 'semestre', 'grupo', 'photo_path', 'profile_completed_at']);
+        $payload = [
+            'id' => $user->id,
+            'nombres' => $user->nombres,
+            'apa' => $user->apa,
+            'ama' => $user->ama,
+            'email' => $user->email,
+            'perfil_id' => $user->perfil_id,
+            'semestre' => $user->semestre ?? null,
+            'grupo' => $user->grupo ?? null,
+            'photo_path' => $user->photo_path,
+            'profile_completed_at' => $user->profile_completed_at,
+        ];
         $managerIds = collect(SystemSetting::valueFor('evaluation_manager_teacher_ids', []))->map(fn ($id) => (string) $id)->all();
         $payload['is_evaluation_manager'] = (int) $user->perfil_id === 1 || in_array((string) $user->id, $managerIds, true);
 

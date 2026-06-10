@@ -4,7 +4,10 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\SubjectGroup;
+use App\Models\AcademicPeriod as AcademicPeriodModel;
+use App\Models\SystemSetting;
 use App\Models\User;
+use App\Support\AcademicPeriod;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -13,7 +16,7 @@ class SubjectGroupController extends Controller
 {
     public function index(Request $request)
     {
-        $query = SubjectGroup::with('asignaturas')->where('activo', true)->orderBy('semestre')->orderBy('grupo')->orderBy('nombre');
+        $query = SubjectGroup::with(['asignaturas', 'academicPeriod'])->where('activo', true)->orderBy('semestre')->orderBy('grupo')->orderBy('nombre');
 
         if ($request->filled('semestre')) {
             $query->where('semestre', $request->semestre);
@@ -38,7 +41,7 @@ class SubjectGroupController extends Controller
 
             return response()->json([
                 'message' => 'Carga de asignaturas creada',
-                'group' => $group->load('asignaturas'),
+                'group' => $group->load(['asignaturas', 'academicPeriod']),
             ], 201);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -47,7 +50,7 @@ class SubjectGroupController extends Controller
 
     public function show($id)
     {
-        $group = SubjectGroup::with('asignaturas')->find($id);
+        $group = SubjectGroup::with(['asignaturas', 'academicPeriod'])->find($id);
         if (!$group || !$group->activo) {
             return response()->json(['error' => 'Carga de asignaturas no encontrada'], 404);
         }
@@ -87,7 +90,7 @@ class SubjectGroupController extends Controller
 
             return response()->json([
                 'message' => 'Carga de asignaturas actualizada',
-                'group' => $group->load('asignaturas'),
+                'group' => $group->load(['asignaturas', 'academicPeriod']),
             ]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -165,14 +168,22 @@ class SubjectGroupController extends Controller
             'nombre' => 'required|string|max:255',
             'semestre' => 'required|integer|in:5,6,7,8,9',
             'grupo' => 'required|string|max:20',
-            'periodo' => 'nullable|string|max:100',
+            'periodo' => ['nullable', 'string', 'regex:/^20\d{2}-[12]$/'],
             'asignatura_ids' => 'nullable|array',
             'asignatura_ids.*' => 'integer|exists:asignaturas,id',
         ]);
 
         $validated['nombre'] = trim($validated['nombre']);
         $validated['grupo'] = strtoupper(trim($validated['grupo']));
-        $validated['periodo'] = isset($validated['periodo']) ? trim((string) $validated['periodo']) : null;
+        $validated['periodo'] = AcademicPeriod::normalize(
+            ($validated['periodo'] ?? null) ?: (string) SystemSetting::valueFor('active_academic_period', '2026-1')
+        );
+
+        if (!in_array((int) $validated['semestre'], AcademicPeriod::semesters($validated['periodo']), true)) {
+            throw ValidationException::withMessages([
+                'semestre' => ["El semestre {$validated['semestre']} no corresponde al periodo {$validated['periodo']}."],
+            ]);
+        }
 
         if ($validated['nombre'] === '') {
             throw ValidationException::withMessages(['nombre' => ['El nombre del grupo es obligatorio.']]);
@@ -187,11 +198,16 @@ class SubjectGroupController extends Controller
 
     private function groupData(array $validated): array
     {
+        $period = AcademicPeriodModel::firstOrCreate(
+            ['nombre' => $validated['periodo']],
+            ['activo' => true]
+        );
+
         return [
             'nombre' => $validated['nombre'],
             'semestre' => $validated['semestre'],
             'grupo' => $validated['grupo'],
-            'periodo' => $validated['periodo'] ?: null,
+            'periodo_id' => $period->id,
             'activo' => true,
         ];
     }

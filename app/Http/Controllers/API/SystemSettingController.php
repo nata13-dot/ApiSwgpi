@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SubjectGroup;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Support\AcademicPeriod;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,7 @@ class SystemSettingController extends Controller
     {
         $this->purgeExpiredNotices();
         $settings = SystemSetting::allWithDefaults();
+        $periodInfo = AcademicPeriod::information($settings['active_academic_period']);
         $today = now()->toDateString();
 
         return response()->json([
@@ -27,6 +29,8 @@ class SystemSettingController extends Controller
             'font_scale' => $settings['font_scale'],
             'proposal_registration_enabled' => $settings['proposal_registration_enabled'],
             'active_academic_period' => $settings['active_academic_period'],
+            'academic_period_info' => $periodInfo,
+            'academic_period_options' => AcademicPeriod::options($periodInfo['year']),
             'max_file_size_mb' => $settings['max_file_size_mb'],
             'allowed_file_types' => $settings['allowed_file_types'],
             'grayscale_mode' => $settings['grayscale_mode'],
@@ -38,7 +42,11 @@ class SystemSettingController extends Controller
 
     public function index()
     {
-        return response()->json(SystemSetting::allWithDefaults());
+        $settings = SystemSetting::allWithDefaults();
+        $settings['academic_period_info'] = AcademicPeriod::information($settings['active_academic_period']);
+        $settings['academic_period_options'] = AcademicPeriod::options($settings['academic_period_info']['year']);
+
+        return response()->json($settings);
     }
 
     public function update(Request $request)
@@ -46,7 +54,7 @@ class SystemSettingController extends Controller
         $validated = $request->validate([
             'session_timeout_minutes' => 'required|integer|min:1|max:480',
             'default_theme' => ['required', Rule::in(['light', 'dark', 'system'])],
-            'active_academic_period' => 'required|string|max:40',
+            'active_academic_period' => ['required', 'string', 'regex:/^20\d{2}-[12]$/'],
             'max_file_size_mb' => 'required|integer|min:1|max:200',
             'allowed_file_types' => 'required|array|min:1',
             'allowed_file_types.*' => ['string', Rule::in(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'webp'])],
@@ -56,6 +64,8 @@ class SystemSettingController extends Controller
             'font_scale' => 'required|integer|min:85|max:125',
             'grayscale_mode' => 'required|boolean',
         ]);
+
+        $validated['active_academic_period'] = AcademicPeriod::normalize($validated['active_academic_period']);
 
         foreach ($validated as $key => $value) {
             $type = match (true) {
@@ -67,7 +77,11 @@ class SystemSettingController extends Controller
             SystemSetting::setValue($key, $value, $type);
         }
 
-        return response()->json(['message' => 'Ajustes guardados', 'settings' => SystemSetting::allWithDefaults()]);
+        $settings = SystemSetting::allWithDefaults();
+        $settings['academic_period_info'] = AcademicPeriod::information($settings['active_academic_period']);
+        $settings['academic_period_options'] = AcademicPeriod::options($settings['academic_period_info']['year']);
+
+        return response()->json(['message' => 'Ajustes guardados', 'settings' => $settings]);
     }
 
     public function notices()
@@ -157,6 +171,12 @@ class SystemSettingController extends Controller
             'from_semester' => 'required|integer|in:5,6,7,8,9',
             'from_group' => 'nullable|string|max:20',
         ]);
+        $activePeriod = (string) SystemSetting::valueFor('active_academic_period', '2026-1');
+        if (!in_array((int) $validated['from_semester'], AcademicPeriod::semesters($activePeriod), true)) {
+            throw ValidationException::withMessages([
+                'from_semester' => ["El semestre seleccionado no está activo en el periodo {$activePeriod}."],
+            ]);
+        }
 
         $students = User::where('perfil_id', 3)
             ->where('activo', true)
@@ -181,6 +201,28 @@ class SystemSettingController extends Controller
             'exceptions.*.user_id' => ['required', 'string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
             'exceptions.*.semester' => 'required|integer|in:5,6,7,8,9',
         ]);
+        $activePeriod = (string) SystemSetting::valueFor('active_academic_period', '2026-1');
+        $nextPeriod = AcademicPeriod::next($activePeriod);
+        $activeSemesters = AcademicPeriod::semesters($activePeriod);
+        $destinationSemesters = AcademicPeriod::semesters($nextPeriod);
+
+        if (!in_array((int) $validated['from_semester'], $activeSemesters, true)) {
+            throw ValidationException::withMessages([
+                'from_semester' => ["El semestre origen no corresponde al periodo activo {$activePeriod}."],
+            ]);
+        }
+        if (!in_array((int) $validated['to_semester'], $destinationSemesters, true)) {
+            throw ValidationException::withMessages([
+                'to_semester' => ["El semestre destino no corresponde al siguiente periodo {$nextPeriod}."],
+            ]);
+        }
+        foreach ($validated['exceptions'] ?? [] as $index => $exception) {
+            if (!in_array((int) $exception['semester'], $destinationSemesters, true)) {
+                throw ValidationException::withMessages([
+                    "exceptions.{$index}.semester" => ["El semestre de excepción no corresponde al siguiente periodo {$nextPeriod}."],
+                ]);
+            }
+        }
 
         $exceptions = collect($validated['exceptions'] ?? [])
             ->mapWithKeys(fn ($item) => [$item['user_id'] => (int) $item['semester']])

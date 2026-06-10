@@ -17,7 +17,7 @@ class EnsureUserIsActive
             return response()->json(['error' => 'Cuenta desactivada'], 403);
         }
 
-        if ($user && $this->sessionExpiredByInactivity()) {
+        if ($user && !$this->rememberedSession() && $this->sessionExpiredByInactivity()) {
             try {
                 JWTAuth::invalidate(JWTAuth::getToken());
             } catch (\Throwable $e) {
@@ -49,6 +49,19 @@ class EnsureUserIsActive
         $token = (string) JWTAuth::getToken();
 
         return 'auth:last_activity:' . sha1($token);
+    }
+
+    private function rememberedSession(): bool
+    {
+        if (request()->boolean('remember_session') || request()->header('X-SGPI-Remember') === '1') {
+            return true;
+        }
+
+        try {
+            return (bool) JWTAuth::parseToken()->getPayload()->get('remember');
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     private function idleTimeoutMinutes(): int

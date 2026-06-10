@@ -19,11 +19,13 @@ class UserController extends Controller
         $query = User::query();
 
         if ($compact) {
-            $query->select(['id', 'nombres', 'apa', 'ama', 'email', 'perfil_id', 'semestre', 'grupo', 'telefonos', 'activo']);
+            $query->select(['id', 'nombres', 'apa', 'ama', 'email', 'perfil_id', 'semestre', 'grupo', 'telefonos', 'activo'])
+                ->with('phoneNumbers');
         } else {
+            $query->with('phoneNumbers');
             $query->withCount([
-                'projectsAsAdvisor as advising_projects_count' => fn ($q) => $q->whereNotNull('proyectos_integrantes.rol_asesor'),
-                'projectsAsAdvisor as student_projects_count' => fn ($q) => $q->whereNull('proyectos_integrantes.rol_asesor'),
+                'projectsAsAdvisor as advising_projects_count' => fn ($q) => $q->where('proyectos_integrantes.rol', '!=', 'integrante'),
+                'projectsAsAdvisor as student_projects_count' => fn ($q) => $q->where('proyectos_integrantes.rol', 'integrante'),
             ]);
         }
 
@@ -53,14 +55,14 @@ class UserController extends Controller
                     ->orWhere('apa', 'like', "%{$search}%")
                     ->orWhere('ama', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('telefonos', 'like', "%{$search}%")
+                    ->orWhereHas('phoneNumbers', fn ($phoneQuery) => $phoneQuery->where('telefono', 'like', "%{$search}%"))
                     ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apa, ''), ' ', COALESCE(ama, '')) LIKE ?", ["%{$search}%"]);
             });
         }
 
         if ($request->boolean('without_project')) {
             $query->where('perfil_id', 3)
-                ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->whereNull('proyectos_integrantes.rol_asesor'));
+                ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->where('proyectos_integrantes.rol', 'integrante'));
         }
 
         $perPage = min((int) $request->query('per_page', $compact ? 100 : 15), $compact ? 500 : 100);

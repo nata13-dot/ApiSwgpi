@@ -114,7 +114,7 @@ class DashboardController extends Controller
                 'my_projects' => $projectIds->count(),
                 'students' => User::students()
                     ->where('activo', true)
-                    ->whereHas('projectsAsAdvisor', fn ($query) => $query->whereIn('proyectos.id', $projectIds)->whereNull('proyectos_integrantes.rol_asesor'))
+                    ->whereHas('projectsAsAdvisor', fn ($query) => $query->whereIn('proyectos.id', $projectIds)->where('proyectos_integrantes.rol', 'integrante'))
                     ->count(),
                 'pending_deliverables' => $deliverableStatusCounts['pendiente'] ?? 0,
                 'approved_deliverables' => $approvedDeliverables,

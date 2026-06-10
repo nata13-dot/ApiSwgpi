@@ -28,11 +28,10 @@ class BusinessValidationService
     public static function validateAsesoresUnicos(int $project_id, ?string $excluded_advisor = null): bool
     {
         $query = Project::find($project_id)
-            ->advisors()
-            ->whereNotNull('rol_asesor');
+            ->advisors();
         
         if ($excluded_advisor) {
-            $query->where('user_id', '!=', $excluded_advisor);
+            $query->where('usuarios.id', '!=', $excluded_advisor);
         }
         
         $advisors = $query->get();
@@ -106,8 +105,7 @@ class BusinessValidationService
         // Docente: solo sus proyectos (donde es asesor)
         if ($perfil_id === 2) {
             return $project->advisors()
-                ->where('user_id', $user_id)
-                ->where('rol_asesor', '!=', null)
+                ->where('usuarios.id', $user_id)
                 ->exists()
                 || EvaluationRoom::whereHas('projects', fn ($query) => $query->where('proyectos.id', $project->id))
                     ->where(function ($query) use ($user_id) {
@@ -120,7 +118,7 @@ class BusinessValidationService
         // Estudiante: solo proyectos donde es miembro
         if ($perfil_id === 3) {
             return $project->students()
-                ->where('user_id', $user_id)
+                ->where('usuarios.id', $user_id)
                 ->exists();
         }
         

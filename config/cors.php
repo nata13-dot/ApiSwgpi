@@ -36,6 +36,8 @@ return [
         'http://localhost:8081',
         'http://127.0.0.1:19006',
         'http://localhost:19006',
+        'http://127.0.0.1',
+        'http://localhost',
         'http://localhost:8000',
         'http://localhost:8001',
         'http://frontend_swgpi.test',

@@ -8,6 +8,7 @@ use App\Models\EvaluationAttempt;
 use App\Models\EvaluationRoom;
 use App\Models\EvaluationScore;
 use App\Models\Project;
+use App\Models\RepositoryDocument;
 use App\Models\RubricCriterion;
 use App\Models\SystemSetting;
 use App\Models\User;
@@ -21,6 +22,7 @@ use Illuminate\Validation\ValidationException;
 class EvaluationController extends Controller
 {
     private array $criteriaLabelCache = [];
+    private array $evaluationDocumentReadinessCache = [];
 
     private array $levels = [
         'totalmente_de_acuerdo' => 4,
@@ -195,7 +197,7 @@ class EvaluationController extends Controller
     {
         $user = auth('api')->user();
         $archived = $request->boolean('archived');
-        $supportsArchive = Schema::hasColumn('evaluaciones', 'archived_at');
+        $supportsArchive = $this->supportsEvaluationArchive();
 
         if ($archived && !$supportsArchive) {
             return response()->json([
@@ -207,7 +209,7 @@ class EvaluationController extends Controller
             ]);
         }
 
-        $query = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher'])
+        $query = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'scores.criterion', 'scores.attempt', 'attempts.teacher'])
             ->when($supportsArchive && $archived, fn ($scope) => $scope->whereNotNull('archived_at'))
             ->when($supportsArchive && !$archived, fn ($scope) => $scope->whereNull('archived_at'))
             ->orderBy('evaluation_room_id')
@@ -237,7 +239,7 @@ class EvaluationController extends Controller
         $user = auth('api')->user();
         if ($guard = $this->guardEvaluationManager($user)) return $guard;
 
-        if (!Schema::hasColumn('evaluaciones', 'archived_at')) {
+        if (!$this->supportsEvaluationArchive()) {
             return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
         }
 
@@ -254,12 +256,60 @@ class EvaluationController extends Controller
         return response()->json(['message' => 'Evaluacion archivada']);
     }
 
+    public function archiveSelected(Request $request)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        if (!$this->supportsEvaluationArchive()) {
+            return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
+        }
+
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:500'],
+            'ids.*' => ['integer', 'distinct', 'exists:evaluaciones,id'],
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $validated['ids'])));
+        $now = now();
+
+        $updated = DB::transaction(function () use ($ids, $now, $user) {
+            $roomIds = Evaluation::whereIn('id', $ids)
+                ->whereNotNull('evaluation_room_id')
+                ->pluck('evaluation_room_id')
+                ->unique()
+                ->values();
+
+            $updatedCount = Evaluation::whereIn('id', $ids)->update([
+                'archived_at' => $now,
+                'archived_by' => $user->id,
+            ]);
+
+            $roomIds->each(function ($roomId) {
+                $hasActiveEvaluations = Evaluation::where('evaluation_room_id', $roomId)
+                    ->whereNull('archived_at')
+                    ->exists();
+
+                if (!$hasActiveEvaluations) {
+                    EvaluationRoom::where('id', $roomId)->update(['activo' => false]);
+                }
+            });
+
+            return $updatedCount;
+        });
+
+        return response()->json([
+            'message' => 'Evaluaciones archivadas',
+            'archived_count' => $updated,
+        ]);
+    }
+
     public function unarchive($id)
     {
         $user = auth('api')->user();
         if ($guard = $this->guardEvaluationManager($user)) return $guard;
 
-        if (!Schema::hasColumn('evaluaciones', 'archived_at')) {
+        if (!$this->supportsEvaluationArchive()) {
             return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
         }
 
@@ -273,7 +323,52 @@ class EvaluationController extends Controller
             'archived_by' => null,
         ]);
 
+        if ($evaluation->evaluation_room_id) {
+            EvaluationRoom::where('id', $evaluation->evaluation_room_id)->update(['activo' => true]);
+        }
+
         return response()->json(['message' => 'Evaluacion restaurada']);
+    }
+
+    public function unarchiveSelected(Request $request)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        if (!$this->supportsEvaluationArchive()) {
+            return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
+        }
+
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:500'],
+            'ids.*' => ['integer', 'distinct', 'exists:evaluaciones,id'],
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $validated['ids'])));
+
+        $updated = DB::transaction(function () use ($ids) {
+            $roomIds = Evaluation::whereIn('id', $ids)
+                ->whereNotNull('evaluation_room_id')
+                ->pluck('evaluation_room_id')
+                ->unique()
+                ->values();
+
+            $updatedCount = Evaluation::whereIn('id', $ids)->update([
+                'archived_at' => null,
+                'archived_by' => null,
+            ]);
+
+            if ($roomIds->isNotEmpty()) {
+                EvaluationRoom::whereIn('id', $roomIds)->update(['activo' => true]);
+            }
+
+            return $updatedCount;
+        });
+
+        return response()->json([
+            'message' => 'Evaluaciones restauradas',
+            'unarchived_count' => $updated,
+        ]);
     }
 
     public function store(Request $request)
@@ -306,7 +401,7 @@ class EvaluationController extends Controller
             $evaluation = Evaluation::updateOrCreate(
                 ['project_id' => $validated['project_id'], 'evaluation_room_id' => $validated['evaluation_room_id'] ?? null],
                 $validated
-            )->load(['project.students', 'room.teachers', 'scores.teacher', 'attempts']);
+            )->load(['project.students', 'room.teachers', 'scores.teacher', 'scores.criterion', 'scores.attempt', 'attempts']);
 
             return response()->json([
                 'message' => 'Evaluacion creada',
@@ -319,7 +414,7 @@ class EvaluationController extends Controller
 
     public function show($id)
     {
-        $evaluation = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher'])->find($id);
+        $evaluation = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'scores.criterion', 'scores.attempt', 'attempts.teacher'])->find($id);
         if (!$evaluation) {
             return response()->json(['error' => 'Evaluacion no encontrada'], 404);
         }
@@ -352,7 +447,7 @@ class EvaluationController extends Controller
             }
 
             $evaluation->update($validated);
-            return response()->json(['message' => 'Evaluacion actualizada', 'evaluation' => $this->shapeEvaluation($evaluation->load(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher']))]);
+            return response()->json(['message' => 'Evaluacion actualizada', 'evaluation' => $this->shapeEvaluation($evaluation->load(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'scores.criterion', 'scores.attempt', 'attempts.teacher']))]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }
@@ -368,7 +463,7 @@ class EvaluationController extends Controller
             return response()->json(['error' => 'Evaluacion no encontrada'], 404);
         }
 
-        if (!$this->canScoreEvaluation($evaluation, $user)) {
+        if (!$this->canProceedInRoomSequence($evaluation)) {
             return response()->json(['error' => 'La evaluacion de este proyecto esta bloqueada hasta que sea su turno en la sala.'], 403);
         }
 
@@ -387,7 +482,12 @@ class EvaluationController extends Controller
         if (!$evaluation) {
             return response()->json(['error' => 'Evaluacion no encontrada'], 404);
         }
-        if (!$this->canScoreEvaluation($evaluation, $user)) {
+        if (!$this->evaluationDocumentReadiness($evaluation->project)['all_students_released']) {
+            return response()->json([
+                'error' => 'No se puede evaluar: falta la hoja de liberacion o hay alumnos no liberados.',
+            ], 403);
+        }
+        if (!$this->canProceedInRoomSequence($evaluation)) {
             return response()->json(['error' => 'La evaluacion de este proyecto esta bloqueada hasta que sea su turno en la sala.'], 403);
         }
         if (!$this->canUserScoreEvaluation($evaluation, $user)) {
@@ -466,7 +566,7 @@ class EvaluationController extends Controller
 
             return response()->json([
                 'message' => 'Rubrica guardada',
-                'evaluation' => $this->shapeEvaluation($evaluation->fresh(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher'])),
+                'evaluation' => $this->shapeEvaluation($evaluation->fresh(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'scores.criterion', 'scores.attempt', 'attempts.teacher'])),
             ]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -494,13 +594,62 @@ class EvaluationController extends Controller
             'feedback_at' => now(),
         ]);
 
-        return response()->json(['message' => 'Retroalimentacion guardada', 'evaluation' => $this->shapeEvaluation($evaluation->fresh(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'attempts.teacher']))]);
+        return response()->json(['message' => 'Retroalimentacion guardada', 'evaluation' => $this->shapeEvaluation($evaluation->fresh(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'scores.criterion', 'scores.attempt', 'attempts.teacher']))]);
     }
 
-    public function projects()
+    public function markCompleted($id)
     {
         $user = auth('api')->user();
-        $query = Project::with('students:id,nombres,apa,ama,email,semestre,grupo')
+        $evaluation = Evaluation::with([
+            'project.students',
+            'room.teachers',
+            'room.responsibleTeacher',
+            'scores.teacher',
+            'scores.criterion',
+            'scores.attempt',
+            'attempts.teacher',
+        ])->find($id);
+
+        if (!$evaluation) {
+            return response()->json(['error' => 'Evaluacion no encontrada'], 404);
+        }
+        if (!$this->isRoomResponsible($evaluation->room, $user) && !$this->isEvaluationManager($user)) {
+            return response()->json(['error' => 'Solo el responsable de la sala o administracion puede marcar la evaluacion como completada.'], 403);
+        }
+        if ($this->activeScoresForEvaluation($evaluation)->isEmpty()) {
+            throw ValidationException::withMessages([
+                'evaluation' => ['Debe existir al menos una rubrica registrada antes de marcar la evaluacion como completada.'],
+            ]);
+        }
+
+        $evaluation->update([
+            'sequence_status' => 'evaluado',
+            'estado' => 'finalizada',
+            'finalized_at' => $evaluation->finalized_at ?? now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Evaluacion marcada como completada',
+            'evaluation' => $this->shapeEvaluation($evaluation->fresh([
+                'project.students',
+                'room.teachers',
+                'room.responsibleTeacher',
+                'scores.teacher',
+                'scores.criterion',
+                'scores.attempt',
+                'attempts.teacher',
+            ])),
+        ]);
+    }
+
+    public function projects(Request $request)
+    {
+        $user = auth('api')->user();
+        $query = Project::with([
+                'students:id,nombres,apa,ama,email,semestre,grupo',
+                'subjectGroup:id,semestre,grupo,nombre',
+                'empresa:id,nombre,giro,contacto_nombre,contacto_cargo,direccion',
+            ])
             ->where('activo', true)
             ->orderBy('title');
         if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
@@ -510,29 +659,36 @@ class EvaluationController extends Controller
             })->pluck('project_id');
             $query->whereIn('id', $projectIds);
         }
-        if (request()->filled('semestre')) {
-            $query->where('semestre', request('semestre'));
+        if ($request->filled('semestre')) {
+            $query->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->where('semestre', $request->semestre));
         }
-        return response()->json($query->get([
+        $projects = $query->get([
             'id',
             'title',
             'description',
-            'semestre',
-            'authors',
-            'company_name',
-            'company_giro',
-            'company_contact_name',
-            'company_contact_position',
             'subject_group_id',
-            'year',
+            'empresa_id',
+            'created_at',
             'proposal_status',
-        ]));
+        ]);
+
+        $assignments = DB::table('salas_evaluacion_proyectos')
+            ->whereIn('proyecto_id', $projects->pluck('id'))
+            ->orderBy('id')
+            ->get(['proyecto_id', 'sala_evaluacion_id'])
+            ->groupBy('proyecto_id');
+
+        $projects->each(function ($project) use ($assignments) {
+            $project->assigned_room_id = $assignments->get($project->id)?->first()?->sala_evaluacion_id;
+        });
+
+        return response()->json($projects);
     }
 
     public function rooms(Request $request)
     {
         $user = auth('api')->user();
-        $supportsArchive = Schema::hasColumn('evaluaciones', 'archived_at');
+        $supportsArchive = $this->supportsEvaluationArchive();
         $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama,perfil_id', 'responsibleTeacher:id,nombres,apa,ama,perfil_id', 'projects:id,title,semestre,company_name'])
             ->where('activo', !$request->boolean('archived'))
             ->orderByDesc('fecha_evaluacion')
@@ -563,10 +719,14 @@ class EvaluationController extends Controller
         if ($guard = $this->guardEvaluationManager()) return $guard;
 
         $validated = $this->roomRules($request);
-        $room = EvaluationRoom::create(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
-        $room->teachers()->sync($validated['teacher_ids'] ?? []);
-        $room->projects()->sync($this->projectSyncPayload($validated['project_ids'] ?? [], $validated['project_order'] ?? []));
-        $this->syncRoomEvaluations($room);
+        $room = DB::transaction(function () use ($validated) {
+            $room = EvaluationRoom::create(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
+            $room->teachers()->sync($validated['teacher_ids'] ?? []);
+            $room->projects()->sync($this->projectSyncPayload($validated['project_ids'] ?? [], $validated['project_order'] ?? []));
+            $this->syncRoomEvaluations($room);
+
+            return $room;
+        });
 
         return response()->json(['message' => 'Sala creada', 'room' => $this->shapeRoom($room->load(['teachers', 'projects']))], 201);
     }
@@ -577,10 +737,12 @@ class EvaluationController extends Controller
 
         $room = EvaluationRoom::findOrFail($id);
         $validated = $this->roomRules($request);
-        $room->update(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
-        $room->teachers()->sync($validated['teacher_ids'] ?? []);
-        $room->projects()->sync($this->projectSyncPayload($validated['project_ids'] ?? [], $validated['project_order'] ?? []));
-        $this->syncRoomEvaluations($room);
+        DB::transaction(function () use ($room, $validated) {
+            $room->update(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
+            $room->teachers()->sync($validated['teacher_ids'] ?? []);
+            $room->projects()->sync($this->projectSyncPayload($validated['project_ids'] ?? [], $validated['project_order'] ?? []));
+            $this->syncRoomEvaluations($room);
+        });
 
         return response()->json(['message' => 'Sala actualizada', 'room' => $this->shapeRoom($room->load(['teachers', 'projects']))]);
     }
@@ -609,7 +771,7 @@ class EvaluationController extends Controller
         $user = auth('api')->user();
         if ($guard = $this->guardEvaluationManager($user)) return $guard;
 
-        if (!Schema::hasColumn('evaluaciones', 'archived_at')) {
+        if (!$this->supportsEvaluationArchive()) {
             return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
         }
 
@@ -628,7 +790,7 @@ class EvaluationController extends Controller
         $user = auth('api')->user();
         if ($guard = $this->guardEvaluationManager($user)) return $guard;
 
-        if (!Schema::hasColumn('evaluaciones', 'archived_at')) {
+        if (!$this->supportsEvaluationArchive()) {
             return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
         }
 
@@ -652,6 +814,12 @@ class EvaluationController extends Controller
             throw ValidationException::withMessages(['project_ids' => ['La sala no tiene proyectos asignados.']]);
         }
 
+        if (!$this->evaluationDocumentReadiness($ordered->first())['all_students_released']) {
+            throw ValidationException::withMessages([
+                'project_ids' => ['El primer proyecto no puede presentar porque tiene alumnos sin liberar.'],
+            ]);
+        }
+
         $firstOrder = (int) ($ordered->first()->pivot->presentation_order ?: 1);
         DB::transaction(function () use ($room, $ordered, $firstOrder) {
             $room->update([
@@ -664,9 +832,9 @@ class EvaluationController extends Controller
                 $order = (int) ($project->pivot->presentation_order ?: 0);
                 $status = $order === $firstOrder ? 'activo' : 'pendiente';
                 DB::table('salas_evaluacion_proyectos')
-                    ->where('evaluation_room_id', $room->id)
-                    ->where('project_id', $project->id)
-                    ->update(['status' => $status]);
+                    ->where('sala_evaluacion_id', $room->id)
+                    ->where('proyecto_id', $project->id)
+                    ->update(['orden' => $order]);
                 Evaluation::where('evaluation_room_id', $room->id)
                     ->where('project_id', $project->id)
                     ->update([
@@ -705,15 +873,20 @@ class EvaluationController extends Controller
             return response()->json(['message' => 'La sala permanece en el proyecto actual.', 'room' => $this->shapeRoom($room->load(['teachers', 'responsibleTeacher', 'projects']))]);
         }
 
-        DB::transaction(function () use ($room) {
-            $currentOrder = (int) $room->current_order;
-            $ordered = $room->projects->sortBy(fn ($project) => (int) ($project->pivot->presentation_order ?: 9999))->values();
-            $next = $ordered->first(fn ($project) => (int) $project->pivot->presentation_order > $currentOrder);
+        $currentOrder = (int) $room->current_order;
+        $ordered = $room->projects->sortBy(fn ($project) => (int) ($project->pivot->presentation_order ?: 9999))->values();
+        $next = $ordered->first(fn ($project) => (int) $project->pivot->presentation_order > $currentOrder);
+        if ($next && !$this->evaluationDocumentReadiness($next)['all_students_released']) {
+            throw ValidationException::withMessages([
+                'project_ids' => ['El siguiente proyecto no puede presentar porque tiene alumnos sin liberar.'],
+            ]);
+        }
 
+        DB::transaction(function () use ($room, $currentOrder, $next) {
             DB::table('salas_evaluacion_proyectos')
-                ->where('evaluation_room_id', $room->id)
-                ->where('presentation_order', $currentOrder)
-                ->update(['status' => 'evaluado']);
+                ->where('sala_evaluacion_id', $room->id)
+                ->where('orden', $currentOrder)
+                ->update(['orden' => $currentOrder]);
             Evaluation::where('evaluation_room_id', $room->id)
                 ->where('presentation_order', $currentOrder)
                 ->update(['sequence_status' => 'evaluado', 'estado' => 'finalizada', 'finalized_at' => now()]);
@@ -721,9 +894,9 @@ class EvaluationController extends Controller
             if ($next) {
                 $nextOrder = (int) $next->pivot->presentation_order;
                 DB::table('salas_evaluacion_proyectos')
-                    ->where('evaluation_room_id', $room->id)
-                    ->where('project_id', $next->id)
-                    ->update(['status' => 'activo']);
+                    ->where('sala_evaluacion_id', $room->id)
+                    ->where('proyecto_id', $next->id)
+                    ->update(['orden' => $nextOrder]);
                 Evaluation::where('evaluation_room_id', $room->id)
                     ->where('project_id', $next->id)
                     ->update(['sequence_status' => 'activo', 'estado' => 'en_evaluacion']);
@@ -808,6 +981,8 @@ class EvaluationController extends Controller
             'room.teachers',
             'room.responsibleTeacher',
             'scores.teacher',
+            'scores.criterion',
+            'scores.attempt',
             'attempts.teacher',
         ]);
     }
@@ -820,6 +995,8 @@ class EvaluationController extends Controller
             'evaluations.project.students',
             'evaluations.project.advisors',
             'evaluations.scores.teacher',
+            'evaluations.scores.criterion',
+            'evaluations.scores.attempt',
             'evaluations.attempts.teacher',
         ]);
     }
@@ -1251,6 +1428,17 @@ class EvaluationController extends Controller
         }
     }
 
+    private function supportsEvaluationArchive(): bool
+    {
+        return (
+            Schema::hasColumn('evaluaciones', 'archivada_en')
+            && Schema::hasColumn('evaluaciones', 'archivada_por')
+        ) || (
+            Schema::hasColumn('evaluaciones', 'archived_at')
+            && Schema::hasColumn('evaluaciones', 'archived_by')
+        );
+    }
+
     private function isLegacyLevel(?string $level): bool
     {
         return $level !== null && array_key_exists($level, $this->legacyLevels);
@@ -1369,7 +1557,7 @@ class EvaluationController extends Controller
                     $query->orWhere('project_id', $evaluation->project_id);
                 }
             })
-            ->orderByRaw('CASE WHEN project_id IS NULL THEN 0 ELSE 1 END')
+            ->orderByRaw('CASE WHEN proyecto_id IS NULL THEN 0 ELSE 1 END')
             ->orderBy('orden')
             ->orderBy('id')
             ->get();
@@ -1453,8 +1641,17 @@ class EvaluationController extends Controller
         $completedEvaluatorIds = $teacherBreakdown->pluck('teacher_id')->filter()->map(fn ($id) => (string) $id)->unique()->values();
         $expectedEvaluatorsCount = $expectedEvaluatorIds->count();
         $evaluatedByAll = $expectedEvaluatorsCount > 0 && $expectedEvaluatorIds->diff($completedEvaluatorIds)->isEmpty();
+        $isCompleted = $evaluatedByAll
+            || $evaluation->sequence_status === 'evaluado'
+            || $evaluation->estado === 'finalizada'
+            || $evaluation->finalized_at !== null;
         $currentTeacherAttempt = $evaluation->attempts->firstWhere('teacher_id', auth('api')->id());
         $titulationAptSummary = $this->titulationAptSummary($evaluation);
+        $documentReadiness = $this->evaluationDocumentReadiness($evaluation->project);
+        $canCompleteEvaluation = (
+            $this->isRoomResponsible($evaluation->room, $currentUser)
+            || $this->isEvaluationManager($currentUser)
+        ) && !$isCompleted && $completedEvaluatorIds->isNotEmpty();
 
         return [
             'id' => $evaluation->id,
@@ -1472,6 +1669,7 @@ class EvaluationController extends Controller
             'resultado' => $evaluation->resultado,
             'room_feedback' => $evaluation->room_feedback,
             'feedback_at' => optional($evaluation->feedback_at)->toDateTimeString(),
+            'finalized_at' => optional($evaluation->finalized_at)->toDateTimeString(),
             'archived_at' => optional($evaluation->archived_at)->toDateTimeString(),
             'archived_by' => $evaluation->archived_by,
             'apto_titulacion' => $evaluation->apto_titulacion,
@@ -1483,15 +1681,19 @@ class EvaluationController extends Controller
             'evaluators_count' => $teacherBreakdown->count(),
             'expected_evaluators_count' => $expectedEvaluatorsCount,
             'evaluated_by_all' => $evaluatedByAll,
-            'evaluation_badge_color' => $evaluatedByAll ? 'success' : ($evaluation->sequence_status === 'activo' ? 'primary' : 'secondary'),
+            'is_completed' => $isCompleted,
+            'completed_manually' => $isCompleted && !$evaluatedByAll,
+            'evaluation_badge_color' => $isCompleted ? 'success' : ($evaluation->sequence_status === 'activo' ? 'primary' : 'secondary'),
             'teacher_breakdown' => $teacherBreakdown,
             'current_teacher_attempts' => optional($currentTeacherAttempt)->attempts_count ?? 0,
             'current_teacher_apto_titulacion' => $this->attemptTitulationVote($currentTeacherAttempt),
             'current_teacher_has_scores' => $scores->where('teacher_id', auth('api')->id())->isNotEmpty(),
             'max_attempts' => $evaluation->room?->max_attempts ?? 1,
+            'document_readiness' => $documentReadiness,
             'can_score_now' => $this->canScoreEvaluation($evaluation, auth('api')->user()),
             'is_room_responsible' => $this->isRoomResponsible($evaluation->room, auth('api')->user()),
             'can_manage_evaluations' => $this->isEvaluationManager(auth('api')->user()),
+            'can_mark_completed' => $canCompleteEvaluation,
         ];
     }
 
@@ -1523,12 +1725,17 @@ class EvaluationController extends Controller
             'project_order' => 'nullable|array',
             'project_order.*' => 'integer|min:1|distinct',
         ]);
+        $validated['etapa'] = $this->stageForSemester((int) $validated['semestre']);
 
         $ignoreId = $request->route('id');
         $startsAt = \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion']);
         $endsAt = \Illuminate\Support\Carbon::parse($validated['fecha_fin_evaluacion']);
 
-        $duplicateName = $this->overlappingRoomQuery($this->schedulableRoomQuery(), $startsAt, $endsAt)
+        $duplicateName = $this->overlappingRoomQuery(
+            EvaluationRoom::query()->where('activo', true),
+            $startsAt,
+            $endsAt
+        )
             ->whereRaw('LOWER(nombre) = ?', [mb_strtolower($validated['nombre'])])
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->exists();
@@ -1541,14 +1748,14 @@ class EvaluationController extends Controller
             throw ValidationException::withMessages(['project_ids' => ['No puedes asignar el mismo proyecto mas de una vez en la sala.']]);
         }
 
-        $duplicateProjectRoom = $this->overlappingRoomQuery($this->schedulableRoomQuery(), $startsAt, $endsAt)
+        $duplicateProjectRoom = EvaluationRoom::query()
             ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
             ->whereHas('projects', fn ($query) => $query->whereIn('proyectos.id', $projectIds))
             ->exists();
 
         if ($duplicateProjectRoom) {
             throw ValidationException::withMessages([
-                'project_ids' => ['Uno o mas proyectos ya estan asignados a otra sala activa en ese horario.'],
+                'project_ids' => ['Uno o mas proyectos ya estan asignados a otra sala, incluso si esta archivada.'],
             ]);
         }
 
@@ -1578,7 +1785,7 @@ class EvaluationController extends Controller
     {
         $query = EvaluationRoom::query()->where('activo', true);
 
-        if (Schema::hasColumn('evaluaciones', 'archived_at')) {
+        if ($this->supportsEvaluationArchive()) {
             $query->where(function ($scope) {
                 $scope->whereDoesntHave('evaluations')
                     ->orWhereHas('evaluations', fn ($evaluationQuery) => $evaluationQuery->whereNull('archived_at'));
@@ -1612,12 +1819,11 @@ class EvaluationController extends Controller
         foreach (array_values(array_unique(array_map('intval', $projectIds))) as $projectId) {
             $id = (int) $projectId;
             $payload[$id] = [
-                'presentation_order' => (int) ($projectOrder[$id] ?? $projectOrder[(string) $id] ?? $fallbackOrder),
-                'status' => 'pendiente',
+                'orden' => (int) ($projectOrder[$id] ?? $projectOrder[(string) $id] ?? $fallbackOrder),
             ];
             $fallbackOrder++;
         }
-        uasort($payload, fn ($a, $b) => $a['presentation_order'] <=> $b['presentation_order']);
+        uasort($payload, fn ($a, $b) => $a['orden'] <=> $b['orden']);
         return $payload;
     }
 
@@ -1651,6 +1857,14 @@ class EvaluationController extends Controller
 
     private function shapeRoom(EvaluationRoom $room): array
     {
+        $projects = ($room->projects ?? collect())->map(function ($project) {
+            $data = $project->toArray();
+            $data['presentation_order'] = (int) ($project->pivot->presentation_order ?? 0);
+            $data['sequence_status'] = $project->pivot->status ?? 'pendiente';
+
+            return $data;
+        })->values();
+
         return [
             'id' => $room->id,
             'nombre' => $room->nombre,
@@ -1667,22 +1881,92 @@ class EvaluationController extends Controller
             'current_order' => $room->current_order,
             'completed_at' => optional($room->completed_at)->toDateTimeString(),
             'teachers' => $room->teachers ?? collect(),
-            'proyectos' => ($room->projects ?? collect())->map(function ($project) {
-                $project->presentation_order = (int) ($project->pivot->presentation_order ?? 0);
-                $project->sequence_status = $project->pivot->status ?? 'pendiente';
-                return $project;
-            })->values(),
+            'projects' => $projects,
+            'proyectos' => $projects,
         ];
     }
 
     private function canScoreEvaluation(Evaluation $evaluation, $user): bool
     {
+        if (!$this->evaluationDocumentReadiness($evaluation->project)['all_students_released']) {
+            return false;
+        }
+
+        return $this->canProceedInRoomSequence($evaluation);
+    }
+
+    private function canProceedInRoomSequence(Evaluation $evaluation): bool
+    {
+        if (
+            $evaluation->sequence_status === 'evaluado'
+            || $evaluation->estado === 'finalizada'
+            || $evaluation->finalized_at !== null
+        ) {
+            return false;
+        }
+
         $room = $evaluation->room;
         if (!$room || !$room->sequence_locked) {
             return true;
         }
 
         return $evaluation->sequence_status === 'activo';
+    }
+
+    private function evaluationDocumentReadiness(?Project $project): array
+    {
+        if (!$project) {
+            return [
+                'release_sheet_uploaded' => false,
+                'presentation_uploaded' => false,
+                'all_students_released' => false,
+                'students' => [],
+            ];
+        }
+
+        if (isset($this->evaluationDocumentReadinessCache[$project->id])) {
+            return $this->evaluationDocumentReadinessCache[$project->id];
+        }
+
+        $project->loadMissing('students:id,nombres,apa,ama');
+        $documents = RepositoryDocument::with('releaseStatuses')
+            ->where('project_id', $project->id)
+            ->where('activo', true)
+            ->whereIn('document_category', [
+                RepositoryDocument::CATEGORY_EVALUATION_RELEASE,
+                RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION,
+            ])
+            ->orderByDesc('created_at')
+            ->get();
+        $releaseSheet = $documents->firstWhere(
+            'document_category',
+            RepositoryDocument::CATEGORY_EVALUATION_RELEASE
+        );
+        $presentation = $documents->firstWhere(
+            'document_category',
+            RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION
+        );
+        $releaseStatuses = $releaseSheet?->releaseStatuses
+            ?->keyBy(fn ($status) => (string) $status->alumno_id) ?? collect();
+        $students = $project->students->map(function ($student) use ($releaseStatuses) {
+            $status = $releaseStatuses->get((string) $student->id);
+
+            return [
+                'id' => $student->id,
+                'name' => trim("{$student->nombres} {$student->apa} {$student->ama}"),
+                'released' => (bool) ($status?->liberado ?? false),
+                'reviewed' => $status?->revisado_en !== null,
+            ];
+        })->values();
+
+        return $this->evaluationDocumentReadinessCache[$project->id] = [
+            'release_sheet_uploaded' => $releaseSheet !== null,
+            'presentation_uploaded' => $presentation !== null,
+            'all_students_released' => $releaseSheet !== null
+                && $students->isNotEmpty()
+                && $students->every(fn ($student) => $student['released']),
+            'students' => $students,
+        ];
     }
 
     private function canUserScoreEvaluation(Evaluation $evaluation, $user): bool

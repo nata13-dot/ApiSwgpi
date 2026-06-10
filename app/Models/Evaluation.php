@@ -2,13 +2,37 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasLegacyAliases;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Evaluation extends Model
 {
+    use HasLegacyAliases;
+
     protected $table = 'evaluaciones';
+    const CREATED_AT = 'creada_en';
+    const UPDATED_AT = 'actualizada_en';
+
+    protected array $legacyAliases = [
+        'project_id' => 'proyecto_id',
+        'evaluation_room_id' => 'sala_evaluacion_id',
+        'presentation_order' => 'orden_presentacion',
+        'sequence_status' => 'estado_secuencia',
+        'room_feedback' => 'retroalimentacion_sala',
+        'feedback_by' => 'retroalimentado_por',
+        'feedback_at' => 'retroalimentado_en',
+        'finalized_at' => 'finalizada_en',
+        'archived_at' => 'archivada_en',
+        'archived_by' => 'archivada_por',
+        'created_by' => 'creada_por',
+        'created_at' => 'creada_en',
+        'updated_at' => 'actualizada_en',
+    ];
+
+    protected array $legacyVirtualColumns = ['sala'];
 
     protected $fillable = [
         'project_id', 'evaluation_room_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
@@ -20,35 +44,52 @@ class Evaluation extends Model
     protected $casts = [
         'semestre' => 'integer',
         'fecha_exposicion' => 'datetime',
-        'feedback_at' => 'datetime',
-        'finalized_at' => 'datetime',
-        'archived_at' => 'datetime',
+        'retroalimentado_en' => 'datetime',
+        'finalizada_en' => 'datetime',
+        'archivada_en' => 'datetime',
         'apto_titulacion' => 'boolean',
     ];
 
     public function project(): BelongsTo
     {
-        return $this->belongsTo(Project::class, 'project_id');
+        return $this->belongsTo(Project::class, 'proyecto_id');
     }
 
     public function room(): BelongsTo
     {
-        return $this->belongsTo(EvaluationRoom::class, 'evaluation_room_id');
+        return $this->belongsTo(EvaluationRoom::class, 'sala_evaluacion_id');
+    }
+
+    public function getSalaAttribute(): ?string
+    {
+        return $this->room?->nombre;
+    }
+
+    public function setSalaAttribute(?string $value): void
+    {
+        // The normalized schema derives the room name through sala_evaluacion_id.
     }
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by', 'id')->where('activo', true);
+        return $this->belongsTo(User::class, 'creada_por', 'id')->where('activo', true);
     }
 
-    public function scores(): HasMany
+    public function scores(): HasManyThrough
     {
-        return $this->hasMany(EvaluationScore::class, 'evaluation_id');
+        return $this->hasManyThrough(
+            EvaluationScore::class,
+            EvaluationAttempt::class,
+            'evaluacion_id',
+            'intento_evaluacion_id',
+            'id',
+            'id'
+        );
     }
 
     public function attempts(): HasMany
     {
-        return $this->hasMany(EvaluationAttempt::class, 'evaluation_id');
+        return $this->hasMany(EvaluationAttempt::class, 'evaluacion_id');
     }
 
     public function getAverageAttribute(): float

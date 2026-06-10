@@ -20,7 +20,7 @@ return [
 
     'ttl' => env('JWT_TTL', env('JWT_ABSOLUTE_TTL', 480)),
     'absolute_ttl' => env('JWT_ABSOLUTE_TTL', 480),
-    'refresh_ttl' => env('JWT_REFRESH_TTL', 20160),
+    'refresh_ttl' => env('JWT_REFRESH_TTL', 43200),
     'algo' => env('JWT_ALGO', Tymon\JWTAuth\Providers\JWT\Provider::ALGO_HS256),
 
     'required_claims' => [
@@ -32,7 +32,7 @@ return [
         'jti',
     ],
 
-    'persistent_claims' => [],
+    'persistent_claims' => ['remember'],
 
     'lock_subject' => true,
     'leeway' => env('JWT_LEEWAY', 0),
