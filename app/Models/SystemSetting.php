@@ -17,6 +17,9 @@ class SystemSetting extends Model
     public $incrementing = false;
     protected $keyType = 'string';
 
+    const CREATED_AT = 'creada_en';
+    const UPDATED_AT = 'actualizada_en';
+
     protected array $legacyAliases = [
         'key' => 'clave',
         'value' => 'valor',
