@@ -16,7 +16,12 @@ class SubjectGroupController extends Controller
 {
     public function index(Request $request)
     {
-        $query = SubjectGroup::with(['asignaturas', 'academicPeriod'])->where('activo', true)->orderBy('semestre')->orderBy('grupo')->orderBy('nombre');
+        $query = SubjectGroup::with(['asignaturas', 'academicPeriod'])
+            ->where('activo', true)
+            ->whereBetween('semestre', [5, 9])
+            ->orderBy('semestre')
+            ->orderBy('grupo')
+            ->orderBy('nombre');
 
         if ($request->filled('semestre')) {
             $query->where('semestre', $request->semestre);

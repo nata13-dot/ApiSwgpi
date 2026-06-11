@@ -56,7 +56,7 @@ class UserController extends Controller
                     ->orWhere('ama', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
                     ->orWhereHas('phoneNumbers', fn ($phoneQuery) => $phoneQuery->where('telefono', 'like', "%{$search}%"))
-                    ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apa, ''), ' ', COALESCE(ama, '')) LIKE ?", ["%{$search}%"]);
+                    ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellido_paterno, ''), ' ', COALESCE(apellido_materno, '')) LIKE ?", ["%{$search}%"]);
             });
         }
 
@@ -526,7 +526,7 @@ class UserController extends Controller
                         ->orWhere('apa', 'like', "%{$search}%")
                         ->orWhere('ama', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%")
-                        ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apa, ''), ' ', COALESCE(ama, '')) LIKE ?", ["%{$search}%"]);
+                        ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellido_paterno, ''), ' ', COALESCE(apellido_materno, '')) LIKE ?", ["%{$search}%"]);
                 });
             }
         }

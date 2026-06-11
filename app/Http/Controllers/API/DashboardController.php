@@ -30,7 +30,7 @@ class DashboardController extends Controller
             self::DELIVERABLE_STATUSES
         );
         $projectProposalCounts = $this->statusCounts(
-            Project::query()->where('activo', true),
+            Project::query()->where('activo', true)->where('is_proposal', true),
             'proposal_status',
             self::PROPOSAL_STATUSES
         );
@@ -102,7 +102,7 @@ class DashboardController extends Controller
             self::DELIVERABLE_STATUSES
         );
         $proposalStatusCounts = $this->statusCounts(
-            Project::query()->whereIn('id', $projectIds)->where('activo', true),
+            Project::query()->whereIn('id', $projectIds)->where('activo', true)->where('is_proposal', true),
             'proposal_status',
             self::PROPOSAL_STATUSES
         );
@@ -166,7 +166,7 @@ class DashboardController extends Controller
             self::DELIVERABLE_STATUSES
         );
         $proposalStatusCounts = $this->statusCounts(
-            Project::query()->whereIn('id', $projectIds)->where('activo', true),
+            Project::query()->whereIn('id', $projectIds)->where('activo', true)->where('is_proposal', true),
             'proposal_status',
             self::PROPOSAL_STATUSES
         );

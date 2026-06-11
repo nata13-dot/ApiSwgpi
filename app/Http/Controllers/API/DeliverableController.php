@@ -10,6 +10,8 @@ use App\Models\Project;
 use App\Services\BusinessValidationService;
 use App\Services\FileService;
 use App\Models\SystemSetting;
+use App\Models\User;
+use App\Services\ActivityNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -227,7 +229,8 @@ class DeliverableController extends Controller
                 'evaluations:id,project_id,evaluation_room_id,estado,resultado,fecha_exposicion',
                 'evaluations.room:id,nombre,salon,fecha_evaluacion',
             ])
-            ->where('activo', true);
+            ->where('activo', true)
+            ->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
 
         if ((int) $user->perfil_id === 2) {
             $roomProjectIds = EvaluationRoom::where(function ($query) use ($user) {
@@ -318,6 +321,7 @@ class DeliverableController extends Controller
             $validated['submitted_by'] = auth('api')->id();
             $validated['estado'] = 'pendiente';
             $deliverable = Deliverable::create($validated);
+            $this->notifyActivityEnabled($deliverable, auth('api')->user());
 
             return response()->json(['message' => 'Entregable creado', 'deliverable' => $deliverable], 201);
         } catch (ValidationException $e) {
@@ -515,6 +519,7 @@ class DeliverableController extends Controller
                 'estado' => 'enviado',
                 'submitted_by' => $deliverable->submitted_by ?: $user->id,
             ]);
+            $this->notifyStudentUpload($deliverable, $user);
 
             return response()->json([
                 'message' => 'Archivo subido exitosamente',
@@ -527,6 +532,56 @@ class DeliverableController extends Controller
         } catch (Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
+    }
+
+    private function notifyActivityEnabled(Deliverable $deliverable, User $actor): void
+    {
+        if ((int) $actor->perfil_id === 3 || !$deliverable->project_id) {
+            return;
+        }
+
+        $deliverable->loadMissing('project.students', 'competencia.asignatura');
+        $recipientIds = $deliverable->project?->students->pluck('id') ?? collect();
+        $subject = $deliverable->competencia?->asignatura?->nombre;
+        $context = $subject ? " de {$subject}" : '';
+
+        ActivityNotificationService::send(
+            $recipientIds,
+            (string) $actor->id,
+            'actividad_habilitada',
+            'Nueva actividad disponible',
+            "{$deliverable->nombre}{$context} fue habilitada para tu proyecto.",
+            '/pages/student/my-deliverables.php'
+        );
+    }
+
+    private function notifyStudentUpload(Deliverable $deliverable, User $actor): void
+    {
+        if ((int) $actor->perfil_id !== 3) {
+            return;
+        }
+
+        $deliverable->loadMissing('project.advisors');
+        $advisorIds = $deliverable->project?->advisors->pluck('id') ?? collect();
+        $adminIds = User::where('perfil_id', 1)->where('activo', true)->pluck('id');
+        $studentName = $actor->getFullName() ?: $actor->id;
+
+        ActivityNotificationService::send(
+            $advisorIds,
+            (string) $actor->id,
+            'actividad_entregada',
+            'Actividad entregada',
+            "{$studentName} subio la actividad \"{$deliverable->nombre}\".",
+            '/pages/teacher/my-deliverables.php'
+        );
+        ActivityNotificationService::send(
+            $adminIds,
+            (string) $actor->id,
+            'actividad_entregada',
+            'Actividad entregada',
+            "{$studentName} subio la actividad \"{$deliverable->nombre}\".",
+            '/pages/admin/deliverables.php'
+        );
     }
 
     private function shapeTeacherMatrixItem(Competencia $competencia, ?Deliverable $deliverable): array

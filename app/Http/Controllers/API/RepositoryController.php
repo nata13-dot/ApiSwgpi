@@ -172,7 +172,8 @@ class RepositoryController extends Controller
                     ])
                     ->orderByDesc('created_at'),
             ])
-            ->where('activo', true);
+            ->where('activo', true)
+            ->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
 
         if ((int) $user->perfil_id === 3) {
             $projectsQuery->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id));

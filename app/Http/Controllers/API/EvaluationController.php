@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use App\Services\ActivityNotificationService;
 use Illuminate\Validation\ValidationException;
 
 class EvaluationController extends Controller
@@ -622,11 +623,23 @@ class EvaluationController extends Controller
             ]);
         }
 
+        $wasCompleted = $evaluation->estado === 'finalizada' || $evaluation->finalized_at !== null;
         $evaluation->update([
             'sequence_status' => 'evaluado',
             'estado' => 'finalizada',
             'finalized_at' => $evaluation->finalized_at ?? now(),
         ]);
+        if (!$wasCompleted) {
+            $projectTitle = $evaluation->project?->title ?? 'tu proyecto';
+            ActivityNotificationService::send(
+                $evaluation->project?->students->pluck('id') ?? collect(),
+                (string) $user->id,
+                'evaluacion_realizada',
+                'Evaluacion realizada',
+                "La evaluacion de \"{$projectTitle}\" fue completada. Ya puedes consultar su seguimiento.",
+                '/pages/student/dashboard.php'
+            );
+        }
 
         return response()->json([
             'message' => 'Evaluacion marcada como completada',

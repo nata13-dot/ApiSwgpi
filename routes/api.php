@@ -15,6 +15,7 @@ use App\Http\Controllers\API\SubjectGroupController;
 use App\Http\Controllers\API\ProfileController;
 use App\Http\Controllers\API\ProposalWorkflowController;
 use App\Http\Controllers\API\SystemSettingController;
+use App\Http\Controllers\API\ActivityNotificationController;
 
 // ========================
 // AUTENTICACIÓN (sin protección)
@@ -99,6 +100,11 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/heartbeat', [AuthController::class, 'heartbeat']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+
+    // Notificaciones personales de actividad
+    Route::get('/activity-notifications', [ActivityNotificationController::class, 'index']);
+    Route::put('/activity-notifications/read-all', [ActivityNotificationController::class, 'markAllRead']);
+    Route::put('/activity-notifications/{notification}/read', [ActivityNotificationController::class, 'markRead']);
 
     // Perfil propio
     Route::get('/profile', [ProfileController::class, 'show']);

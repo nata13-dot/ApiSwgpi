@@ -32,7 +32,11 @@ class ProjectController extends Controller
                     'subjectGroup.academicPeriod:id,nombre',
                 ])
                 ->withCount('students')
-                ->where('activo', true);
+                ->where('activo', true)
+                ->where(function ($scope) {
+                    $scope->whereNull('subject_group_id')
+                        ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
+                });
 
             $user = auth('api')->user();
             if (!$user || (int) $user->perfil_id !== 3) {
@@ -75,7 +79,11 @@ class ProjectController extends Controller
                 'proposalReviewer:id,nombres,apa,ama',
             ])
             ->withCount('students')
-            ->where('activo', true);
+            ->where('activo', true)
+            ->where(function ($scope) {
+                $scope->whereNull('subject_group_id')
+                    ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
+            });
 
         $user = auth('api')->user();
         if (!$user || (int) $user->perfil_id !== 3) {
@@ -149,7 +157,11 @@ class ProjectController extends Controller
                 'proposalReviewer:id,nombres,apa,ama',
             ])
             ->withCount('students')
-            ->where('activo', true);
+            ->where('activo', true)
+            ->where(function ($scope) {
+                $scope->whereNull('subject_group_id')
+                    ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
+            });
 
         if ((int) $user->perfil_id === 1) {
             $query->where(function ($scope) {
@@ -175,8 +187,9 @@ class ProjectController extends Controller
         try {
             $user = auth('api')->user();
             $validated = $request->validate($this->projectRules(true, (int) $user->perfil_id));
+            $isStudentProposal = (int) $user->perfil_id === 3;
 
-            if ((int) $user->perfil_id === 3) {
+            if ($isStudentProposal) {
                 if (!SystemSetting::valueFor('proposal_registration_enabled', true)) {
                     throw ValidationException::withMessages(['proposal_registration_enabled' => ['El registro de propuestas esta desactivado temporalmente.']]);
                 }
@@ -186,7 +199,7 @@ class ProjectController extends Controller
                 $validated['year'] = $validated['year'] ?? now()->year;
             }
 
-            $project = DB::transaction(function () use ($validated, $user) {
+            $project = DB::transaction(function () use ($validated, $user, $isStudentProposal) {
                 $company = Empresa::create([
                     'nombre' => $validated['company_name'],
                     'giro' => $validated['company_giro'] ?? null,
@@ -200,8 +213,8 @@ class ProjectController extends Controller
                     'description' => $validated['description'] ?? $validated['descripcion'] ?? null,
                     'subject_group_id' => $validated['subject_group_id'] ?? null,
                     'empresa_id' => $company->id,
-                    'proposal_status' => 'pendiente',
-                    'is_proposal' => (int) $user->perfil_id === 3,
+                    'proposal_status' => $isStudentProposal ? 'pendiente' : 'aprobado',
+                    'is_proposal' => $isStudentProposal,
                     'created_by' => $user->id,
                     'is_thesis' => (int) $user->perfil_id === 1 && (bool) ($validated['is_thesis'] ?? false),
                 ]);
@@ -251,6 +264,7 @@ class ProjectController extends Controller
             if ((int) $user->perfil_id === 3) {
                 $this->guardStudentCanEditProposal($user, $project);
                 $validated = collect($validated)->except(['student_ids', 'semestre', 'subject_group_id', 'year', 'activo', 'is_thesis'])->toArray();
+                $validated['is_proposal'] = true;
                 $validated['proposal_status'] = 'pendiente';
                 $validated['proposal_review_comment'] = null;
                 $validated['proposal_reviewed_by'] = null;
@@ -487,7 +501,8 @@ class ProjectController extends Controller
                             'company_contact_name' => null,
                             'company_contact_position' => null,
                             'company_address' => null,
-                            'proposal_status' => 'pendiente',
+                            'proposal_status' => 'aprobado',
+                            'is_proposal' => false,
                             'created_by' => $user->id,
                         ]);
 
@@ -527,7 +542,12 @@ class ProjectController extends Controller
             'description' => [$creating ? 'required_without:descripcion' : 'nullable', 'string', 'max:5000'],
             'descripcion' => [$creating ? 'required_without:description' : 'nullable', 'string', 'max:5000'],
             'semestre' => [($creating && !$studentCreating) ? 'required' : 'nullable', 'integer', 'in:5,6,7,8,9'],
-            'subject_group_id' => [$creating ? 'required' : 'nullable', 'exists:grupos_academicos,id'],
+            'subject_group_id' => [
+                $creating ? 'required' : 'nullable',
+                Rule::exists('grupos_academicos', 'id')->where(
+                    fn ($query) => $query->where('activo', true)->whereBetween('semestre', [5, 9])
+                ),
+            ],
             'year' => [($creating && !$studentCreating) ? 'required' : 'nullable', 'integer', 'min:2000', 'max:2100'],
             'activo' => 'nullable|boolean',
             'is_thesis' => 'nullable|boolean',
