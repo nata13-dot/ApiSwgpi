@@ -1,0 +1,120 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\AcademicPeriod;
+use App\Models\SemesterPresentationException;
+use App\Models\SystemSetting;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
+
+class SemesterManagementService
+{
+    public function activePeriod(): ?AcademicPeriod
+    {
+        $configured = (string) SystemSetting::valueFor('active_academic_period', '');
+        if ($configured !== '') {
+            $period = AcademicPeriod::where('nombre', $configured)->first();
+            if ($period) {
+                return $period;
+            }
+        }
+
+        return AcademicPeriod::query()
+            ->where('activo', true)
+            ->orderByDesc('fecha_inicio')
+            ->first();
+    }
+
+    public function syncCurrentPeriod(): ?AcademicPeriod
+    {
+        $period = AcademicPeriod::query()
+            ->whereDate('fecha_inicio', '<=', today())
+            ->whereDate('fecha_fin', '>=', today())
+            ->orderByDesc('fecha_inicio')
+            ->first();
+
+        if (!$period) {
+            return $this->activePeriod();
+        }
+
+        return $this->activate($period, true);
+    }
+
+    public function activate(AcademicPeriod $period, bool $allowAutomaticPromotion = false): AcademicPeriod
+    {
+        return DB::transaction(function () use ($period, $allowAutomaticPromotion) {
+            AcademicPeriod::where('id', '<>', $period->id)->update(['activo' => false]);
+            $period->update(['activo' => true]);
+            SystemSetting::setValue('active_academic_period', $period->nombre, 'string');
+
+            if ($allowAutomaticPromotion && $period->promocion_automatica && !$period->promocion_aplicada_en) {
+                $this->promoteStudents($period);
+                $period->update(['promocion_aplicada_en' => now()]);
+            }
+
+            return $period->fresh();
+        });
+    }
+
+    public function promoteStudents(AcademicPeriod $destination): array
+    {
+        $destinationSemesters = $this->semestersForPeriod($destination);
+        $students = User::query()
+            ->where('perfil_id', 3)
+            ->where('activo', true)
+            ->whereBetween('semestre', [5, 9])
+            ->get(['id', 'semestre']);
+        $updated = 0;
+
+        foreach ($students as $student) {
+            $nextSemester = (int) $student->semestre + 1;
+            if ($nextSemester > 9 || !in_array($nextSemester, $destinationSemesters, true)) {
+                continue;
+            }
+            $student->update(['semestre' => $nextSemester]);
+            $updated++;
+        }
+
+        return ['reviewed' => $students->count(), 'updated' => $updated];
+    }
+
+    public function semestersForPeriod(AcademicPeriod $period): array
+    {
+        if (preg_match('/-(1|2)$/', $period->nombre, $matches)) {
+            return $matches[1] === '1' ? [6, 8] : [5, 7, 9];
+        }
+
+        return [5, 6, 7, 8, 9];
+    }
+
+    public function presentationSemester(int $projectId, ?int $academicSemester = null, ?AcademicPeriod $period = null): ?int
+    {
+        $period ??= $this->activePeriod();
+        if (!$period) {
+            return $academicSemester;
+        }
+
+        $projectSemester = SemesterPresentationException::query()
+            ->where('periodo_id', $period->id)
+            ->where('proyecto_id', $projectId)
+            ->where('activo', true)
+            ->value('semestre_presentacion');
+
+        if ($projectSemester) {
+            return (int) $projectSemester;
+        }
+
+        $studentSemester = SemesterPresentationException::query()
+            ->where('periodo_id', $period->id)
+            ->where('activo', true)
+            ->whereIn('usuario_id', DB::table('proyectos_integrantes')
+                ->where('proyecto_id', $projectId)
+                ->where('rol', 'integrante')
+                ->select('usuario_id'))
+            ->latest('actualizado_en')
+            ->value('semestre_presentacion');
+
+        return $studentSemester ? (int) $studentSemester : $academicSemester;
+    }
+}

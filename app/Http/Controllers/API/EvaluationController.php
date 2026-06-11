@@ -19,6 +19,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use App\Services\ActivityNotificationService;
 use Illuminate\Validation\ValidationException;
+use App\Services\SemesterManagementService;
 
 class EvaluationController extends Controller
 {
@@ -658,6 +659,8 @@ class EvaluationController extends Controller
     public function projects(Request $request)
     {
         $user = auth('api')->user();
+        $semesterService = app(SemesterManagementService::class);
+        $activePeriod = $semesterService->activePeriod();
         $query = Project::with([
                 'students:id,nombres,apa,ama,email,semestre,grupo',
                 'subjectGroup:id,semestre,grupo,nombre',
@@ -671,9 +674,6 @@ class EvaluationController extends Controller
                     ->orWhereHas('room', fn ($roomQuery) => $roomQuery->where('responsible_teacher_id', $user->id));
             })->pluck('project_id');
             $query->whereIn('id', $projectIds);
-        }
-        if ($request->filled('semestre')) {
-            $query->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->where('semestre', $request->semestre));
         }
         $projects = $query->get([
             'id',
@@ -691,9 +691,19 @@ class EvaluationController extends Controller
             ->get(['proyecto_id', 'sala_evaluacion_id'])
             ->groupBy('proyecto_id');
 
-        $projects->each(function ($project) use ($assignments) {
+        $projects->each(function ($project) use ($assignments, $semesterService, $activePeriod) {
+            $project->presentation_semester = $semesterService->presentationSemester(
+                (int) $project->id,
+                $project->subjectGroup?->semestre,
+                $activePeriod
+            );
             $project->assigned_room_id = $assignments->get($project->id)?->first()?->sala_evaluacion_id;
         });
+
+        if ($request->filled('semestre')) {
+            $semester = (int) $request->semestre;
+            $projects = $projects->filter(fn ($project) => (int) $project->presentation_semester === $semester)->values();
+        }
 
         return response()->json($projects);
     }

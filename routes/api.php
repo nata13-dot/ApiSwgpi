@@ -16,6 +16,7 @@ use App\Http\Controllers\API\ProfileController;
 use App\Http\Controllers\API\ProposalWorkflowController;
 use App\Http\Controllers\API\SystemSettingController;
 use App\Http\Controllers\API\ActivityNotificationController;
+use App\Http\Controllers\API\SemesterManagementController;
 
 // ========================
 // AUTENTICACIÓN (sin protección)
@@ -137,8 +138,15 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::put('/settings', [SystemSettingController::class, 'update']);
         Route::get('/notices', [SystemSettingController::class, 'notices']);
         Route::put('/notices', [SystemSettingController::class, 'updateNotices']);
-        Route::get('/settings/semester-preview', [SystemSettingController::class, 'semesterPreview']);
-        Route::post('/settings/apply-semester-change', [SystemSettingController::class, 'applySemesterChange']);
+        Route::get('/semester-management', [SemesterManagementController::class, 'summary']);
+        Route::get('/semester-management/search', [SemesterManagementController::class, 'search']);
+        Route::post('/semester-management/periods', [SemesterManagementController::class, 'storePeriod']);
+        Route::put('/semester-management/periods/{period}', [SemesterManagementController::class, 'updatePeriod']);
+        Route::post('/semester-management/periods/{period}/activate', [SemesterManagementController::class, 'activatePeriod']);
+        Route::get('/semester-management/periods/{period}/promotion-preview', [SemesterManagementController::class, 'promotionPreview']);
+        Route::post('/semester-management/periods/{period}/promote', [SemesterManagementController::class, 'applyPromotion']);
+        Route::post('/semester-management/exceptions', [SemesterManagementController::class, 'storeException']);
+        Route::delete('/semester-management/exceptions/{exception}', [SemesterManagementController::class, 'destroyException']);
         Route::get('/repositorio/admin/list', [RepositoryController::class, 'adminIndex']);
         Route::post('/repositorio/{id}', [RepositoryController::class, 'update']);
         Route::post('/repositorio/{id}/publish', [RepositoryController::class, 'publish']);
