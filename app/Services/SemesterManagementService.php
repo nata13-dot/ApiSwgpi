@@ -7,6 +7,7 @@ use App\Models\SemesterPresentationException;
 use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class SemesterManagementService
 {
@@ -91,7 +92,7 @@ class SemesterManagementService
     public function presentationSemester(int $projectId, ?int $academicSemester = null, ?AcademicPeriod $period = null): ?int
     {
         $period ??= $this->activePeriod();
-        if (!$period) {
+        if (!$period || !Schema::hasTable('excepciones_presentacion_semestre')) {
             return $academicSemester;
         }
 

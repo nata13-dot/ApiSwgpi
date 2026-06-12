@@ -5,11 +5,16 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityNotification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class ActivityNotificationController extends Controller
 {
     public function index(Request $request)
     {
+        if (!Schema::hasTable('notificaciones_actividad')) {
+            return response()->json(['data' => [], 'unread_count' => 0]);
+        }
+
         $userId = (string) auth('api')->id();
         $limit = min(max((int) $request->query('limit', 20), 1), 50);
         $query = ActivityNotification::with('actor:id,nombres,apellido_paterno,apellido_materno')
@@ -33,6 +38,10 @@ class ActivityNotificationController extends Controller
 
     public function markAllRead()
     {
+        if (!Schema::hasTable('notificaciones_actividad')) {
+            return response()->json(['message' => 'Notificaciones leidas']);
+        }
+
         ActivityNotification::where('usuario_id', auth('api')->id())
             ->whereNull('leida_en')
             ->update(['leida_en' => now()]);
