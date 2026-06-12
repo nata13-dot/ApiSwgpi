@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(\App\Http\Middleware\EnsureCorsHeaders::class);
+        $middleware->redirectGuestsTo(null);
 
         $middleware->api(prepend: [
             \App\Http\Middleware\SanitizeApiInput::class,
@@ -24,6 +25,17 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(function (
+            \Illuminate\Auth\AuthenticationException $exception,
+            \Illuminate\Http\Request $request
+        ) {
+            if (!$request->is('api/*')) {
+                return null;
+            }
+
+            return response()->json(['error' => 'No autenticado.'], 401);
+        });
+
         $exceptions->render(function (
             \Tymon\JWTAuth\Exceptions\JWTException $exception,
             \Illuminate\Http\Request $request
