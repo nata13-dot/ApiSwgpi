@@ -45,17 +45,29 @@ class ProfileController extends Controller
     public function update(Request $request)
     {
         $user = auth('api')->user();
+        $nullableInput = static function ($value) {
+            if ($value === null) {
+                return null;
+            }
+
+            $normalized = trim((string) $value);
+
+            return $normalized === '' || in_array(strtolower($normalized), ['null', 'undefined'], true)
+                ? null
+                : $normalized;
+        };
+
         $request->merge([
-            'semestre' => $request->input('semestre') === '' ? null : $request->input('semestre'),
-            'grupo' => $request->input('grupo') === '' ? null : $request->input('grupo'),
+            'semestre' => $nullableInput($request->input('semestre')),
+            'grupo' => $nullableInput($request->input('grupo')),
             'direccion' => $request->filled('direccion') ? $this->normalizeAddress($request->input('direccion')) : null,
         ]);
 
         $validated = $request->validate([
             'telefonos' => 'nullable|string|max:200',
             'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
-            'semestre' => [(int) $user->perfil_id === 3 ? 'nullable' : 'prohibited', 'integer', Rule::in([5, 6, 7, 8, 9])],
-            'grupo' => [(int) $user->perfil_id === 3 ? 'nullable' : 'prohibited', 'string', 'max:20'],
+            'semestre' => ['nullable', Rule::prohibitedIf((int) $user->perfil_id !== 3), 'integer', Rule::in([5, 6, 7, 8, 9])],
+            'grupo' => ['nullable', Rule::prohibitedIf((int) $user->perfil_id !== 3), 'string', 'max:20'],
             'photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
             'current_password' => 'nullable|string|max:72',
             'password' => 'nullable|string|min:6|max:72|confirmed',
