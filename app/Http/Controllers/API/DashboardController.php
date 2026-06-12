@@ -9,6 +9,7 @@ use App\Models\Project;
 use App\Models\TeacherGroupAssignment;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
@@ -18,49 +19,83 @@ class DashboardController extends Controller
 
     public function stats()
     {
-        $recentProjects = Project::select(['id', 'title', 'created_by', 'created_at'])
-            ->with('creator:id,nombres,apa,ama')
-            ->orderByDesc('created_at')
-            ->limit(5)
-            ->get();
+        $loadPayload = function () {
+            $recentProjects = Project::select(['id', 'title', 'created_by', 'created_at'])
+                ->with('creator:id,nombres,apa,ama')
+                ->orderByDesc('created_at')
+                ->limit(5)
+                ->get()
+                ->map(fn (Project $project) => [
+                    'id' => $project->id,
+                    'title' => $project->title,
+                    'created_at' => $project->created_at,
+                    'creator' => $project->creator ? [
+                        'id' => $project->creator->id,
+                        'nombres' => $project->creator->nombres,
+                        'apa' => $project->creator->apa,
+                        'ama' => $project->creator->ama,
+                    ] : null,
+                ]);
 
-        $deliverableStatusCounts = $this->statusCounts(
-            Deliverable::query()->where('activo', true),
-            'estado',
-            self::DELIVERABLE_STATUSES
-        );
-        $projectProposalCounts = $this->statusCounts(
-            Project::query()->where('activo', true)->where('is_proposal', true),
-            'proposal_status',
-            self::PROPOSAL_STATUSES
-        );
-        $totalDeliverables = array_sum($deliverableStatusCounts);
-        $approvedDeliverables = $deliverableStatusCounts['aprobado'] ?? 0;
+            $deliverableStatusCounts = $this->statusCounts(
+                Deliverable::query()->where('activo', true),
+                'estado',
+                self::DELIVERABLE_STATUSES
+            );
+            $projectProposalCounts = $this->statusCounts(
+                Project::query()->where('activo', true)->where('is_proposal', true),
+                'proposal_status',
+                self::PROPOSAL_STATUSES
+            );
+            $userCounts = User::query()->selectRaw(
+                'COUNT(*) AS total_users,
+                SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) AS active_users,
+                SUM(CASE WHEN activo = 0 THEN 1 ELSE 0 END) AS inactive_users,
+                SUM(CASE WHEN perfil_id = 1 THEN 1 ELSE 0 END) AS administrators,
+                SUM(CASE WHEN perfil_id = 2 THEN 1 ELSE 0 END) AS teachers,
+                SUM(CASE WHEN perfil_id = 3 THEN 1 ELSE 0 END) AS students'
+            )->first();
+            $projectCounts = Project::query()->selectRaw(
+                'COUNT(*) AS total_projects,
+                SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) AS active_projects'
+            )->first();
+            $totalDeliverables = array_sum($deliverableStatusCounts);
+            $approvedDeliverables = $deliverableStatusCounts['aprobado'] ?? 0;
 
-        return response()->json([
-            'stats' => [
-                'total_users' => User::count(),
-                'active_users' => User::where('activo', true)->count(),
-                'inactive_users' => User::where('activo', false)->count(),
-                'total_projects' => Project::count(),
-                'active_projects' => Project::where('activo', true)->count(),
-                'total_asignaturas' => Asignatura::count(),
-                'pending_deliverables' => $deliverableStatusCounts['pendiente'] ?? 0,
-                'approved_deliverables' => $approvedDeliverables,
-                'deliverable_completion_rate' => $this->percentage($approvedDeliverables, $totalDeliverables),
-                'pending_proposals' => $projectProposalCounts['pendiente'] ?? 0,
-            ],
-            'charts' => [
-                'users_by_role' => [
-                    'Administradores' => User::where('perfil_id', 1)->count(),
-                    'Docentes' => User::where('perfil_id', 2)->count(),
-                    'Estudiantes' => User::where('perfil_id', 3)->count(),
+            return [
+                'stats' => [
+                    'total_users' => (int) $userCounts->total_users,
+                    'active_users' => (int) $userCounts->active_users,
+                    'inactive_users' => (int) $userCounts->inactive_users,
+                    'total_projects' => (int) $projectCounts->total_projects,
+                    'active_projects' => (int) $projectCounts->active_projects,
+                    'total_asignaturas' => Asignatura::count(),
+                    'pending_deliverables' => $deliverableStatusCounts['pendiente'] ?? 0,
+                    'approved_deliverables' => $approvedDeliverables,
+                    'deliverable_completion_rate' => $this->percentage($approvedDeliverables, $totalDeliverables),
+                    'pending_proposals' => $projectProposalCounts['pendiente'] ?? 0,
                 ],
-                'projects_by_proposal_status' => $projectProposalCounts,
-                'deliverables_by_status' => $deliverableStatusCounts,
-            ],
-            'recent_projects' => $recentProjects,
-        ]);
+                'charts' => [
+                    'users_by_role' => [
+                        'Administradores' => (int) $userCounts->administrators,
+                        'Docentes' => (int) $userCounts->teachers,
+                        'Estudiantes' => (int) $userCounts->students,
+                    ],
+                    'projects_by_proposal_status' => $projectProposalCounts,
+                    'deliverables_by_status' => $deliverableStatusCounts,
+                ],
+                'recent_projects' => $recentProjects,
+            ];
+        };
+
+        try {
+            $payload = Cache::store(config('auth.activity_cache_store', 'file'))
+                ->remember('dashboard:admin:stats:v2', now()->addSeconds(20), $loadPayload);
+        } catch (\Throwable) {
+            $payload = $loadPayload();
+        }
+
+        return response()->json($payload);
     }
 
     public function teacher()

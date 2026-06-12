@@ -37,6 +37,16 @@ class UserController extends Controller
 
         if ($request->filled('perfil_id')) {
             $query->where('perfil_id', $request->perfil_id);
+        } elseif ($request->filled('perfil_ids')) {
+            $profileIds = collect(explode(',', (string) $request->query('perfil_ids')))
+                ->map(fn ($id) => (int) trim($id))
+                ->filter(fn ($id) => in_array($id, [1, 2, 3], true))
+                ->unique()
+                ->values();
+
+            if ($profileIds->isNotEmpty()) {
+                $query->whereIn('perfil_id', $profileIds);
+            }
         }
 
         if ($request->filled('semestre')) {
@@ -99,7 +109,10 @@ class UserController extends Controller
             }
             $user = User::create($validated);
 
-            return response()->json(['message' => 'Usuario creado', 'user' => $user], 201);
+            return response()->json([
+                'message' => 'Usuario creado',
+                'user' => $user->load('phoneNumbers'),
+            ], 201);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }
@@ -107,7 +120,7 @@ class UserController extends Controller
 
     public function show($id)
     {
-        $user = User::find($id);
+        $user = User::with('phoneNumbers')->find($id);
         if (!$user) {
             return response()->json(['error' => 'Usuario no encontrado'], 404);
         }
@@ -165,7 +178,10 @@ class UserController extends Controller
                 $validated['direccion'] = $this->normalizeAddress($validated['direccion']);
             }
             $user->update($validated);
-            return response()->json(['message' => 'Usuario actualizado', 'user' => $user]);
+            return response()->json([
+                'message' => 'Usuario actualizado',
+                'user' => $user->fresh()->load('phoneNumbers'),
+            ]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }

@@ -13,7 +13,7 @@ class ProfileController extends Controller
 {
     public function show()
     {
-        return response()->json(auth('api')->user());
+        return response()->json(auth('api')->user()->loadMissing('phoneNumbers'));
     }
 
     public function completeInitial(Request $request)
@@ -39,7 +39,10 @@ class ProfileController extends Controller
         $validated['profile_completed_at'] = now();
         $user->update($validated);
 
-        return response()->json(['message' => 'Perfil inicial completado', 'user' => $user->fresh()]);
+        return response()->json([
+            'message' => 'Perfil inicial completado',
+            'user' => $user->fresh()->load('phoneNumbers'),
+        ]);
     }
 
     public function update(Request $request)
@@ -93,7 +96,10 @@ class ProfileController extends Controller
 
         $user->update($validated);
 
-        return response()->json(['message' => 'Perfil actualizado', 'user' => $user->fresh()]);
+        return response()->json([
+            'message' => 'Perfil actualizado',
+            'user' => $user->fresh()->load('phoneNumbers'),
+        ]);
     }
 
     private function normalizeAddress(?string $address): ?string

@@ -8,6 +8,7 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Collection;
 
 class SemesterManagementService
 {
@@ -117,5 +118,49 @@ class SemesterManagementService
             ->value('semestre_presentacion');
 
         return $studentSemester ? (int) $studentSemester : $academicSemester;
+    }
+
+    public function presentationSemestersForProjects(Collection $projects, ?AcademicPeriod $period = null): array
+    {
+        $semesters = $projects->mapWithKeys(
+            fn ($project) => [(int) $project->id => $project->subjectGroup?->semestre]
+        )->all();
+        $period ??= $this->activePeriod();
+
+        if (!$period || !$projects->count() || !Schema::hasTable('excepciones_presentacion_semestre')) {
+            return $semesters;
+        }
+
+        $projectIds = $projects->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $projectExceptions = SemesterPresentationException::query()
+            ->where('periodo_id', $period->id)
+            ->where('activo', true)
+            ->whereIn('proyecto_id', $projectIds)
+            ->get(['proyecto_id', 'semestre_presentacion'])
+            ->keyBy('proyecto_id');
+
+        $studentExceptions = DB::table('excepciones_presentacion_semestre as excepcion')
+            ->join('proyectos_integrantes as integrante', 'integrante.usuario_id', '=', 'excepcion.usuario_id')
+            ->where('excepcion.periodo_id', $period->id)
+            ->where('excepcion.activo', true)
+            ->where('integrante.rol', 'integrante')
+            ->whereIn('integrante.proyecto_id', $projectIds)
+            ->orderByDesc('excepcion.actualizado_en')
+            ->orderByDesc('excepcion.id')
+            ->get([
+                'integrante.proyecto_id',
+                'excepcion.semestre_presentacion',
+            ])
+            ->groupBy('proyecto_id')
+            ->map(fn ($items) => $items->first());
+
+        foreach ($projectIds as $projectId) {
+            $exception = $projectExceptions->get($projectId) ?? $studentExceptions->get($projectId);
+            if ($exception) {
+                $semesters[$projectId] = (int) $exception->semestre_presentacion;
+            }
+        }
+
+        return $semesters;
     }
 }

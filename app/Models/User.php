@@ -133,11 +133,11 @@ class User extends Authenticatable implements JWTSubject
 
     public function getTelefonosAttribute(): string
     {
-        $phones = $this->relationLoaded('phoneNumbers')
-            ? $this->phoneNumbers
-            : $this->phoneNumbers()->get();
+        if (!$this->relationLoaded('phoneNumbers')) {
+            return '';
+        }
 
-        return $phones->pluck('telefono')->filter()->join(', ');
+        return $this->phoneNumbers->pluck('telefono')->filter()->join(', ');
     }
 
     // JWT SUBJECT METHODS

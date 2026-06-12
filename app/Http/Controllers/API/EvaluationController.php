@@ -690,13 +690,10 @@ class EvaluationController extends Controller
             ->orderBy('id')
             ->get(['proyecto_id', 'sala_evaluacion_id'])
             ->groupBy('proyecto_id');
+        $presentationSemesters = $semesterService->presentationSemestersForProjects($projects, $activePeriod);
 
-        $projects->each(function ($project) use ($assignments, $semesterService, $activePeriod) {
-            $project->presentation_semester = $semesterService->presentationSemester(
-                (int) $project->id,
-                $project->subjectGroup?->semestre,
-                $activePeriod
-            );
+        $projects->each(function ($project) use ($assignments, $presentationSemesters) {
+            $project->presentation_semester = $presentationSemesters[(int) $project->id] ?? null;
             $project->assigned_room_id = $assignments->get($project->id)?->first()?->sala_evaluacion_id;
         });
 

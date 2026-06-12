@@ -4,12 +4,14 @@ namespace App\Models;
 
 use App\Models\Concerns\HasLegacyAliases;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 class SystemSetting extends Model
 {
     use HasLegacyAliases;
 
     private static ?array $memoizedSettings = null;
+    private const CACHE_KEY = 'system-settings:all:v1';
 
     protected $table = 'configuraciones_sistema';
 
@@ -57,8 +59,13 @@ class SystemSetting extends Model
             return self::$memoizedSettings;
         }
 
-        $settings = static::query()->get()->mapWithKeys(fn ($item) => [$item->key => $item->value['data'] ?? null])->all();
-        self::$memoizedSettings = array_replace(static::DEFAULTS, array_filter($settings, fn ($value) => $value !== null));
+        try {
+            self::$memoizedSettings = Cache::store(config('auth.activity_cache_store', 'file'))
+                ->remember(self::CACHE_KEY, now()->addSeconds(60), fn () => static::loadWithDefaults());
+        } catch (\Throwable) {
+            self::$memoizedSettings = static::loadWithDefaults();
+        }
+
         return self::$memoizedSettings;
     }
 
@@ -74,5 +81,21 @@ class SystemSetting extends Model
             ['value' => ['data' => $value], 'type' => $type, 'description' => $description]
         );
         self::$memoizedSettings = null;
+
+        try {
+            Cache::store(config('auth.activity_cache_store', 'file'))->forget(self::CACHE_KEY);
+        } catch (\Throwable) {
+            // La persistencia del ajuste ya fue completada.
+        }
+    }
+
+    private static function loadWithDefaults(): array
+    {
+        $settings = static::query()
+            ->get(['clave', 'valor'])
+            ->mapWithKeys(fn ($item) => [$item->key => $item->value['data'] ?? null])
+            ->all();
+
+        return array_replace(static::DEFAULTS, array_filter($settings, fn ($value) => $value !== null));
     }
 }
