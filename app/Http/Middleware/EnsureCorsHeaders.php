@@ -10,18 +10,18 @@ class EnsureCorsHeaders
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $origin = $request->headers->get('Origin');
-
         if ($request->isMethod('OPTIONS')) {
-            return $this->addCorsHeaders(response('', 204), $request, $origin);
+            return self::apply(response('', 204), $request);
         }
 
-        return $this->addCorsHeaders($next($request), $request, $origin);
+        return self::apply($next($request), $request);
     }
 
-    private function addCorsHeaders(Response $response, Request $request, ?string $origin): Response
+    public static function apply(Response $response, Request $request): Response
     {
-        if (!$origin || !$this->isAllowedOrigin($origin)) {
+        $origin = $request->headers->get('Origin');
+
+        if (!$origin || !self::isAllowedOrigin($origin)) {
             return $response;
         }
 
@@ -40,7 +40,7 @@ class EnsureCorsHeaders
         return $response;
     }
 
-    private function isAllowedOrigin(string $origin): bool
+    private static function isAllowedOrigin(string $origin): bool
     {
         $allowedOrigins = array_merge(
             [

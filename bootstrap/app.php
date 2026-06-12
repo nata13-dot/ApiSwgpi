@@ -24,5 +24,26 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (
+            \Tymon\JWTAuth\Exceptions\JWTException $exception,
+            \Illuminate\Http\Request $request
+        ) {
+            if (!$request->is('api/*')) {
+                return null;
+            }
+
+            $message = $exception instanceof \Tymon\JWTAuth\Exceptions\TokenExpiredException
+                ? 'La sesion ha expirado.'
+                : 'No autenticado.';
+
+            return response()->json(['error' => $message], 401);
+        });
+
+        $exceptions->respond(function (
+            \Symfony\Component\HttpFoundation\Response $response,
+            \Throwable $exception,
+            \Illuminate\Http\Request $request
+        ) {
+            return \App\Http\Middleware\EnsureCorsHeaders::apply($response, $request);
+        });
     })->create();

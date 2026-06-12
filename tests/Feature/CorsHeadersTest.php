@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
+use Tymon\JWTAuth\Exceptions\JWTException;
 
 class CorsHeadersTest extends TestCase
 {
@@ -32,5 +34,36 @@ class CorsHeadersTest extends TestCase
             ->assertUnauthorized()
             ->assertHeader('Access-Control-Allow-Origin', 'https://swgpi.online')
             ->assertHeader('Access-Control-Allow-Credentials', 'true');
+    }
+
+    public function test_jwt_exception_becomes_cors_enabled_unauthorized_response(): void
+    {
+        Route::get('/api/test-jwt-exception', function () {
+            throw new JWTException('Token could not be parsed.');
+        });
+
+        $response = $this
+            ->withHeader('Origin', 'https://swgpi.online')
+            ->getJson('/api/test-jwt-exception');
+
+        $response
+            ->assertUnauthorized()
+            ->assertJson(['error' => 'No autenticado.'])
+            ->assertHeader('Access-Control-Allow-Origin', 'https://swgpi.online');
+    }
+
+    public function test_internal_api_error_keeps_cors_headers(): void
+    {
+        Route::get('/api/test-internal-error', function () {
+            throw new \RuntimeException('Expected test exception.');
+        });
+
+        $response = $this
+            ->withHeader('Origin', 'https://swgpi.online')
+            ->getJson('/api/test-internal-error');
+
+        $response
+            ->assertInternalServerError()
+            ->assertHeader('Access-Control-Allow-Origin', 'https://swgpi.online');
     }
 }
