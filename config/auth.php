@@ -20,6 +20,8 @@ return [
         'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
     ],
 
+    'activity_cache_store' => env('AUTH_ACTIVITY_CACHE_STORE', 'file'),
+
     /*
     |--------------------------------------------------------------------------
     | Authentication Guards

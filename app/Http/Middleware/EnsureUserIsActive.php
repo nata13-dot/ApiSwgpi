@@ -4,8 +4,10 @@ namespace App\Http\Middleware;
 
 use App\Models\SystemSetting;
 use Closure;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class EnsureUserIsActive
@@ -17,18 +19,34 @@ class EnsureUserIsActive
             return response()->json(['error' => 'Cuenta desactivada'], 403);
         }
 
-        if ($user && !$this->rememberedSession() && $this->sessionExpiredByInactivity()) {
-            try {
-                JWTAuth::invalidate(JWTAuth::getToken());
-            } catch (\Throwable $e) {
-                report($e);
-            }
-
-            return response()->json(['error' => 'Sesion expirada por inactividad'], 401);
-        }
-
         if ($user) {
-            Cache::put($this->activityCacheKey(), now()->timestamp, now()->addMinutes($this->absoluteTokenTtlMinutes()));
+            try {
+                if (!$this->rememberedSession() && $this->sessionExpiredByInactivity()) {
+                    try {
+                        JWTAuth::invalidate(JWTAuth::getToken());
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
+
+                    return response()->json(['error' => 'Sesion expirada por inactividad'], 401);
+                }
+
+                $this->activityCache()->put(
+                    $this->activityCacheKey(),
+                    now()->timestamp,
+                    now()->addMinutes($this->absoluteTokenTtlMinutes())
+                );
+            } catch (\Throwable $e) {
+                try {
+                    Log::warning('No se pudo actualizar la actividad de la sesion.', [
+                        'user_id' => $user->getAuthIdentifier(),
+                        'exception' => $e::class,
+                        'message' => $e->getMessage(),
+                    ]);
+                } catch (\Throwable) {
+                    // El seguimiento de actividad no debe bloquear una peticion autenticada.
+                }
+            }
         }
 
         return $next($request);
@@ -36,7 +54,7 @@ class EnsureUserIsActive
 
     private function sessionExpiredByInactivity(): bool
     {
-        $lastActivity = Cache::get($this->activityCacheKey());
+        $lastActivity = $this->activityCache()->get($this->activityCacheKey());
         if (!$lastActivity) {
             return false;
         }
@@ -72,5 +90,10 @@ class EnsureUserIsActive
     private function absoluteTokenTtlMinutes(): int
     {
         return max($this->idleTimeoutMinutes(), (int) config('jwt.absolute_ttl', 480));
+    }
+
+    private function activityCache(): Repository
+    {
+        return Cache::store(config('auth.activity_cache_store', 'file'));
     }
 }
