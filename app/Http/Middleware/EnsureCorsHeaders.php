@@ -47,6 +47,9 @@ class EnsureCorsHeaders
                 'https://swgpi.online',
                 'https://www.swgpi.online',
                 'https://frontsgwpi-production.up.railway.app',
+                'capacitor://localhost',
+                'ionic://localhost',
+                'https://localhost',
             ],
             config('cors.allowed_origins', [])
         );
