@@ -3,9 +3,9 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasLegacyAliases;
-use App\Models\Pivots\EvaluationRoomProjectPivot;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class EvaluationRoom extends Model
@@ -18,10 +18,17 @@ class EvaluationRoom extends Model
 
     protected array $legacyAliases = [
         'responsible_teacher_id' => 'creado_por',
+        'fecha_evaluacion' => 'inicia_en',
+        'fecha_fin_evaluacion' => 'termina_en',
+        'teacher_evaluation_minutes' => 'minutos_evaluacion_docente',
+        'project_presentation_minutes' => 'minutos_presentacion_proyecto',
+        'max_attempts' => 'max_intentos',
         'created_by' => 'creado_por',
         'created_at' => 'creado_en',
         'updated_at' => 'actualizado_en',
     ];
+
+    protected array $legacyVirtualColumns = ['semestre', 'etapa'];
 
     protected $fillable = [
         'nombre', 'salon', 'semestre', 'etapa', 'responsible_teacher_id', 'fecha_evaluacion', 'fecha_fin_evaluacion',
@@ -44,23 +51,47 @@ class EvaluationRoom extends Model
 
     public function teachers(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'salas_evaluacion_docentes', 'sala_evaluacion_id', 'docente_id')
+        return $this->belongsToMany(User::class, 'sala_docentes', 'sala_id', 'docente_id')
             ->where('usuarios.activo', true)
             ->withPivot('rol');
     }
 
+    public function rubric(): BelongsTo
+    {
+        return $this->belongsTo(Rubric::class, 'rubrica_id');
+    }
+
+    public function getSemestreAttribute(): ?int
+    {
+        if (array_key_exists('semestre', $this->attributes)) {
+            return $this->attributes['semestre'] === null ? null : (int) $this->attributes['semestre'];
+        }
+
+        $semester = $this->rubric?->semestre;
+
+        return $semester === null ? null : (int) $semester;
+    }
+
+    public function getEtapaAttribute(): ?string
+    {
+        if (array_key_exists('etapa', $this->attributes)) {
+            return $this->attributes['etapa'];
+        }
+
+        return $this->rubric?->etapa;
+    }
+
     public function projects(): BelongsToMany
     {
-        return $this->belongsToMany(Project::class, 'salas_evaluacion_proyectos', 'sala_evaluacion_id', 'proyecto_id')
-            ->using(EvaluationRoomProjectPivot::class)
-            ->withPivot(['orden'])
-            ->orderBy('salas_evaluacion_proyectos.orden')
+        return $this->belongsToMany(Project::class, 'evaluaciones', 'sala_id', 'proyecto_id')
+            ->withPivot(['orden_presentacion'])
+            ->orderBy('evaluaciones.orden_presentacion')
             ->orderBy('proyectos.titulo');
     }
 
     public function evaluations(): HasMany
     {
-        return $this->hasMany(Evaluation::class, 'sala_evaluacion_id');
+        return $this->hasMany(Evaluation::class, 'sala_id');
     }
 
     public function responsibleTeacher()

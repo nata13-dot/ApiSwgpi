@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\Asignatura;
 use App\Models\Competencia;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -11,14 +12,17 @@ class CompetenciaController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Competencia::with('asignatura')->withCount('deliverables');
+        $query = Asignatura::query();
 
         if ($request->filled('asignatura_id')) {
-            $query->where('asignatura_id', $request->asignatura_id);
+            $query->where('id', $request->asignatura_id);
         }
 
         $perPage = min((int) $request->query('per_page', 15), 100);
-        return response()->json($query->orderBy('nombre')->paginate($perPage));
+        $competencias = $query->orderBy('nombre')->paginate($perPage);
+        $competencias->getCollection()->transform(fn (Asignatura $asignatura) => $this->fromAsignatura($asignatura));
+
+        return response()->json($competencias);
     }
 
     public function store(Request $request)
@@ -31,8 +35,10 @@ class CompetenciaController extends Controller
                 'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
             ]);
 
-            $competencia = Competencia::create($validated);
-            return response()->json(['message' => 'Competencia creada', 'competencia' => $competencia], 201);
+            return response()->json([
+                'message' => 'En el esquema v2 las competencias se representan por asignaturas.',
+                'competencia' => $this->fromAsignatura(Asignatura::findOrFail($validated['asignatura_id'])),
+            ], 422);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }
@@ -40,18 +46,18 @@ class CompetenciaController extends Controller
 
     public function show($id)
     {
-        $competencia = Competencia::with(['asignatura', 'deliverables'])->find($id);
-        if (!$competencia) {
+        $asignatura = Asignatura::find($id);
+        if (!$asignatura) {
             return response()->json(['error' => 'Competencia no encontrada'], 404);
         }
-        return response()->json($competencia);
+        return response()->json($this->fromAsignatura($asignatura));
     }
 
     public function update(Request $request, $id)
     {
         try {
-            $competencia = Competencia::find($id);
-            if (!$competencia) {
+            $asignatura = Asignatura::find($id);
+            if (!$asignatura) {
                 return response()->json(['error' => 'Competencia no encontrada'], 404);
             }
 
@@ -62,8 +68,10 @@ class CompetenciaController extends Controller
                 'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
             ]);
 
-            $competencia->update($validated);
-            return response()->json(['message' => 'Competencia actualizada', 'competencia' => $competencia]);
+            return response()->json([
+                'message' => 'En el esquema v2 las competencias se administran desde asignaturas.',
+                'competencia' => $this->fromAsignatura($asignatura),
+            ], 422);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }
@@ -71,16 +79,30 @@ class CompetenciaController extends Controller
 
     public function destroy($id)
     {
-        $competencia = Competencia::find($id);
-        if (!$competencia) {
+        $asignatura = Asignatura::find($id);
+        if (!$asignatura) {
             return response()->json(['error' => 'Competencia no encontrada'], 404);
         }
-        if ($competencia->deliverables()->exists()) {
-            return response()->json([
-                'message' => 'No puedes eliminar una competencia que tiene entregables. Elimina o reasigna primero sus entregables.',
-            ], 422);
-        }
-        $competencia->delete();
-        return response()->json(['message' => 'Competencia eliminada']);
+        return response()->json([
+            'message' => 'En el esquema v2 las competencias se administran desde asignaturas.',
+        ], 422);
+    }
+
+    private function fromAsignatura(Asignatura $asignatura): array
+    {
+        return [
+            'id' => $asignatura->id,
+            'nombre' => $asignatura->nombre,
+            'asignatura_id' => $asignatura->id,
+            'fecha_inicio' => null,
+            'fecha_fin' => null,
+            'deliverables_count' => 0,
+            'asignatura' => [
+                'id' => $asignatura->id,
+                'clave' => $asignatura->clave,
+                'nombre' => $asignatura->nombre,
+            ],
+            'deliverables' => [],
+        ];
     }
 }

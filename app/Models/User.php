@@ -31,6 +31,8 @@ class User extends Authenticatable implements JWTSubject
     ];
 
     protected array $legacyVirtualColumns = [
+        'semestre',
+        'grupo',
         'telefonos',
     ];
 
@@ -39,8 +41,7 @@ class User extends Authenticatable implements JWTSubject
 
     protected $fillable = [
         'id', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo', 'contrasena',
-        'curp', 'direccion', 'foto_ruta', 'perfil_completado_en', 'perfil_id', 'activo',
-        'semestre', 'grupo',
+        'telefono', 'curp', 'direccion', 'foto_ruta', 'perfil_completado_en', 'perfil_id', 'activo',
         'apa', 'ama', 'email', 'password', 'photo_path', 'profile_completed_at',
     ];
 
@@ -63,6 +64,8 @@ class User extends Authenticatable implements JWTSubject
         'email',
         'photo_path',
         'profile_completed_at',
+        'semestre',
+        'grupo',
         'telefonos',
     ];
 
@@ -134,10 +137,42 @@ class User extends Authenticatable implements JWTSubject
     public function getTelefonosAttribute(): string
     {
         if (!$this->relationLoaded('phoneNumbers')) {
-            return '';
+            return (string) ($this->attributes['telefono'] ?? '');
         }
 
         return $this->phoneNumbers->pluck('telefono')->filter()->join(', ');
+    }
+
+    public function getSemestreAttribute(): ?int
+    {
+        if (array_key_exists('semestre', $this->attributes)) {
+            return $this->attributes['semestre'] === null ? null : (int) $this->attributes['semestre'];
+        }
+
+        $value = \Illuminate\Support\Facades\DB::table('grupo_estudiantes')
+            ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
+            ->where('grupo_estudiantes.estudiante_id', $this->id)
+            ->where('grupo_estudiantes.activo', true)
+            ->where('grupos_academicos.activo', true)
+            ->orderByDesc('grupo_estudiantes.inscrito_en')
+            ->value('grupos_academicos.semestre');
+
+        return $value === null ? null : (int) $value;
+    }
+
+    public function getGrupoAttribute(): ?string
+    {
+        if (array_key_exists('grupo', $this->attributes)) {
+            return $this->attributes['grupo'];
+        }
+
+        return \Illuminate\Support\Facades\DB::table('grupo_estudiantes')
+            ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
+            ->where('grupo_estudiantes.estudiante_id', $this->id)
+            ->where('grupo_estudiantes.activo', true)
+            ->where('grupos_academicos.activo', true)
+            ->orderByDesc('grupo_estudiantes.inscrito_en')
+            ->value('grupos_academicos.clave_grupo');
     }
 
     // JWT SUBJECT METHODS
@@ -157,7 +192,7 @@ class User extends Authenticatable implements JWTSubject
     // RELACIONES
     public function projectsAsAdvisor(): BelongsToMany
     {
-        return $this->belongsToMany(Project::class, 'proyectos_integrantes', 'usuario_id', 'proyecto_id')
+        return $this->belongsToMany(Project::class, 'proyecto_integrantes', 'usuario_id', 'proyecto_id')
                     ->using(ProjectMemberPivot::class)
                     ->withPivot('rol');
     }

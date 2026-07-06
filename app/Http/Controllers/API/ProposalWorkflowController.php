@@ -12,6 +12,7 @@ use App\Models\TeacherGroupAssignment;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -22,12 +23,24 @@ class ProposalWorkflowController extends Controller
     public function configIndex()
     {
         $defaultSubject = $this->defaultProposalSubject();
-        $subjectGroups = SubjectGroup::with(['asignaturas', 'registrationWindows', 'teacherAssignments.teacher', 'teacherAssignments.asignatura'])
+        $subjectGroups = SubjectGroup::with(['asignaturas'])
             ->where('semestre', 5)
             ->whereHas('asignaturas', fn ($query) => $query->where('asignaturas.id', $defaultSubject->id))
             ->orderBy('semestre')
             ->orderBy('nombre')
-            ->get();
+            ->get()
+            ->each(function (SubjectGroup $group) {
+                $window = $this->windowPayloadFromGroup($group);
+                $group->setRelation('registrationWindows', collect($window ? [$window] : []));
+                $group->setRelation('teacherAssignments', collect());
+            });
+
+        $exceptions = Schema::hasTable('excepciones_revision_propuesta')
+            ? ProposalReviewException::with(['asignatura:id,nombre', 'subjectGroup:id,nombre,semestre,grupo', 'teacher:id,nombres,apa,ama', 'student:id,nombres,apa,ama,semestre,grupo'])
+                ->where('activo', true)
+                ->orderByDesc('created_at')
+                ->get()
+            : collect();
 
         return response()->json([
             'default_subject' => $defaultSubject,
@@ -35,10 +48,7 @@ class ProposalWorkflowController extends Controller
             'grupos_academicos' => $subjectGroups,
             'teachers' => User::where('perfil_id', 2)->where('activo', true)->orderBy('nombres')->get(['id', 'nombres', 'apa', 'ama']),
             'asignaturas' => Asignatura::orderBy('nombre')->get(['id', 'clave', 'nombre']),
-            'exceptions' => ProposalReviewException::with(['asignatura:id,nombre', 'subjectGroup:id,nombre,semestre,grupo', 'teacher:id,nombres,apa,ama', 'student:id,nombres,apa,ama,semestre,grupo'])
-                ->where('activo', true)
-                ->orderByDesc('created_at')
-                ->get(),
+            'exceptions' => $exceptions,
         ]);
     }
 
@@ -53,29 +63,41 @@ class ProposalWorkflowController extends Controller
         ]);
 
         $this->guardCanManageWindow((int) $validated['subject_group_id']);
-        $window = ProjectRegistrationWindow::create($validated);
+        $group = SubjectGroup::findOrFail($validated['subject_group_id']);
+        $group->update([
+            'registro_proyectos_desde' => $validated['starts_at'],
+            'registro_proyectos_hasta' => $validated['ends_at'],
+        ]);
+        $window = $this->windowPayloadFromGroup($group->fresh());
         return response()->json(['message' => 'Ventana de registro creada', 'window' => $window], 201);
     }
 
     public function updateWindow(Request $request, $id)
     {
-        $window = ProjectRegistrationWindow::findOrFail($id);
-        $this->guardCanManageWindow((int) $window->subject_group_id);
+        $group = SubjectGroup::findOrFail($id);
+        $this->guardCanManageWindow((int) $group->id);
         $validated = $request->validate([
             'starts_at' => 'required|date',
             'ends_at' => 'required|date|after:starts_at',
             'activo' => 'nullable|boolean',
             'notes' => 'nullable|string|max:1000',
         ]);
-        $window->update($validated);
+        $group->update([
+            'registro_proyectos_desde' => $validated['starts_at'],
+            'registro_proyectos_hasta' => $validated['ends_at'],
+        ]);
+        $window = $this->windowPayloadFromGroup($group->fresh());
         return response()->json(['message' => 'Ventana de registro actualizada', 'window' => $window]);
     }
 
     public function destroyWindow($id)
     {
-        $window = ProjectRegistrationWindow::findOrFail($id);
-        $this->guardCanManageWindow((int) $window->subject_group_id);
-        $window->delete();
+        $group = SubjectGroup::findOrFail($id);
+        $this->guardCanManageWindow((int) $group->id);
+        $group->update([
+            'registro_proyectos_desde' => null,
+            'registro_proyectos_hasta' => null,
+        ]);
         return response()->json(['message' => 'Ventana de registro eliminada']);
     }
 
@@ -94,8 +116,8 @@ class ProposalWorkflowController extends Controller
             throw ValidationException::withMessages(['teacher_id' => ['El responsable debe ser un docente activo.']]);
         }
 
-        $belongsToGroup = DB::table('grupos_asignaturas')
-            ->where('grupo_academico_id', $validated['subject_group_id'])
+        $belongsToGroup = DB::table('cursos')
+            ->where('grupo_id', $validated['subject_group_id'])
             ->where('asignatura_id', $validated['asignatura_id'])
             ->exists();
 
@@ -131,6 +153,12 @@ class ProposalWorkflowController extends Controller
 
     public function storeException(Request $request)
     {
+        if (!Schema::hasTable('excepciones_revision_propuesta')) {
+            return response()->json([
+                'message' => 'El esquema v2 no conserva excepciones de propuesta independientes del proyecto.',
+            ], 422);
+        }
+
         $defaultSubject = $this->defaultProposalSubject();
         $validated = $request->validate([
             'subject_group_id' => 'required|exists:grupos_academicos,id',
@@ -167,6 +195,10 @@ class ProposalWorkflowController extends Controller
 
     public function destroyException($id)
     {
+        if (!Schema::hasTable('excepciones_revision_propuesta')) {
+            return response()->json(['message' => 'Excepcion no encontrada'], 404);
+        }
+
         ProposalReviewException::findOrFail($id)->update(['activo' => false]);
         return response()->json(['message' => 'Excepcion desactivada']);
     }
@@ -179,13 +211,15 @@ class ProposalWorkflowController extends Controller
         }
 
         $defaultSubject = $this->defaultProposalSubject();
-        $exception = ProposalReviewException::where('student_id', $student->id)
-            ->where('asignatura_id', $defaultSubject->id)
-            ->where('activo', true)
-            ->latest('creado_en')
-            ->first();
+        $exception = Schema::hasTable('excepciones_revision_propuesta')
+            ? ProposalReviewException::where('student_id', $student->id)
+                ->where('asignatura_id', $defaultSubject->id)
+                ->where('activo', true)
+                ->latest('creado_en')
+                ->first()
+            : null;
 
-        $group = SubjectGroup::with('registrationWindows')
+        $group = SubjectGroup::query()
             ->where('activo', true)
             ->whereHas('asignaturas', fn ($query) => $query->where('asignaturas.id', $defaultSubject->id))
             ->when(
@@ -199,12 +233,12 @@ class ProposalWorkflowController extends Controller
             ->whereHas('students', fn ($query) => $query->where('usuarios.id', $student->id))
             ->first();
 
-        $window = $group?->registrationWindows()
-            ->where('activo', true)
-            ->where('starts_at', '<=', now())
-            ->where('ends_at', '>=', now())
-            ->orderByDesc('ends_at')
-            ->first();
+        $window = $group
+            && $group->registro_proyectos_desde
+            && $group->registro_proyectos_hasta
+            && now()->between($group->registro_proyectos_desde, $group->registro_proyectos_hasta)
+                ? $this->windowPayloadFromGroup($group)
+                : null;
 
         $profileRequired = !$student->profile_completed_at
             || !$student->nombres
@@ -234,7 +268,7 @@ class ProposalWorkflowController extends Controller
         $term = trim((string) $request->query('q', ''));
         $query = User::where('perfil_id', 3)->where('activo', true)
             ->when((int) $user->perfil_id === 3, fn ($q) => $q->where('id', '!=', $user->id))
-            ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->where('proyectos_integrantes.rol', 'integrante'));
+            ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->where('proyecto_integrantes.rol', 'integrante'));
 
         if ($term !== '') {
             $query->where(function ($q) use ($term) {
@@ -253,23 +287,10 @@ class ProposalWorkflowController extends Controller
             return response()->json(['message' => 'Solo docentes.'], 403);
         }
 
-        $assignments = TeacherGroupAssignment::where('teacher_id', $teacher->id)->where('activo', true)->get();
-        $groupIds = $assignments->pluck('subject_group_id');
-        $subjectIds = $assignments->pluck('asignatura_id')->filter();
-        $exceptionStudentIds = ProposalReviewException::where('teacher_id', $teacher->id)
-            ->where('activo', true)
-            ->when($subjectIds->isNotEmpty(), fn ($query) => $query->whereIn('asignatura_id', $subjectIds))
-            ->pluck('student_id');
-
         $projects = Project::with(['students', 'subjectGroup', 'creator', 'proposalReviewer'])
-            ->where('is_proposal', true)
-            ->where(function ($query) use ($groupIds, $exceptionStudentIds) {
-                $query->whereIn('subject_group_id', $groupIds);
-                if ($exceptionStudentIds->isNotEmpty()) {
-                    $query->orWhereHas('students', fn ($studentQuery) => $studentQuery->whereIn('usuarios.id', $exceptionStudentIds));
-                }
-            })
-            ->orderByRaw("FIELD(proposal_status, 'pendiente', 'requiere_cambios', 'aprobado', 'rechazado')")
+            ->where('tipo', 'propuesta')
+            ->whereHas('advisors', fn ($query) => $query->where('usuarios.id', $teacher->id))
+            ->orderByRaw("FIELD(estado, 'pendiente', 'requiere_cambios', 'aprobado', 'rechazado')")
             ->orderByDesc('created_at')
             ->get();
 
@@ -280,21 +301,20 @@ class ProposalWorkflowController extends Controller
     {
         $user = auth('api')->user();
         $defaultSubject = $this->defaultProposalSubject();
-        $query = SubjectGroup::with(['registrationWindows', 'teacherAssignments.teacher'])
+        $query = SubjectGroup::with(['asignaturas'])
             ->where('semestre', 5)
             ->whereHas('asignaturas', fn ($subjectQuery) => $subjectQuery->where('asignaturas.id', $defaultSubject->id));
 
-        if ((int) $user->perfil_id === 2) {
-            $query->whereHas('teacherAssignments', function ($assignmentQuery) use ($user, $defaultSubject) {
-                $assignmentQuery->where('docente_id', $user->id)
-                    ->where('asignatura_id', $defaultSubject->id)
-                    ->where('activo', true);
+        $groups = $query->orderBy('nombre')->get()
+            ->each(function (SubjectGroup $group) {
+                $window = $this->windowPayloadFromGroup($group);
+                $group->setRelation('registrationWindows', collect($window ? [$window] : []));
+                $group->setRelation('teacherAssignments', collect());
             });
-        }
 
         return response()->json([
             'default_subject' => $defaultSubject,
-            'groups' => $query->orderBy('nombre')->get(),
+            'groups' => $groups,
         ]);
     }
 
@@ -355,15 +375,31 @@ class ProposalWorkflowController extends Controller
             return;
         }
 
-        $defaultSubject = $this->defaultProposalSubject();
-        $allowed = TeacherGroupAssignment::where('subject_group_id', $groupId)
-            ->where('asignatura_id', $defaultSubject->id)
-            ->where('teacher_id', $user->id)
-            ->where('activo', true)
+        $allowed = DB::table('curso_docentes')
+            ->join('cursos', 'cursos.id', '=', 'curso_docentes.curso_id')
+            ->where('cursos.grupo_id', $groupId)
+            ->where('curso_docentes.docente_id', $user->id)
+            ->where('curso_docentes.activo', true)
             ->exists();
 
         if (!$allowed) {
             abort(403, 'Solo los docentes responsables de esta carga pueden administrar su ventana.');
         }
+    }
+
+    private function windowPayloadFromGroup(?SubjectGroup $group): ?array
+    {
+        if (!$group || !$group->registro_proyectos_desde || !$group->registro_proyectos_hasta) {
+            return null;
+        }
+
+        return [
+            'id' => $group->id,
+            'subject_group_id' => $group->id,
+            'starts_at' => $group->registro_proyectos_desde,
+            'ends_at' => $group->registro_proyectos_hasta,
+            'activo' => true,
+            'notes' => null,
+        ];
     }
 }

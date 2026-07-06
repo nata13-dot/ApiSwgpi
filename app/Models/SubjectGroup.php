@@ -18,18 +18,21 @@ class SubjectGroup extends Model
     const UPDATED_AT = 'actualizado_en';
 
     protected array $legacyAliases = [
-        'subject_group_id' => 'grupo_academico_id',
+        'subject_group_id' => 'id',
+        'grupo' => 'clave_grupo',
         'created_at' => 'creado_en',
         'updated_at' => 'actualizado_en',
     ];
 
-    protected $fillable = ['nombre', 'semestre', 'grupo', 'periodo_id', 'activo'];
+    protected $fillable = ['nombre', 'semestre', 'grupo', 'periodo_id', 'registro_proyectos_desde', 'registro_proyectos_hasta', 'activo'];
 
     protected $appends = ['periodo'];
 
     protected $casts = [
         'semestre' => 'integer',
         'activo' => 'boolean',
+        'registro_proyectos_desde' => 'datetime',
+        'registro_proyectos_hasta' => 'datetime',
     ];
 
     public function academicPeriod(): BelongsTo
@@ -46,8 +49,7 @@ class SubjectGroup extends Model
 
     public function asignaturas(): BelongsToMany
     {
-        return $this->belongsToMany(Asignatura::class, 'grupos_asignaturas', 'grupo_academico_id', 'asignatura_id')
-            ->withTimestamps();
+        return $this->belongsToMany(Asignatura::class, 'cursos', 'grupo_id', 'asignatura_id');
     }
 
     public function registrationWindows(): HasMany
@@ -64,6 +66,6 @@ class SubjectGroup extends Model
 
     public function projects(): HasMany
     {
-        return $this->hasMany(Project::class, 'grupo_academico_id');
+        return $this->hasMany(Project::class, 'grupo_id');
     }
 }

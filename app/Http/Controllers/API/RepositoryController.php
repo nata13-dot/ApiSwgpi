@@ -129,7 +129,7 @@ class RepositoryController extends Controller
         }
 
         $documents = RepositoryDocument::whereHas('tags', function($q) use ($tagId) {
-                                        $q->where('etiquetas_documentos.id', $tagId);
+                                        $q->where('etiquetas.id', $tagId);
                                    })
                                    ->where('activo', true)
                                    ->with(['tags', 'uploader'])
@@ -479,7 +479,7 @@ class RepositoryController extends Controller
                 'autores' => 'required|string|max:1000',
                 'project_id' => 'nullable|integer|exists:proyectos,id',
                 'tag_ids' => 'nullable|array',
-                'tag_ids.*' => 'integer|exists:etiquetas_documentos,id',
+                'tag_ids.*' => 'integer|exists:etiquetas,id',
                 'visibility' => 'nullable|in:public,private',
                 'archivo' => $this->fileValidationRule(true),
             ]);
@@ -556,7 +556,7 @@ class RepositoryController extends Controller
                 'descripcion' => 'required|string|max:5000',
                 'autores' => 'required|string|max:1000',
                 'tag_ids' => 'nullable|array',
-                'tag_ids.*' => 'integer|exists:etiquetas_documentos,id',
+                'tag_ids.*' => 'integer|exists:etiquetas,id',
                 'visibility' => 'nullable|in:public,private',
                 'archivo' => $this->fileValidationRule(false),
             ]);
@@ -870,7 +870,7 @@ class RepositoryController extends Controller
         $databaseColumn = $normalizedColumns[$column] ?? $column;
 
         if (!array_key_exists($column, $columns)) {
-            $columns[$column] = Schema::hasColumn('documentos_repositorio', $databaseColumn);
+            $columns[$column] = Schema::hasColumn('documentos', $databaseColumn);
         }
 
         return $columns[$column];

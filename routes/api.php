@@ -185,6 +185,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     Route::put('/projects/{id}', [ProjectController::class, 'update']);
     Route::delete('/projects/{id}', [ProjectController::class, 'destroy']);
     Route::post('/projects/{id}/advisors', [ProjectController::class, 'addAdvisor']);
+    Route::put('/projects/{id}/advisors', [ProjectController::class, 'syncAdvisors']);
     Route::post('/projects/{id}/asignaturas', [ProjectController::class, 'syncAsignaturas']);
     Route::delete('/projects/{projectId}/advisors/{userId}', [ProjectController::class, 'removeAdvisor']);
 

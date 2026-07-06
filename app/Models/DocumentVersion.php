@@ -11,11 +11,11 @@ class DocumentVersion extends Model
 {
     use HasFactory, HasLegacyAliases;
 
-    protected $table = 'versiones_documentos';
+    protected $table = 'documento_versiones';
     public $timestamps = false;
 
     protected array $legacyAliases = [
-        'deliverable_id' => 'entregable_proyecto_id',
+        'deliverable_id' => 'documento_id',
         'version_number' => 'numero_version',
         'archivo_path' => 'archivo_ruta',
         'uploaded_by' => 'subido_por',
@@ -27,7 +27,7 @@ class DocumentVersion extends Model
     // RELACIONES
     public function deliverable(): BelongsTo
     {
-        return $this->belongsTo(Deliverable::class, 'entregable_proyecto_id');
+        return $this->belongsTo(RepositoryDocument::class, 'documento_id');
     }
 
     public function uploadedBy(): BelongsTo

@@ -32,13 +32,16 @@ class SemesterManagementController extends Controller
         $exceptions = SemesterPresentationException::query()
             ->with([
                 'period:id,nombre',
-                'project:id,titulo,grupo_academico_id',
+                'project:id,titulo,grupo_id',
                 'project.subjectGroup:id,semestre,grupo',
                 'student:id,nombres,apellido_paterno,apellido_materno,semestre,grupo',
             ])
-            ->where('activo', true)
+            ->where('tipo', 'presentacion_semestre')
+            ->where('activa', true)
             ->orderByDesc('id')
-            ->get();
+            ->get()
+            ->filter(fn ($exception) => $exception->periodo_id !== null)
+            ->values();
 
         return response()->json([
             'active_period_id' => $activePeriod?->id,
@@ -137,7 +140,7 @@ class SemesterManagementController extends Controller
             ->where('activo', true)
             ->where('titulo', 'like', "%{$term}%")
             ->limit(12)
-            ->get(['id', 'titulo', 'grupo_academico_id']);
+            ->get(['id', 'titulo', 'grupo_id']);
 
         return response()->json(['students' => $students, 'projects' => $projects]);
     }
@@ -158,15 +161,36 @@ class SemesterManagementController extends Controller
             ]);
         }
 
+        $projectId = $validated['project_id'] ?? null;
+        if (!$projectId && !empty($validated['student_id'])) {
+            $projectId = DB::table('proyecto_integrantes')
+                ->join('proyectos', 'proyectos.id', '=', 'proyecto_integrantes.proyecto_id')
+                ->where('proyecto_integrantes.usuario_id', $validated['student_id'])
+                ->whereIn('proyecto_integrantes.rol', ['lider', 'integrante'])
+                ->where('proyectos.activo', true)
+                ->orderByDesc('proyectos.creado_en')
+                ->value('proyectos.id');
+
+            if (!$projectId) {
+                throw ValidationException::withMessages([
+                    'student_id' => ['El alumno debe pertenecer a un proyecto activo para autorizar una presentación especial.'],
+                ]);
+            }
+        }
+
         $keys = [
-            'periodo_id' => $validated['period_id'],
-            'proyecto_id' => $validated['project_id'] ?? null,
+            'proyecto_id' => $projectId,
             'usuario_id' => $validated['student_id'] ?? null,
+            'tipo' => 'presentacion_semestre',
         ];
         $exception = SemesterPresentationException::updateOrCreate($keys, [
-            'semestre_presentacion' => $validated['presentation_semester'],
-            'motivo' => $validated['reason'] ?? null,
-            'activo' => true,
+            'valor' => SemesterPresentationException::encodedValue(
+                (int) $validated['period_id'],
+                (int) $validated['presentation_semester']
+            ),
+            'motivo' => trim((string) ($validated['reason'] ?? '')) ?: 'Presentacion autorizada en semestre excepcional',
+            'autorizada_por' => auth('api')->id(),
+            'activa' => true,
         ]);
 
         return response()->json([
@@ -177,7 +201,11 @@ class SemesterManagementController extends Controller
 
     public function destroyException(SemesterPresentationException $exception)
     {
-        $exception->update(['activo' => false]);
+        if ($exception->tipo !== 'presentacion_semestre') {
+            return response()->json(['error' => 'Excepcion no encontrada'], 404);
+        }
+
+        $exception->update(['activa' => false]);
 
         return response()->json(['message' => 'Excepcion eliminada']);
     }

@@ -16,8 +16,8 @@ class EvaluationScore extends Model
     const UPDATED_AT = 'actualizado_en';
 
     protected array $legacyAliases = [
-        'evaluation_id' => 'intento_evaluacion_id',
-        'rubric_criterion_id' => 'criterio_rubrica_id',
+        'evaluation_id' => 'dictamen_id',
+        'rubric_criterion_id' => 'criterio_id',
         'created_at' => 'creado_en',
         'updated_at' => 'actualizado_en',
     ];
@@ -41,7 +41,7 @@ class EvaluationScore extends Model
 
     public function evaluation(): BelongsTo
     {
-        return $this->belongsTo(EvaluationAttempt::class, 'intento_evaluacion_id');
+        return $this->belongsTo(EvaluationAttempt::class, 'dictamen_id');
     }
 
     public function teacher(): HasOneThrough
@@ -51,14 +51,14 @@ class EvaluationScore extends Model
             EvaluationAttempt::class,
             'id',
             'id',
-            'intento_evaluacion_id',
+            'dictamen_id',
             'docente_id'
         )->where('usuarios.activo', true);
     }
 
     public function attempt(): BelongsTo
     {
-        return $this->belongsTo(EvaluationAttempt::class, 'intento_evaluacion_id');
+        return $this->belongsTo(EvaluationAttempt::class, 'dictamen_id');
     }
 
     public function getEvaluationIdAttribute(): ?int
@@ -91,6 +91,6 @@ class EvaluationScore extends Model
 
     public function criterion(): BelongsTo
     {
-        return $this->belongsTo(RubricCriterion::class, 'criterio_rubrica_id');
+        return $this->belongsTo(RubricCriterion::class, 'criterio_id');
     }
 }

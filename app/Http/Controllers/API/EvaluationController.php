@@ -55,16 +55,34 @@ class EvaluationController extends Controller
 
     public function criteria(Request $request)
     {
+        if (!Schema::hasTable('criterios_rubrica') || !Schema::hasTable('rubricas')) {
+            return response()->json([
+                'criteria' => [],
+                'levels' => collect($this->levels)->map(fn ($score, $key) => [
+                    'key' => $key,
+                    'label' => $this->levelLabels[$key],
+                    'puntaje' => $score,
+                ])->values(),
+                'score_modes' => $this->rubricScoreModes(),
+            ]);
+        }
+
         $semester = $request->integer('semestre');
-        $query = RubricCriterion::query()->where('activo', true)->orderBy('semestre')->orderBy('orden')->orderBy('id');
+        $query = RubricCriterion::query()
+            ->select('criterios_rubrica.*', 'rubricas.semestre as semestre')
+            ->join('rubricas', 'rubricas.id', '=', 'criterios_rubrica.rubrica_id')
+            ->where('criterios_rubrica.activo', true)
+            ->orderBy('rubricas.semestre')
+            ->orderBy('criterios_rubrica.orden')
+            ->orderBy('criterios_rubrica.id');
 
         if ($semester) {
-            $query->where('semestre', $semester);
+            $query->where('rubricas.semestre', $semester);
         }
         if ($request->filled('project_id')) {
             $projectId = (int) $request->project_id;
             $query->where(function ($scope) use ($projectId) {
-                $scope->whereNull('project_id')->orWhere('project_id', $projectId);
+                $scope->whereNull('criterios_rubrica.proyecto_id')->orWhere('criterios_rubrica.proyecto_id', $projectId);
             });
         }
 
@@ -211,7 +229,15 @@ class EvaluationController extends Controller
             ]);
         }
 
-        $query = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'scores.criterion', 'scores.attempt', 'attempts.teacher'])
+        $relations = ['project.students', 'room.rubric', 'room.teachers', 'room.responsibleTeacher'];
+        if ($this->supportsEvaluationAttempts()) {
+            $relations[] = 'attempts.teacher';
+        }
+        if ($this->supportsEvaluationResponses()) {
+            array_push($relations, 'scores.teacher', 'scores.criterion', 'scores.attempt');
+        }
+
+        $query = Evaluation::with($relations)
             ->when($supportsArchive && $archived, fn ($scope) => $scope->whereNotNull('archived_at'))
             ->when($supportsArchive && !$archived, fn ($scope) => $scope->whereNull('archived_at'))
             ->orderBy('evaluation_room_id')
@@ -227,6 +253,10 @@ class EvaluationController extends Controller
 
         if ($request->filled('project_id')) {
             $query->where('project_id', $request->project_id);
+        }
+
+        if ($request->filled('semestre')) {
+            $query->whereHas('room.rubric', fn ($rubricQuery) => $rubricQuery->where('semestre', (int) $request->semestre));
         }
 
         $perPage = min(max((int) $request->input('per_page', 100), 1), 200);
@@ -293,7 +323,7 @@ class EvaluationController extends Controller
                     ->exists();
 
                 if (!$hasActiveEvaluations) {
-                    EvaluationRoom::where('id', $roomId)->update(['activo' => false]);
+                    EvaluationRoom::where('id', $roomId)->update(['estado' => 'finalizada']);
                 }
             });
 
@@ -326,7 +356,7 @@ class EvaluationController extends Controller
         ]);
 
         if ($evaluation->evaluation_room_id) {
-            EvaluationRoom::where('id', $evaluation->evaluation_room_id)->update(['activo' => true]);
+            EvaluationRoom::where('id', $evaluation->evaluation_room_id)->update(['estado' => 'programada']);
         }
 
         return response()->json(['message' => 'Evaluacion restaurada']);
@@ -361,7 +391,7 @@ class EvaluationController extends Controller
             ]);
 
             if ($roomIds->isNotEmpty()) {
-                EvaluationRoom::whereIn('id', $roomIds)->update(['activo' => true]);
+                EvaluationRoom::whereIn('id', $roomIds)->update(['estado' => 'programada']);
             }
 
             return $updatedCount;
@@ -416,7 +446,15 @@ class EvaluationController extends Controller
 
     public function show($id)
     {
-        $evaluation = Evaluation::with(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'scores.criterion', 'scores.attempt', 'attempts.teacher'])->find($id);
+        $relations = ['project.students', 'room.teachers', 'room.responsibleTeacher'];
+        if ($this->supportsEvaluationAttempts()) {
+            $relations[] = 'attempts.teacher';
+        }
+        if ($this->supportsEvaluationResponses()) {
+            array_push($relations, 'scores.teacher', 'scores.criterion', 'scores.attempt');
+        }
+
+        $evaluation = Evaluation::with($relations)->find($id);
         if (!$evaluation) {
             return response()->json(['error' => 'Evaluacion no encontrada'], 404);
         }
@@ -546,13 +584,13 @@ class EvaluationController extends Controller
                     'attempts_count' => $attempt->attempts_count + 1,
                     'last_submitted_at' => now(),
                 ];
-                if (Schema::hasColumn('intentos_evaluacion', 'general_comment')) {
+                if (Schema::hasColumn('dictamenes_docentes', 'comentario_general')) {
                     $attemptPayload['general_comment'] = $validated['general_comment'] ?? $attempt->general_comment;
                 }
                 if (
                     (int) $evaluation->semestre === 8
                     && $request->has('apto_titulacion')
-                    && Schema::hasColumn('intentos_evaluacion', 'apto_titulacion')
+                    && Schema::hasColumn('evaluaciones', 'apto_titulacion')
                 ) {
                     $attemptPayload['apto_titulacion'] = $request->boolean('apto_titulacion');
                 }
@@ -626,7 +664,6 @@ class EvaluationController extends Controller
 
         $wasCompleted = $evaluation->estado === 'finalizada' || $evaluation->finalized_at !== null;
         $evaluation->update([
-            'sequence_status' => 'evaluado',
             'estado' => 'finalizada',
             'finalized_at' => $evaluation->finalized_at ?? now(),
         ]);
@@ -666,7 +703,7 @@ class EvaluationController extends Controller
                 'subjectGroup:id,semestre,grupo,nombre',
                 'empresa:id,nombre,giro,contacto_nombre,contacto_cargo,direccion',
             ])
-            ->where('activo', true)
+            ->where('estado', '!=', 'finalizada')
             ->orderBy('title');
         if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
             $projectIds = Evaluation::where(function ($scope) use ($user) {
@@ -685,16 +722,16 @@ class EvaluationController extends Controller
             'proposal_status',
         ]);
 
-        $assignments = DB::table('salas_evaluacion_proyectos')
+        $assignments = DB::table('evaluaciones')
             ->whereIn('proyecto_id', $projects->pluck('id'))
             ->orderBy('id')
-            ->get(['proyecto_id', 'sala_evaluacion_id'])
+            ->get(['proyecto_id', 'sala_id'])
             ->groupBy('proyecto_id');
         $presentationSemesters = $semesterService->presentationSemestersForProjects($projects, $activePeriod);
 
         $projects->each(function ($project) use ($assignments, $presentationSemesters) {
             $project->presentation_semester = $presentationSemesters[(int) $project->id] ?? null;
-            $project->assigned_room_id = $assignments->get($project->id)?->first()?->sala_evaluacion_id;
+            $project->assigned_room_id = $assignments->get($project->id)?->first()?->sala_id;
         });
 
         if ($request->filled('semestre')) {
@@ -710,7 +747,7 @@ class EvaluationController extends Controller
         $user = auth('api')->user();
         $supportsArchive = $this->supportsEvaluationArchive();
         $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama,perfil_id', 'responsibleTeacher:id,nombres,apa,ama,perfil_id', 'projects:id,title,semestre,company_name'])
-            ->where('activo', !$request->boolean('archived'))
+            ->when($request->boolean('archived'), fn ($scope) => $scope->where('estado', 'finalizada'), fn ($scope) => $scope->where('estado', '!=', 'finalizada'))
             ->orderByDesc('fecha_evaluacion')
             ->orderBy('nombre');
 
@@ -796,7 +833,7 @@ class EvaluationController extends Controller
         }
 
         $room = EvaluationRoom::findOrFail($id);
-        $room->update(['activo' => false]);
+        $room->update(['estado' => 'finalizada']);
         Evaluation::where('evaluation_room_id', $room->id)->update([
             'archived_at' => now(),
             'archived_by' => $user->id,
@@ -815,7 +852,7 @@ class EvaluationController extends Controller
         }
 
         $room = EvaluationRoom::findOrFail($id);
-        $room->update(['activo' => true]);
+        $room->update(['estado' => 'programada']);
         Evaluation::where('evaluation_room_id', $room->id)->update([
             'archived_at' => null,
             'archived_by' => null,
@@ -829,7 +866,7 @@ class EvaluationController extends Controller
         if ($guard = $this->guardEvaluationManager()) return $guard;
 
         $room = EvaluationRoom::with('projects')->findOrFail($id);
-        $ordered = $room->projects->sortBy(fn ($project) => (int) ($project->pivot->presentation_order ?: 9999))->values();
+        $ordered = $room->projects->sortBy(fn ($project) => (int) (($project->pivot->presentation_order ?? $project->pivot->orden_presentacion) ?: 9999))->values();
         if ($ordered->isEmpty()) {
             throw ValidationException::withMessages(['project_ids' => ['La sala no tiene proyectos asignados.']]);
         }
@@ -840,7 +877,7 @@ class EvaluationController extends Controller
             ]);
         }
 
-        $firstOrder = (int) ($ordered->first()->pivot->presentation_order ?: 1);
+        $firstOrder = (int) (($ordered->first()->pivot->presentation_order ?? $ordered->first()->pivot->orden_presentacion) ?: 1);
         DB::transaction(function () use ($room, $ordered, $firstOrder) {
             $room->update([
                 'sequence_locked' => true,
@@ -849,12 +886,12 @@ class EvaluationController extends Controller
             ]);
 
             foreach ($ordered as $project) {
-                $order = (int) ($project->pivot->presentation_order ?: 0);
+                $order = (int) (($project->pivot->presentation_order ?? $project->pivot->orden_presentacion) ?: 0);
                 $status = $order === $firstOrder ? 'activo' : 'pendiente';
-                DB::table('salas_evaluacion_proyectos')
-                    ->where('sala_evaluacion_id', $room->id)
+                DB::table('evaluaciones')
+                    ->where('sala_id', $room->id)
                     ->where('proyecto_id', $project->id)
-                    ->update(['orden' => $order]);
+                    ->update(['orden_presentacion' => $order]);
                 Evaluation::where('evaluation_room_id', $room->id)
                     ->where('project_id', $project->id)
                     ->update([
@@ -894,8 +931,8 @@ class EvaluationController extends Controller
         }
 
         $currentOrder = (int) $room->current_order;
-        $ordered = $room->projects->sortBy(fn ($project) => (int) ($project->pivot->presentation_order ?: 9999))->values();
-        $next = $ordered->first(fn ($project) => (int) $project->pivot->presentation_order > $currentOrder);
+        $ordered = $room->projects->sortBy(fn ($project) => (int) (($project->pivot->presentation_order ?? $project->pivot->orden_presentacion) ?: 9999))->values();
+        $next = $ordered->first(fn ($project) => (int) ($project->pivot->presentation_order ?? $project->pivot->orden_presentacion) > $currentOrder);
         if ($next && !$this->evaluationDocumentReadiness($next)['all_students_released']) {
             throw ValidationException::withMessages([
                 'project_ids' => ['El siguiente proyecto no puede presentar porque tiene alumnos sin liberar.'],
@@ -903,20 +940,20 @@ class EvaluationController extends Controller
         }
 
         DB::transaction(function () use ($room, $currentOrder, $next) {
-            DB::table('salas_evaluacion_proyectos')
-                ->where('sala_evaluacion_id', $room->id)
-                ->where('orden', $currentOrder)
-                ->update(['orden' => $currentOrder]);
+            DB::table('evaluaciones')
+                ->where('sala_id', $room->id)
+                ->where('orden_presentacion', $currentOrder)
+                ->update(['orden_presentacion' => $currentOrder]);
             Evaluation::where('evaluation_room_id', $room->id)
                 ->where('presentation_order', $currentOrder)
                 ->update(['sequence_status' => 'evaluado', 'estado' => 'finalizada', 'finalized_at' => now()]);
 
             if ($next) {
-                $nextOrder = (int) $next->pivot->presentation_order;
-                DB::table('salas_evaluacion_proyectos')
-                    ->where('sala_evaluacion_id', $room->id)
+                $nextOrder = (int) ($next->pivot->presentation_order ?? $next->pivot->orden_presentacion);
+                DB::table('evaluaciones')
+                    ->where('sala_id', $room->id)
                     ->where('proyecto_id', $next->id)
-                    ->update(['orden' => $nextOrder]);
+                    ->update(['orden_presentacion' => $nextOrder]);
                 Evaluation::where('evaluation_room_id', $room->id)
                     ->where('project_id', $next->id)
                     ->update(['sequence_status' => 'activo', 'estado' => 'en_evaluacion']);
@@ -1317,7 +1354,7 @@ class EvaluationController extends Controller
         }
 
         $votes = collect();
-        if (Schema::hasColumn('intentos_evaluacion', 'apto_titulacion')) {
+        if (Schema::hasColumn('evaluaciones', 'apto_titulacion')) {
             $attempts = $evaluation->relationLoaded('attempts')
                 ? $evaluation->attempts
                 : $evaluation->attempts()->get();
@@ -1351,7 +1388,7 @@ class EvaluationController extends Controller
 
     private function attemptTitulationVote(?EvaluationAttempt $attempt): ?bool
     {
-        if (!$attempt || !Schema::hasColumn('intentos_evaluacion', 'apto_titulacion')) {
+        if (!$attempt || !Schema::hasColumn('evaluaciones', 'apto_titulacion')) {
             return null;
         }
 
@@ -1457,6 +1494,16 @@ class EvaluationController extends Controller
             Schema::hasColumn('evaluaciones', 'archived_at')
             && Schema::hasColumn('evaluaciones', 'archived_by')
         );
+    }
+
+    private function supportsEvaluationAttempts(): bool
+    {
+        return Schema::hasTable('dictamenes_docentes');
+    }
+
+    private function supportsEvaluationResponses(): bool
+    {
+        return Schema::hasTable('dictamenes_docentes') && Schema::hasTable('respuestas_evaluacion');
     }
 
     private function isLegacyLevel(?string $level): bool
@@ -1569,23 +1616,38 @@ class EvaluationController extends Controller
 
     private function criteriaForEvaluation(Evaluation $evaluation)
     {
-        return RubricCriterion::where('semestre', $evaluation->semestre)
-            ->where('activo', true)
+        if (!Schema::hasTable('criterios_rubrica') || !Schema::hasTable('rubricas')) {
+            return collect();
+        }
+
+        return RubricCriterion::query()
+            ->select('criterios_rubrica.*', 'rubricas.semestre as semestre')
+            ->join('rubricas', 'rubricas.id', '=', 'criterios_rubrica.rubrica_id')
+            ->where('rubricas.semestre', $evaluation->semestre)
+            ->where('criterios_rubrica.activo', true)
             ->where(function ($query) use ($evaluation) {
-                $query->whereNull('project_id');
+                $query->whereNull('criterios_rubrica.proyecto_id');
                 if ((int) $evaluation->semestre === 8 && $evaluation->project_id) {
-                    $query->orWhere('project_id', $evaluation->project_id);
+                    $query->orWhere('criterios_rubrica.proyecto_id', $evaluation->project_id);
                 }
             })
-            ->orderByRaw('CASE WHEN proyecto_id IS NULL THEN 0 ELSE 1 END')
-            ->orderBy('orden')
-            ->orderBy('id')
+            ->orderByRaw('CASE WHEN criterios_rubrica.proyecto_id IS NULL THEN 0 ELSE 1 END')
+            ->orderBy('criterios_rubrica.orden')
+            ->orderBy('criterios_rubrica.id')
             ->get();
     }
 
     private function activeScoresForEvaluation(Evaluation $evaluation)
     {
+        if (!$this->supportsEvaluationResponses()) {
+            return collect();
+        }
+
         $activeCriteria = $this->criteriaForEvaluation($evaluation)->pluck('clave');
+
+        if (!$evaluation->relationLoaded('scores')) {
+            $evaluation->load('scores.teacher', 'scores.criterion', 'scores.attempt');
+        }
 
         return $evaluation->scores->whereIn('criterio', $activeCriteria);
     }
@@ -1608,14 +1670,24 @@ class EvaluationController extends Controller
             return $this->criteriaLabelCache[$semester];
         }
 
-        return $this->criteriaLabelCache[$semester] = RubricCriterion::where('semestre', $semester)
-            ->where('activo', true)
-            ->pluck('pregunta', 'clave')
+        if (!Schema::hasTable('criterios_rubrica') || !Schema::hasTable('rubricas')) {
+            return $this->criteriaLabelCache[$semester] = [];
+        }
+
+        return $this->criteriaLabelCache[$semester] = RubricCriterion::query()
+            ->join('rubricas', 'rubricas.id', '=', 'criterios_rubrica.rubrica_id')
+            ->where('rubricas.semestre', $semester)
+            ->where('criterios_rubrica.activo', true)
+            ->pluck('criterios_rubrica.pregunta', 'criterios_rubrica.clave')
             ->all();
     }
 
     private function shapeEvaluation(Evaluation $evaluation): array
     {
+        if (!$evaluation->relationLoaded('attempts')) {
+            $evaluation->setRelation('attempts', collect());
+        }
+
         $currentUser = auth('api')->user();
         $scores = $this->activeScoresForEvaluation($evaluation);
         $labels = $this->criteriaLabelsForEvaluation($evaluation);
@@ -1752,7 +1824,7 @@ class EvaluationController extends Controller
         $endsAt = \Illuminate\Support\Carbon::parse($validated['fecha_fin_evaluacion']);
 
         $duplicateName = $this->overlappingRoomQuery(
-            EvaluationRoom::query()->where('activo', true),
+            EvaluationRoom::query()->where('estado', '!=', 'finalizada'),
             $startsAt,
             $endsAt
         )
@@ -1803,7 +1875,7 @@ class EvaluationController extends Controller
 
     private function schedulableRoomQuery()
     {
-        $query = EvaluationRoom::query()->where('activo', true);
+        $query = EvaluationRoom::query()->where('estado', '!=', 'finalizada');
 
         if ($this->supportsEvaluationArchive()) {
             $query->where(function ($scope) {
@@ -1817,11 +1889,11 @@ class EvaluationController extends Controller
 
     private function overlappingRoomQuery($query, $startsAt, $endsAt)
     {
-        if (Schema::hasColumn('salas_evaluacion', 'fecha_fin_evaluacion')) {
+        if (Schema::hasColumn('salas_evaluacion', 'termina_en')) {
             return $query
                 ->where('fecha_evaluacion', '<', $endsAt)
                 ->whereRaw(
-                    'COALESCE(fecha_fin_evaluacion, DATE_ADD(fecha_evaluacion, INTERVAL 1 HOUR)) > ?',
+                    'COALESCE(termina_en, DATE_ADD(inicia_en, INTERVAL 1 HOUR)) > ?',
                     [$startsAt->toDateTimeString()]
                 );
         }
@@ -1839,11 +1911,11 @@ class EvaluationController extends Controller
         foreach (array_values(array_unique(array_map('intval', $projectIds))) as $projectId) {
             $id = (int) $projectId;
             $payload[$id] = [
-                'orden' => (int) ($projectOrder[$id] ?? $projectOrder[(string) $id] ?? $fallbackOrder),
+                'orden_presentacion' => (int) ($projectOrder[$id] ?? $projectOrder[(string) $id] ?? $fallbackOrder),
             ];
             $fallbackOrder++;
         }
-        uasort($payload, fn ($a, $b) => $a['orden'] <=> $b['orden']);
+        uasort($payload, fn ($a, $b) => $a['orden_presentacion'] <=> $b['orden_presentacion']);
         return $payload;
     }
 
@@ -1863,9 +1935,9 @@ class EvaluationController extends Controller
                     'etapa' => $this->stageForSemester($room->semestre),
                     'sala' => $room->nombre,
                     'fecha_exposicion' => $room->fecha_evaluacion,
-                    'presentation_order' => (int) ($project->pivot->presentation_order ?: 0),
+                    'presentation_order' => (int) (($project->pivot->presentation_order ?? $project->pivot->orden_presentacion) ?: 0),
                     'sequence_status' => $room->sequence_locked
-                        ? ((int) $project->pivot->presentation_order === (int) $room->current_order ? 'activo' : ($project->pivot->status ?: 'pendiente'))
+                        ? ((int) ($project->pivot->presentation_order ?? $project->pivot->orden_presentacion) === (int) $room->current_order ? 'activo' : ($project->pivot->status ?: 'pendiente'))
                         : 'pendiente',
                     'estado' => 'programada',
                     'resultado' => 'pendiente',
@@ -1879,7 +1951,7 @@ class EvaluationController extends Controller
     {
         $projects = ($room->projects ?? collect())->map(function ($project) {
             $data = $project->toArray();
-            $data['presentation_order'] = (int) ($project->pivot->presentation_order ?? 0);
+            $data['presentation_order'] = (int) (($project->pivot->presentation_order ?? $project->pivot->orden_presentacion) ?? 0);
             $data['sequence_status'] = $project->pivot->status ?? 'pendiente';
 
             return $data;

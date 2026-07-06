@@ -10,16 +10,16 @@ class EvaluationAttempt extends Model
 {
     use HasLegacyAliases;
 
-    protected $table = 'intentos_evaluacion';
+    protected $table = 'dictamenes_docentes';
     const CREATED_AT = 'creado_en';
     const UPDATED_AT = 'actualizado_en';
 
     protected array $legacyAliases = [
         'evaluation_id' => 'evaluacion_id',
         'teacher_id' => 'docente_id',
-        'attempts_count' => 'numero_intentos',
+        'attempts_count' => 'intentos_realizados',
         'general_comment' => 'comentario_general',
-        'last_submitted_at' => 'ultimo_envio_en',
+        'last_submitted_at' => 'enviado_en',
         'created_at' => 'creado_en',
         'updated_at' => 'actualizado_en',
     ];

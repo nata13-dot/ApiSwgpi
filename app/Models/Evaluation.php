@@ -18,10 +18,9 @@ class Evaluation extends Model
 
     protected array $legacyAliases = [
         'project_id' => 'proyecto_id',
-        'evaluation_room_id' => 'sala_evaluacion_id',
+        'evaluation_room_id' => 'sala_id',
         'presentation_order' => 'orden_presentacion',
-        'sequence_status' => 'estado_secuencia',
-        'room_feedback' => 'retroalimentacion_sala',
+        'room_feedback' => 'retroalimentacion',
         'feedback_by' => 'retroalimentado_por',
         'feedback_at' => 'retroalimentado_en',
         'finalized_at' => 'finalizada_en',
@@ -32,7 +31,7 @@ class Evaluation extends Model
         'updated_at' => 'actualizada_en',
     ];
 
-    protected array $legacyVirtualColumns = ['sala'];
+    protected array $legacyVirtualColumns = ['sala', 'semestre', 'etapa', 'sequence_status'];
 
     protected $fillable = [
         'project_id', 'evaluation_room_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
@@ -57,7 +56,7 @@ class Evaluation extends Model
 
     public function room(): BelongsTo
     {
-        return $this->belongsTo(EvaluationRoom::class, 'sala_evaluacion_id');
+        return $this->belongsTo(EvaluationRoom::class, 'sala_id');
     }
 
     public function getSalaAttribute(): ?string
@@ -65,9 +64,38 @@ class Evaluation extends Model
         return $this->room?->nombre;
     }
 
+    public function getSemestreAttribute(): ?int
+    {
+        if (array_key_exists('semestre', $this->attributes)) {
+            return $this->attributes['semestre'] === null ? null : (int) $this->attributes['semestre'];
+        }
+
+        $semester = $this->room?->rubric?->semestre;
+
+        return $semester === null ? null : (int) $semester;
+    }
+
+    public function getEtapaAttribute(): ?string
+    {
+        if (array_key_exists('etapa', $this->attributes)) {
+            return $this->attributes['etapa'];
+        }
+
+        return $this->room?->rubric?->etapa;
+    }
+
+    public function getSequenceStatusAttribute(): string
+    {
+        return match ($this->estado) {
+            'en_evaluacion' => 'activo',
+            'finalizada', 'archivada' => 'evaluado',
+            default => 'pendiente',
+        };
+    }
+
     public function setSalaAttribute(?string $value): void
     {
-        // The normalized schema derives the room name through sala_evaluacion_id.
+        // The normalized schema derives the room name through sala_id.
     }
 
     public function creator(): BelongsTo
@@ -81,7 +109,7 @@ class Evaluation extends Model
             EvaluationScore::class,
             EvaluationAttempt::class,
             'evaluacion_id',
-            'intento_evaluacion_id',
+            'dictamen_id',
             'id',
             'id'
         );

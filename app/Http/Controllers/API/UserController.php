@@ -4,10 +4,13 @@ namespace App\Http\Controllers\API;
 
 use App\Mail\UserCredentialsMail;
 use App\Http\Controllers\Controller;
+use App\Models\SubjectGroup;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -16,16 +19,21 @@ class UserController extends Controller
     public function index(Request $request)
     {
         $compact = $request->boolean('compact');
+        $hasPhoneTable = Schema::hasTable('usuarios_telefonos');
         $query = User::query();
 
         if ($compact) {
-            $query->select(['id', 'nombres', 'apa', 'ama', 'email', 'perfil_id', 'semestre', 'grupo', 'telefonos', 'activo'])
-                ->with('phoneNumbers');
+            $query->select(['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo', 'telefono', 'perfil_id', 'activo']);
+            if ($hasPhoneTable) {
+                $query->with('phoneNumbers');
+            }
         } else {
-            $query->with('phoneNumbers');
+            if ($hasPhoneTable) {
+                $query->with('phoneNumbers');
+            }
             $query->withCount([
-                'projectsAsAdvisor as advising_projects_count' => fn ($q) => $q->where('proyectos_integrantes.rol', '!=', 'integrante'),
-                'projectsAsAdvisor as student_projects_count' => fn ($q) => $q->where('proyectos_integrantes.rol', 'integrante'),
+                'projectsAsAdvisor as advising_projects_count' => fn ($q) => $q->where('proyecto_integrantes.rol', '!=', 'integrante'),
+                'projectsAsAdvisor as student_projects_count' => fn ($q) => $q->where('proyecto_integrantes.rol', 'integrante'),
             ]);
         }
 
@@ -50,29 +58,48 @@ class UserController extends Controller
         }
 
         if ($request->filled('semestre')) {
-            $query->where('semestre', $request->semestre);
+            $query->whereExists(function ($subquery) use ($request) {
+                $subquery->selectRaw('1')
+                    ->from('grupo_estudiantes')
+                    ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
+                    ->whereColumn('grupo_estudiantes.estudiante_id', 'usuarios.id')
+                    ->where('grupo_estudiantes.activo', true)
+                    ->where('grupos_academicos.semestre', $request->semestre);
+            });
         }
 
         if ($request->filled('grupo')) {
-            $query->where('grupo', strtoupper($request->grupo));
+            $group = strtoupper($request->grupo);
+            $query->whereExists(function ($subquery) use ($group) {
+                $subquery->selectRaw('1')
+                    ->from('grupo_estudiantes')
+                    ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
+                    ->whereColumn('grupo_estudiantes.estudiante_id', 'usuarios.id')
+                    ->where('grupo_estudiantes.activo', true)
+                    ->where('grupos_academicos.clave_grupo', $group);
+            });
         }
 
         if ($request->filled('q')) {
             $search = trim((string) $request->query('q'));
-            $query->where(function ($scope) use ($search) {
+            $query->where(function ($scope) use ($search, $hasPhoneTable) {
                 $scope->where('id', 'like', "%{$search}%")
                     ->orWhere('nombres', 'like', "%{$search}%")
-                    ->orWhere('apa', 'like', "%{$search}%")
-                    ->orWhere('ama', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhereHas('phoneNumbers', fn ($phoneQuery) => $phoneQuery->where('telefono', 'like', "%{$search}%"))
+                    ->orWhere('apellido_paterno', 'like', "%{$search}%")
+                    ->orWhere('apellido_materno', 'like', "%{$search}%")
+                    ->orWhere('correo', 'like', "%{$search}%")
+                    ->orWhere('telefono', 'like', "%{$search}%")
                     ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellido_paterno, ''), ' ', COALESCE(apellido_materno, '')) LIKE ?", ["%{$search}%"]);
+
+                if ($hasPhoneTable) {
+                    $scope->orWhereHas('phoneNumbers', fn ($phoneQuery) => $phoneQuery->where('telefono', 'like', "%{$search}%"));
+                }
             });
         }
 
         if ($request->boolean('without_project')) {
             $query->where('perfil_id', 3)
-                ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->where('proyectos_integrantes.rol', 'integrante'));
+                ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->where('proyecto_integrantes.rol', 'integrante'));
         }
 
         $perPage = min((int) $request->query('per_page', $compact ? 100 : 15), $compact ? 500 : 100);
@@ -83,35 +110,36 @@ class UserController extends Controller
     {
         try {
             $validated = $request->validate([
-                'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:users,id'],
+                'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:usuarios,id'],
                 'nombres' => 'required|string|max:200',
-                'email' => 'nullable|email|unique:users',
+                'email' => 'nullable|email|unique:usuarios,correo',
                 'password' => 'required|string|min:6|max:72|confirmed',
                 'perfil_id' => 'required|integer|in:1,2,3',
                 'semestre' => 'nullable|integer|in:5,6,7,8,9',
                 'grupo' => 'nullable|string|max:20',
                 'apa' => 'nullable|string|max:100',
                 'ama' => 'nullable|string|max:100',
-                'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:users,curp'],
+                'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:usuarios,curp'],
                 'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
                 'telefonos' => 'nullable|string|max:200',
             ]);
 
+            $academicAssignment = $this->pullAcademicAssignment($validated);
+            $this->preparePhoneData($validated);
             $validated['password'] = Hash::make($validated['password']);
-            if (($validated['perfil_id'] ?? null) != 3) {
-                $validated['semestre'] = null;
-                $validated['grupo'] = null;
-            } elseif (!empty($validated['grupo'])) {
-                $validated['grupo'] = strtoupper(trim($validated['grupo']));
-            }
             if (!empty($validated['direccion'])) {
                 $validated['direccion'] = $this->normalizeAddress($validated['direccion']);
             }
-            $user = User::create($validated);
+            $user = DB::transaction(function () use ($validated, $academicAssignment) {
+                $user = User::create($validated);
+                $this->syncAcademicAssignment($user, $academicAssignment);
+
+                return $user;
+            });
 
             return response()->json([
                 'message' => 'Usuario creado',
-                'user' => $user->load('phoneNumbers'),
+                'user' => $this->loadPhonesIfAvailable($user),
             ], 201);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -120,7 +148,11 @@ class UserController extends Controller
 
     public function show($id)
     {
-        $user = User::with('phoneNumbers')->find($id);
+        $query = User::query();
+        if (Schema::hasTable('usuarios_telefonos')) {
+            $query->with('phoneNumbers');
+        }
+        $user = $query->find($id);
         if (!$user) {
             return response()->json(['error' => 'Usuario no encontrado'], 404);
         }
@@ -137,7 +169,7 @@ class UserController extends Controller
 
             $validated = $request->validate([
                 'nombres' => 'nullable|string|max:200',
-                'email' => 'nullable|email|unique:users,email,' . $user->id . ',id',
+                'email' => 'nullable|email|unique:usuarios,correo,' . $user->id . ',id',
                 'activo' => 'nullable|boolean',
                 'admin_password' => 'nullable|string|max:72',
                 'semestre' => 'nullable|integer|in:5,6,7,8,9',
@@ -168,19 +200,18 @@ class UserController extends Controller
                 unset($validated['password']);
             }
 
-            if ((int) $user->perfil_id !== 3) {
-                $validated['semestre'] = null;
-                $validated['grupo'] = null;
-            } elseif (array_key_exists('grupo', $validated) && $validated['grupo']) {
-                $validated['grupo'] = strtoupper(trim($validated['grupo']));
-            }
+            $academicAssignment = $this->pullAcademicAssignment($validated, (int) $user->perfil_id);
+            $this->preparePhoneData($validated);
             if (!empty($validated['direccion'])) {
                 $validated['direccion'] = $this->normalizeAddress($validated['direccion']);
             }
-            $user->update($validated);
+            DB::transaction(function () use ($user, $validated, $academicAssignment) {
+                $user->update($validated);
+                $this->syncAcademicAssignment($user, $academicAssignment);
+            });
             return response()->json([
                 'message' => 'Usuario actualizado',
-                'user' => $user->fresh()->load('phoneNumbers'),
+                'user' => $this->loadPhonesIfAvailable($user->fresh()),
             ]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -203,7 +234,10 @@ class UserController extends Controller
             return $guard;
         }
 
-        $user->update(['activo' => false]);
+        DB::transaction(function () use ($user) {
+            $user->update(['activo' => false]);
+            $this->deactivateOperationalLinks($user);
+        });
         return response()->json(['message' => 'Usuario desactivado']);
     }
 
@@ -219,13 +253,32 @@ class UserController extends Controller
             return $guard;
         }
 
-        $user->update(['activo' => !$user->activo]);
+        $willBeActive = !$user->activo;
+        DB::transaction(function () use ($user, $willBeActive) {
+            $user->update(['activo' => $willBeActive]);
+            if (!$willBeActive) {
+                $this->deactivateOperationalLinks($user);
+            }
+        });
         return response()->json(['message' => 'Estado actualizado', 'activo' => $user->activo]);
     }
 
     public function getInactive()
     {
         return response()->json(User::where('activo', false)->paginate(15));
+    }
+
+    private function deactivateOperationalLinks(User $user): void
+    {
+        DB::table('grupo_estudiantes')
+            ->where('estudiante_id', $user->id)
+            ->where('activo', true)
+            ->update(['activo' => false]);
+
+        DB::table('curso_docentes')
+            ->where('docente_id', $user->id)
+            ->where('activo', true)
+            ->update(['activo' => false]);
     }
 
     public function credentialEmailTemplate()
@@ -422,16 +475,16 @@ class UserController extends Controller
                 $validator = Validator::make(
                     $data,
                     [
-                        'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:users,id'],
+                        'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:usuarios,id'],
                         'nombres' => 'required|string|max:200',
-                        'email' => 'nullable|email|unique:users,email',
+                        'email' => 'nullable|email|unique:usuarios,correo',
                         'password' => 'required|string|min:6|max:72|confirmed',
                         'perfil_id' => 'required|integer|in:1,2,3',
                         'semestre' => 'nullable|integer|in:5,6,7,8,9',
                         'grupo' => 'nullable|string|max:20',
                         'apa' => 'nullable|string|max:100',
                         'ama' => 'nullable|string|max:100',
-                        'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:users,curp'],
+                        'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:usuarios,curp'],
                         'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
                         'telefonos' => 'nullable|string|max:200',
                         'activo' => 'nullable|boolean',
@@ -445,12 +498,8 @@ class UserController extends Controller
                     continue;
                 }
 
-                if ($data['perfil_id'] !== 3) {
-                    $data['semestre'] = null;
-                    $data['grupo'] = null;
-                } elseif (!empty($data['grupo'])) {
-                    $data['grupo'] = strtoupper(trim($data['grupo']));
-                }
+                $academicAssignment = $this->pullAcademicAssignment($data);
+                $this->preparePhoneData($data);
                 if (!empty($data['direccion'])) {
                     $data['direccion'] = $this->normalizeAddress($data['direccion']);
                 }
@@ -458,7 +507,10 @@ class UserController extends Controller
                 unset($data['password_confirmation']);
 
                 try {
-                    User::create($data);
+                    DB::transaction(function () use ($data, $academicAssignment) {
+                        $user = User::create($data);
+                        $this->syncAcademicAssignment($user, $academicAssignment);
+                    });
                     $created++;
                 } catch (\Throwable $e) {
                     report($e);
@@ -505,6 +557,90 @@ class UserController extends Controller
         return null;
     }
 
+    private function loadPhonesIfAvailable(User $user): User
+    {
+        return Schema::hasTable('usuarios_telefonos')
+            ? $user->load('phoneNumbers')
+            : $user;
+    }
+
+    private function pullAcademicAssignment(array &$data, ?int $profileId = null): array
+    {
+        $requested = array_key_exists('semestre', $data) || array_key_exists('grupo', $data);
+        $semester = isset($data['semestre']) && $data['semestre'] !== ''
+            ? (int) $data['semestre']
+            : null;
+        $group = isset($data['grupo']) && trim((string) $data['grupo']) !== ''
+            ? strtoupper(trim((string) $data['grupo']))
+            : null;
+
+        unset($data['semestre'], $data['grupo']);
+
+        return [
+            'requested' => $requested,
+            'profile_id' => $profileId ?? (int) ($data['perfil_id'] ?? 0),
+            'semester' => $semester,
+            'group' => $group,
+        ];
+    }
+
+    private function syncAcademicAssignment(User $user, array $assignment): void
+    {
+        if (!$assignment['requested']) {
+            return;
+        }
+
+        $targetGroup = null;
+        if ((int) $assignment['profile_id'] === 3
+            && $assignment['semester'] !== null
+            && $assignment['group'] !== null) {
+            $targetGroup = SubjectGroup::where('activo', true)
+                ->where('semestre', $assignment['semester'])
+                ->where('grupo', $assignment['group'])
+                ->first();
+
+            if (!$targetGroup) {
+                throw ValidationException::withMessages([
+                    'grupo' => ["No existe un grupo activo {$assignment['semester']} {$assignment['group']}."],
+                ]);
+            }
+        }
+
+        DB::table('grupo_estudiantes')
+            ->where('estudiante_id', $user->id)
+            ->where('activo', true)
+            ->update(['activo' => false]);
+
+        if (!$targetGroup) {
+            return;
+        }
+
+        DB::table('grupo_estudiantes')->updateOrInsert(
+            [
+                'grupo_id' => $targetGroup->id,
+                'estudiante_id' => $user->id,
+            ],
+            [
+                'inscrito_en' => now(),
+                'activo' => true,
+            ]
+        );
+    }
+
+    private function preparePhoneData(array &$data): void
+    {
+        if (!array_key_exists('telefonos', $data)) {
+            return;
+        }
+
+        $phones = collect(preg_split('/[,;]+/', (string) ($data['telefonos'] ?? '')))
+            ->map(fn ($phone) => trim($phone))
+            ->filter();
+
+        unset($data['telefonos']);
+        $data['telefono'] = $phones->first();
+    }
+
     private function credentialEmailRecipients(Request $request)
     {
         $query = User::query()
@@ -527,11 +663,26 @@ class UserController extends Controller
             }
 
             if ($request->filled('semestre')) {
-                $query->where('semestre', $request->input('semestre'));
+                $query->whereExists(function ($subquery) use ($request) {
+                    $subquery->selectRaw('1')
+                        ->from('grupo_estudiantes')
+                        ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
+                        ->whereColumn('grupo_estudiantes.estudiante_id', 'usuarios.id')
+                        ->where('grupo_estudiantes.activo', true)
+                        ->where('grupos_academicos.semestre', $request->input('semestre'));
+                });
             }
 
             if ($request->filled('grupo')) {
-                $query->where('grupo', strtoupper(trim((string) $request->input('grupo'))));
+                $group = strtoupper(trim((string) $request->input('grupo')));
+                $query->whereExists(function ($subquery) use ($group) {
+                    $subquery->selectRaw('1')
+                        ->from('grupo_estudiantes')
+                        ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
+                        ->whereColumn('grupo_estudiantes.estudiante_id', 'usuarios.id')
+                        ->where('grupo_estudiantes.activo', true)
+                        ->where('grupos_academicos.clave_grupo', $group);
+                });
             }
 
             if ($request->filled('q')) {
@@ -539,9 +690,9 @@ class UserController extends Controller
                 $query->where(function ($scope) use ($search) {
                     $scope->where('id', 'like', "%{$search}%")
                         ->orWhere('nombres', 'like', "%{$search}%")
-                        ->orWhere('apa', 'like', "%{$search}%")
-                        ->orWhere('ama', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('apellido_paterno', 'like', "%{$search}%")
+                        ->orWhere('apellido_materno', 'like', "%{$search}%")
+                        ->orWhere('correo', 'like', "%{$search}%")
                         ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellido_paterno, ''), ' ', COALESCE(apellido_materno, '')) LIKE ?", ["%{$search}%"]);
                 });
             }

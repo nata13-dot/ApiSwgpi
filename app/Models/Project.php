@@ -25,11 +25,8 @@ class Project extends Model
         'created_by' => 'creado_por',
         'created_at' => 'creado_en',
         'updated_at' => 'actualizado_en',
-        'subject_group_id' => 'grupo_academico_id',
-        'file_path' => 'archivo_ruta',
-        'is_thesis' => 'es_tesis',
-        'is_proposal' => 'es_propuesta',
-        'proposal_status' => 'estado_propuesta',
+        'subject_group_id' => 'grupo_id',
+        'proposal_status' => 'estado',
         'proposal_reviewed_by' => 'revisado_por',
         'proposal_review_comment' => 'comentario_revision',
         'proposal_reviewed_at' => 'revisado_en',
@@ -37,6 +34,9 @@ class Project extends Model
     ];
 
     protected array $legacyVirtualColumns = [
+        'file_path',
+        'is_thesis',
+        'is_proposal',
         'semestre',
         'year',
         'authors',
@@ -72,7 +72,7 @@ class Project extends Model
         'company_address',
     ];
 
-    protected $fillable = ['title', 'description', 'created_by', 'activo', 'is_thesis', 'is_proposal', 'subject_group_id', 'empresa_id', 'file_path', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
+    protected $fillable = ['title', 'description', 'created_by', 'activo', 'tipo', 'is_thesis', 'is_proposal', 'subject_group_id', 'empresa_id', 'file_path', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
 
     protected $casts = [
         'activo' => 'boolean',
@@ -80,7 +80,7 @@ class Project extends Model
         'es_propuesta' => 'boolean',
         'creado_en' => 'datetime',
         'actualizado_en' => 'datetime',
-        'grupo_academico_id' => 'integer',
+        'grupo_id' => 'integer',
         'revisado_en' => 'datetime',
         'revision_permitida_hasta' => 'datetime',
     ];
@@ -93,10 +93,10 @@ class Project extends Model
 
     public function advisors(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'proyectos_integrantes', 'proyecto_id', 'usuario_id')
+        return $this->belongsToMany(User::class, 'proyecto_integrantes', 'proyecto_id', 'usuario_id')
                     ->using(ProjectMemberPivot::class)
                     ->where('usuarios.activo', true)
-                    ->wherePivot('rol', '!=', 'integrante')
+                    ->wherePivotNotIn('rol', ['lider', 'integrante'])
                     ->withPivot('rol');
     }
 
@@ -107,17 +107,19 @@ class Project extends Model
 
     public function subjectGroup(): BelongsTo
     {
-        return $this->belongsTo(SubjectGroup::class, 'grupo_academico_id');
+        return $this->belongsTo(SubjectGroup::class, 'grupo_id');
     }
 
     public function asignaturas(): BelongsToMany
     {
-        return $this->belongsToMany(Asignatura::class, 'proyectos_asignaturas', 'proyecto_id', 'asignatura_id');
+        return $this->belongsToMany(Asignatura::class, 'cursos', 'grupo_id', 'asignatura_id', 'grupo_id', 'id')
+            ->wherePivot('activo', true);
     }
 
-    public function deliverables(): HasMany
+    public function deliverables(): BelongsToMany
     {
-        return $this->hasMany(Deliverable::class, 'proyecto_id');
+        return $this->belongsToMany(Deliverable::class, 'entregas', 'proyecto_id', 'entregable_id')
+            ->withPivot(['documento_id', 'enviado_por', 'entregado_en', 'calificacion', 'comentarios_docente']);
     }
 
     public function repositoryDocuments(): HasMany
@@ -153,10 +155,10 @@ class Project extends Model
      */
     public function students(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'proyectos_integrantes', 'proyecto_id', 'usuario_id')
+        return $this->belongsToMany(User::class, 'proyecto_integrantes', 'proyecto_id', 'usuario_id')
                     ->using(ProjectMemberPivot::class)
                     ->where('usuarios.activo', true)
-                    ->wherePivot('rol', 'integrante')
+                    ->wherePivotIn('rol', ['lider', 'integrante'])
                     ->withPivot('rol');
     }
     
@@ -165,10 +167,10 @@ class Project extends Model
      */
     public function onlyAdvisors(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'proyectos_integrantes', 'proyecto_id', 'usuario_id')
+        return $this->belongsToMany(User::class, 'proyecto_integrantes', 'proyecto_id', 'usuario_id')
                     ->using(ProjectMemberPivot::class)
                     ->where('usuarios.activo', true)
-                    ->wherePivot('rol', '!=', 'integrante')
+                    ->wherePivotNotIn('rol', ['lider', 'integrante'])
                     ->withPivot('rol');
     }
     
@@ -221,11 +223,11 @@ class Project extends Model
     public function getCreatedByAttribute(): ?string { return $this->creado_por; }
     public function getCreatedAtAttribute() { return $this->creado_en; }
     public function getUpdatedAtAttribute() { return $this->actualizado_en; }
-    public function getSubjectGroupIdAttribute(): ?int { return $this->grupo_academico_id; }
-    public function getFilePathAttribute(): ?string { return $this->archivo_ruta; }
-    public function getIsThesisAttribute(): bool { return (bool) $this->es_tesis; }
-    public function getIsProposalAttribute(): bool { return (bool) $this->es_propuesta; }
-    public function getProposalStatusAttribute(): ?string { return $this->estado_propuesta; }
+    public function getSubjectGroupIdAttribute(): ?int { return $this->grupo_id; }
+    public function getFilePathAttribute(): ?string { return $this->attributes['archivo_ruta'] ?? null; }
+    public function getIsThesisAttribute(): bool { return ($this->tipo ?? null) === 'tesis'; }
+    public function getIsProposalAttribute(): bool { return ($this->tipo ?? null) === 'propuesta'; }
+    public function getProposalStatusAttribute(): ?string { return $this->estado; }
     public function getProposalReviewedByAttribute(): ?string { return $this->revisado_por; }
     public function getProposalReviewCommentAttribute(): ?string { return $this->comentario_revision; }
     public function getProposalReviewedAtAttribute() { return $this->revisado_en; }

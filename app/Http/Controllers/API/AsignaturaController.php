@@ -13,7 +13,10 @@ class AsignaturaController extends Controller
     public function index(Request $request)
     {
         $perPage = min((int) $request->query('per_page', 15), 100);
-        return response()->json(Asignatura::withCount('competencias')->orderBy('nombre')->paginate($perPage));
+        $asignaturas = Asignatura::orderBy('nombre')->paginate($perPage);
+        $asignaturas->getCollection()->each(fn (Asignatura $asignatura) => $asignatura->setAttribute('competencias_count', 1));
+
+        return response()->json($asignaturas);
     }
 
     public function store(Request $request)
@@ -34,10 +37,20 @@ class AsignaturaController extends Controller
 
     public function show($id)
     {
-        $asignatura = Asignatura::with(['competencias.deliverables'])->withCount('competencias')->find($id);
+        $asignatura = Asignatura::find($id);
         if (!$asignatura) {
             return response()->json(['error' => 'Asignatura no encontrada'], 404);
         }
+        $asignatura->setAttribute('competencias_count', 1);
+        $asignatura->setRelation('competencias', collect([[
+            'id' => $asignatura->id,
+            'nombre' => $asignatura->nombre,
+            'asignatura_id' => $asignatura->id,
+            'fecha_inicio' => null,
+            'fecha_fin' => null,
+            'deliverables' => [],
+        ]]));
+
         return response()->json($asignatura);
     }
 

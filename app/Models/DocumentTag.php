@@ -10,7 +10,7 @@ class DocumentTag extends Model
 {
     use HasFactory;
 
-    protected $table = 'etiquetas_documentos';
+    protected $table = 'etiquetas';
     public $timestamps = false;
 
     protected $fillable = ['nombre', 'color', 'descripcion', 'activo'];
@@ -27,7 +27,7 @@ class DocumentTag extends Model
 
     public function repositoryDocuments(): BelongsToMany
     {
-        return $this->belongsToMany(RepositoryDocument::class, 'documentos_repositorio_etiquetas', 'etiqueta_id', 'documento_repositorio_id');
+        return $this->belongsToMany(RepositoryDocument::class, 'documento_etiquetas', 'etiqueta_id', 'documento_id');
     }
 
     // SCOPES

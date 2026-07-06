@@ -13,23 +13,32 @@ class Deliverable extends Model
 {
     use HasFactory, HasLegacyAliases;
 
-    protected $table = 'entregables_proyecto';
-    public $timestamps = false;
+    protected $table = 'entregables';
+    const CREATED_AT = 'creado_en';
+    const UPDATED_AT = null;
 
     protected array $legacyAliases = [
-        'project_id' => 'proyecto_id',
-        'archivo_path' => 'archivo_ruta',
-        'file_path' => 'archivo_ruta',
-        'submitted_by' => 'enviado_por',
         'created_at' => 'creado_en',
     ];
 
-    protected array $legacyVirtualColumns = ['categoria', 'autores', 'calificacion', 'fecha_calificacion', 'calificado_por'];
+    protected array $legacyVirtualColumns = [
+        'project_id',
+        'competencia_id',
+        'categoria',
+        'autores',
+        'archivo_path',
+        'file_path',
+        'submitted_by',
+        'calificacion',
+        'fecha_calificacion',
+        'calificado_por',
+        'rama_asociada',
+    ];
 
     protected $fillable = [
-        'project_id', 'competencia_id', 'categoria', 'nombre', 'descripcion', 'autores',
-        'tipo_documento', 'rama_asociada', 'estado', 'archivo_path', 'submitted_by', 'activo',
-        'calificacion', 'fecha_calificacion', 'calificado_por'
+        'curso_id', 'nombre', 'descripcion', 'tipo_documento', 'fecha_limite', 'estado', 'activo',
+        'project_id', 'competencia_id', 'categoria', 'autores', 'archivo_path', 'submitted_by',
+        'calificacion', 'fecha_calificacion', 'calificado_por', 'rama_asociada',
     ];
 
     protected $casts = [
@@ -40,7 +49,7 @@ class Deliverable extends Model
     // RELACIONES
     public function project(): BelongsTo
     {
-        return $this->belongsTo(Project::class, 'proyecto_id');
+        return $this->belongsTo(Project::class, 'project_id');
     }
 
     public function competencia(): BelongsTo
@@ -50,7 +59,7 @@ class Deliverable extends Model
 
     public function submittedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'enviado_por', 'id')->where('activo', true);
+        return $this->belongsTo(User::class, 'submitted_by', 'id')->where('activo', true);
     }
 
     public function calificadoPor(): BelongsTo

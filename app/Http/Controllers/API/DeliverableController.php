@@ -13,6 +13,7 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\ActivityNotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Exception;
@@ -153,25 +154,72 @@ class DeliverableController extends Controller
 
     public function index(Request $request)
     {
-        $query = Deliverable::with(['project.advisors', 'competencia.asignatura', 'tags', 'submittedBy', 'calificadoPor']);
+        $query = DB::table('entregables')
+            ->leftJoin('cursos', 'cursos.id', '=', 'entregables.curso_id')
+            ->leftJoin('asignaturas', 'asignaturas.id', '=', 'cursos.asignatura_id')
+            ->leftJoin('entregas', 'entregas.entregable_id', '=', 'entregables.id')
+            ->leftJoin('proyectos', 'proyectos.id', '=', 'entregas.proyecto_id')
+            ->select([
+                'entregables.id',
+                'entregables.nombre',
+                'entregables.descripcion',
+                'entregables.tipo_documento',
+                'entregables.estado',
+                'entregables.activo',
+                'entregables.creado_en',
+                'cursos.asignatura_id as competencia_id',
+                'cursos.asignatura_id',
+                'asignaturas.nombre as asignatura_nombre',
+                'asignaturas.clave as asignatura_clave',
+                DB::raw('MIN(entregas.proyecto_id) as project_id'),
+                DB::raw('MIN(proyectos.titulo) as project_title'),
+                DB::raw('MAX(entregas.calificacion) as calificacion'),
+                DB::raw('MAX(entregas.entregado_en) as fecha_calificacion'),
+                DB::raw('NULL as archivo_path'),
+            ])
+            ->groupBy([
+                'entregables.id',
+                'entregables.nombre',
+                'entregables.descripcion',
+                'entregables.tipo_documento',
+                'entregables.estado',
+                'entregables.activo',
+                'entregables.creado_en',
+                'cursos.asignatura_id',
+                'asignaturas.nombre',
+                'asignaturas.clave',
+            ]);
         $user = auth('api')->user();
 
         if ((int) $user->perfil_id === 2) {
-            $query->whereHas('project.advisors', fn ($q) => $q->where('usuarios.id', $user->id));
+            $query->whereExists(function ($subquery) use ($user) {
+                $subquery->selectRaw('1')
+                    ->from('curso_docentes')
+                    ->whereColumn('curso_docentes.curso_id', 'entregables.curso_id')
+                    ->where('curso_docentes.docente_id', $user->id)
+                    ->where('curso_docentes.activo', true);
+            });
         } elseif ((int) $user->perfil_id === 3) {
-            $query->where('submitted_by', $user->id);
+            $query->whereExists(function ($subquery) use ($user) {
+                $subquery->selectRaw('1')
+                    ->from('proyecto_integrantes')
+                    ->join('proyectos as pi_proyectos', 'pi_proyectos.id', '=', 'proyecto_integrantes.proyecto_id')
+                    ->whereColumn('pi_proyectos.grupo_id', 'cursos.grupo_id')
+                    ->where('proyecto_integrantes.usuario_id', $user->id)
+                    ->where('proyecto_integrantes.rol', 'integrante');
+            });
         }
         
         if ($request->filled('project_id')) {
-            $query->where('project_id', $request->project_id);
+            $query->where('entregas.proyecto_id', $request->project_id);
         }
 
         if ($request->filled('competencia_id')) {
-            $query->where('competencia_id', $request->competencia_id);
+            $query->where('cursos.asignatura_id', $request->competencia_id);
         }
 
         if ($request->filled('asignatura_id')) {
-            $query->whereHas('competencia', fn ($q) => $q->where('asignatura_id', $request->asignatura_id));
+            $query->where('cursos.asignatura_id', $request->asignatura_id);
         }
         
         if ($request->filled('estado')) {
@@ -186,7 +234,10 @@ class DeliverableController extends Controller
             });
         }
 
-        return response()->json($query->paginate(12));
+        $paginated = $query->orderByDesc('entregables.creado_en')->paginate(12);
+        $paginated->getCollection()->transform(fn ($item) => $this->shapeCatalogDeliverable($item));
+
+        return response()->json($paginated);
     }
 
     public function myDeliverables()
@@ -314,13 +365,19 @@ class DeliverableController extends Controller
                 'descripcion' => 'nullable|string|max:5000',
                 'tipo_documento' => 'nullable|in:reporte,video,presentacion,codigo,documento,otro',
                 'rama_asociada' => 'nullable|string|max:255',
-                'competencia_id' => 'required|exists:competencias,id',
+                'competencia_id' => 'required|exists:asignaturas,id',
                 'autores' => 'nullable|string|max:1000',
+                'estado' => 'nullable|string',
             ]);
 
-            $validated['submitted_by'] = auth('api')->id();
-            $validated['estado'] = 'pendiente';
-            $deliverable = Deliverable::create($validated);
+            $deliverable = Deliverable::create([
+                'curso_id' => $this->courseIdForDeliverable((int) $validated['competencia_id'], $validated['project_id'] ?? null),
+                'nombre' => $validated['nombre'],
+                'descripcion' => $validated['descripcion'] ?? null,
+                'tipo_documento' => $validated['tipo_documento'] ?? 'documento',
+                'estado' => $this->normalizedDeliverableState($validated['estado'] ?? 'publicado'),
+                'activo' => true,
+            ]);
             $this->notifyActivityEnabled($deliverable, auth('api')->user());
 
             return response()->json(['message' => 'Entregable creado', 'deliverable' => $deliverable], 201);
@@ -348,17 +405,25 @@ class DeliverableController extends Controller
 
             $validated = $request->validate([
                 'project_id' => 'nullable|exists:proyectos,id',
-                'competencia_id' => 'nullable|exists:competencias,id',
+                'competencia_id' => 'nullable|exists:asignaturas,id',
                 'nombre' => 'nullable|string|max:255',
                 'descripcion' => 'nullable|string|max:5000',
-                'estado' => 'nullable|in:pendiente,enviado,revisado,aprobado',
+                'estado' => 'nullable|string',
                 'autores' => 'nullable|string|max:1000',
                 'tipo_documento' => 'nullable|in:reporte,video,presentacion,codigo,documento,otro',
                 'rama_asociada' => 'nullable|string|max:255',
                 'activo' => 'nullable|boolean',
             ]);
 
-            $deliverable->update($validated);
+            $payload = collect($validated)->only(['nombre', 'descripcion', 'tipo_documento', 'activo'])->toArray();
+            if (isset($validated['estado'])) {
+                $payload['estado'] = $this->normalizedDeliverableState($validated['estado']);
+            }
+            if (isset($validated['competencia_id'])) {
+                $payload['curso_id'] = $this->courseIdForDeliverable((int) $validated['competencia_id'], $validated['project_id'] ?? null);
+            }
+
+            $deliverable->update($payload);
             return response()->json(['message' => 'Entregable actualizado', 'deliverable' => $deliverable]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -553,6 +618,70 @@ class DeliverableController extends Controller
             "{$deliverable->nombre}{$context} fue habilitada para tu proyecto.",
             '/pages/student/my-deliverables.php'
         );
+    }
+
+    private function shapeCatalogDeliverable(object $item): array
+    {
+        return [
+            'id' => $item->id,
+            'project_id' => $item->project_id ? (int) $item->project_id : null,
+            'competencia_id' => $item->competencia_id ? (int) $item->competencia_id : null,
+            'asignatura_id' => $item->asignatura_id ? (int) $item->asignatura_id : null,
+            'nombre' => $item->nombre,
+            'descripcion' => $item->descripcion,
+            'estado' => $item->estado,
+            'archivo_path' => $item->archivo_path,
+            'tipo_documento' => $item->tipo_documento,
+            'calificacion' => $item->calificacion !== null ? (float) $item->calificacion : null,
+            'fecha_calificacion' => $item->fecha_calificacion,
+            'project' => $item->project_id ? [
+                'id' => (int) $item->project_id,
+                'title' => $item->project_title,
+            ] : null,
+            'competencia' => $item->competencia_id ? [
+                'id' => (int) $item->competencia_id,
+                'nombre' => $item->asignatura_nombre ?: 'Actividad general',
+                'asignatura_id' => (int) $item->asignatura_id,
+                'asignatura' => [
+                    'id' => (int) $item->asignatura_id,
+                    'nombre' => $item->asignatura_nombre,
+                    'clave' => $item->asignatura_clave,
+                ],
+            ] : null,
+        ];
+    }
+
+    private function courseIdForDeliverable(int $subjectId, $projectId = null): int
+    {
+        $query = DB::table('cursos')->where('asignatura_id', $subjectId)->where('activo', true);
+
+        if ($projectId) {
+            $groupId = Project::where('id', $projectId)->value('grupo_id');
+            if ($groupId) {
+                $courseId = (clone $query)->where('grupo_id', $groupId)->value('id');
+                if ($courseId) {
+                    return (int) $courseId;
+                }
+            }
+        }
+
+        $courseId = $query->orderBy('id')->value('id');
+        if (!$courseId) {
+            throw ValidationException::withMessages([
+                'competencia_id' => ['La materia seleccionada no tiene curso activo para asociar el entregable.'],
+            ]);
+        }
+
+        return (int) $courseId;
+    }
+
+    private function normalizedDeliverableState(?string $state): string
+    {
+        return match ($state) {
+            'borrador' => 'borrador',
+            'cerrado', 'aprobado', 'revisado' => 'cerrado',
+            default => 'publicado',
+        };
     }
 
     private function notifyStudentUpload(Deliverable $deliverable, User $actor): void

@@ -13,7 +13,7 @@ class RepositoryDocument extends Model
 {
     use HasFactory, HasLegacyAliases;
 
-    protected $table = 'documentos_repositorio';
+    protected $table = 'documentos';
     const CREATED_AT = 'creado_en';
     const UPDATED_AT = 'actualizado_en';
 
@@ -28,7 +28,7 @@ class RepositoryDocument extends Model
 
     protected array $legacyAliases = [
         'project_id' => 'proyecto_id',
-        'archivo_path' => 'archivo_ruta',
+        'nombre' => 'titulo',
         'document_category' => 'categoria',
         'visibility' => 'visibilidad',
         'published_at' => 'publicado_en',
@@ -38,13 +38,11 @@ class RepositoryDocument extends Model
         'updated_at' => 'actualizado_en',
     ];
 
-    protected array $legacyVirtualColumns = ['autores'];
+    protected array $legacyVirtualColumns = ['autores', 'archivo_path', 'archivo_tipo'];
 
     protected ?array $pendingAuthors = null;
 
     protected $appends = ['autores'];
-
-    protected $with = ['authorRecords'];
 
     protected $fillable = [
         'project_id',
@@ -68,7 +66,7 @@ class RepositoryDocument extends Model
 
     public function tags(): BelongsToMany
     {
-        return $this->belongsToMany(DocumentTag::class, 'documentos_repositorio_etiquetas', 'documento_repositorio_id', 'etiqueta_id');
+        return $this->belongsToMany(DocumentTag::class, 'documento_etiquetas', 'documento_id', 'etiqueta_id');
     }
 
     public function uploader(): BelongsTo
@@ -88,7 +86,7 @@ class RepositoryDocument extends Model
 
     public function authorRecords(): HasMany
     {
-        return $this->hasMany(RepositoryDocumentAuthor::class, 'documento_repositorio_id');
+        return $this->hasMany(RepositoryDocumentAuthor::class, 'documento_id');
     }
 
     public function releaseStatuses(): HasMany
@@ -98,10 +96,7 @@ class RepositoryDocument extends Model
 
     public function getAutoresAttribute(): string
     {
-        return $this->authorRecords
-            ->pluck('nombre_autor')
-            ->filter()
-            ->join(', ');
+        return (string) ($this->autor_nombre ?? '');
     }
 
     public function setAutoresAttribute(?string $value): void
@@ -116,19 +111,11 @@ class RepositoryDocument extends Model
 
     protected static function booted(): void
     {
-        static::saved(function (RepositoryDocument $document) {
-            if ($document->pendingAuthors === null) {
-                return;
+        static::saving(function (RepositoryDocument $document) {
+            if ($document->pendingAuthors !== null) {
+                $document->autor_nombre = collect($document->pendingAuthors)->join(', ');
+                $document->pendingAuthors = null;
             }
-
-            $document->authorRecords()->delete();
-            $document->authorRecords()->createMany(
-                collect($document->pendingAuthors)
-                    ->map(fn ($author) => ['nombre_autor' => $author])
-                    ->all()
-            );
-            $document->pendingAuthors = null;
-            $document->load('authorRecords');
         });
     }
 }

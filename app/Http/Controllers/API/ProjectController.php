@@ -13,7 +13,6 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -24,7 +23,7 @@ class ProjectController extends Controller
     {
         if ($request->boolean('compact')) {
             $query = Project::query()
-                ->select(['id', 'title', 'semestre', 'year', 'authors', 'subject_group_id', 'activo', 'is_thesis', 'created_at'])
+                ->select(['id', 'title', 'semestre', 'year', 'authors', 'subject_group_id', 'activo', 'tipo', 'is_thesis', 'created_at'])
                 ->with([
                     'students:id,nombres,apa,ama,semestre,grupo',
                     'advisors:id,nombres,apa,ama,perfil_id',
@@ -39,9 +38,9 @@ class ProjectController extends Controller
                 });
 
             $user = auth('api')->user();
-            if (!$user || (int) $user->perfil_id !== 3) {
+            if (!$user || (int) $user->perfil_id === 2) {
                 $query->where(function ($scope) {
-                    $scope->where('is_proposal', false)->orWhere('proposal_status', 'aprobado');
+                    $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
                 });
             }
             if ($user && (int) $user->perfil_id === 2) {
@@ -53,9 +52,7 @@ class ProjectController extends Controller
             if ($request->filled('semestre')) {
                 $query->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->where('semestre', $request->semestre));
             }
-            if ($request->filled('is_thesis')) {
-                $query->where('is_thesis', $request->boolean('is_thesis'));
-            }
+            $this->applyRecordTypeFilter($query, $request);
 
             $perPage = min((int) $request->query('per_page', 100), 500);
             return response()->json($query->orderByDesc('created_at')->paginate($perPage));
@@ -63,7 +60,7 @@ class ProjectController extends Controller
 
         $query = Project::query()
             ->select([
-                'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'is_thesis',
+                'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'tipo', 'is_thesis',
                 'semestre', 'subject_group_id', 'year', 'authors',
                 'company_name', 'company_giro', 'company_contact_name',
                 'company_contact_position', 'company_address',
@@ -86,9 +83,9 @@ class ProjectController extends Controller
             });
 
         $user = auth('api')->user();
-        if (!$user || (int) $user->perfil_id !== 3) {
+        if (!$user || (int) $user->perfil_id === 2) {
             $query->where(function ($scope) {
-                $scope->where('is_proposal', false)->orWhere('proposal_status', 'aprobado');
+                $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
             });
         }
         if ($user && (int) $user->perfil_id === 2) {
@@ -105,9 +102,7 @@ class ProjectController extends Controller
             $query->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->where('semestre', $request->semestre));
         }
 
-        if ($request->filled('is_thesis')) {
-            $query->where('is_thesis', $request->boolean('is_thesis'));
-        }
+        $this->applyRecordTypeFilter($query, $request);
 
         if ($request->filled('q')) {
             $search = trim((string) $request->query('q'));
@@ -138,12 +133,34 @@ class ProjectController extends Controller
         return response()->json($query->orderByDesc('created_at')->paginate($perPage));
     }
 
+    private function applyRecordTypeFilter($query, Request $request): void
+    {
+        $recordType = $request->query('tipo_registro');
+
+        if ($recordType === 'tesis') {
+            $query->where('tipo', 'tesis');
+            return;
+        }
+
+        if ($recordType === 'proyecto') {
+            $query->where('tipo', '!=', 'tesis');
+            return;
+        }
+
+        // Compatibilidad con clientes anteriores.
+        if ($request->has('is_thesis')) {
+            $request->boolean('is_thesis')
+                ? $query->where('tipo', 'tesis')
+                : $query->where('tipo', '!=', 'tesis');
+        }
+    }
+
     public function myProjects()
     {
         $user = auth('api')->user();
         $query = Project::query()
             ->select([
-                'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'is_thesis',
+                'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'tipo', 'is_thesis',
                 'semestre', 'subject_group_id', 'year', 'authors',
                 'company_name', 'company_contact_name', 'company_contact_position',
                 'proposal_status', 'proposal_reviewed_by',
@@ -165,7 +182,7 @@ class ProjectController extends Controller
 
         if ((int) $user->perfil_id === 1) {
             $query->where(function ($scope) {
-                $scope->where('is_proposal', false)->orWhere('proposal_status', 'aprobado');
+                $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
             });
             return response()->json(['data' => $query->orderByDesc('created_at')->get()]);
         }
@@ -214,9 +231,10 @@ class ProjectController extends Controller
                     'subject_group_id' => $validated['subject_group_id'] ?? null,
                     'empresa_id' => $company->id,
                     'proposal_status' => $isStudentProposal ? 'pendiente' : 'aprobado',
-                    'is_proposal' => $isStudentProposal,
+                    'tipo' => $isStudentProposal
+                        ? 'propuesta'
+                        : (((int) $user->perfil_id === 1 && (bool) ($validated['is_thesis'] ?? false)) ? 'tesis' : 'desarrollo'),
                     'created_by' => $user->id,
-                    'is_thesis' => (int) $user->perfil_id === 1 && (bool) ($validated['is_thesis'] ?? false),
                 ]);
 
                 if ((int) $user->perfil_id === 3) {
@@ -264,7 +282,7 @@ class ProjectController extends Controller
             if ((int) $user->perfil_id === 3) {
                 $this->guardStudentCanEditProposal($user, $project);
                 $validated = collect($validated)->except(['student_ids', 'semestre', 'subject_group_id', 'year', 'activo', 'is_thesis'])->toArray();
-                $validated['is_proposal'] = true;
+                $validated['tipo'] = 'propuesta';
                 $validated['proposal_status'] = 'pendiente';
                 $validated['proposal_review_comment'] = null;
                 $validated['proposal_reviewed_by'] = null;
@@ -284,9 +302,14 @@ class ProjectController extends Controller
                 'company_contact_position',
                 'company_address',
             ])->toArray();
+            $thesisWasUpdated = array_key_exists('is_thesis', $projectData);
+            if ($thesisWasUpdated) {
+                $projectData['tipo'] = $projectData['is_thesis'] ? 'tesis' : ($project->tipo === 'tesis' ? 'desarrollo' : $project->tipo);
+                unset($projectData['is_thesis']);
+            }
             $project->update($projectData);
-            if (array_key_exists('is_thesis', $projectData) && !$project->is_thesis) {
-                DB::table('proyectos_integrantes')
+            if ($thesisWasUpdated && !$project->fresh()->is_thesis) {
+                DB::table('proyecto_integrantes')
                     ->where('proyecto_id', $project->id)
                     ->whereIn('rol', ['asesor', 'revisor_1', 'revisor_2'])
                     ->delete();
@@ -332,7 +355,6 @@ class ProjectController extends Controller
             $validated = $request->validate([
                 'user_id' => ['required', 'string', Rule::exists('usuarios', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
                 'rol_asesor' => 'required|in:primario,secundario,asesor,revisor_1,revisor_2',
-                'admin_password' => 'required|string|max:72',
             ]);
 
             $guard = $this->guardAdvisorModification($request);
@@ -354,23 +376,23 @@ class ProjectController extends Controller
             }
 
             DB::transaction(function () use ($project, $validated, $roleGroup) {
-                DB::table('proyectos_integrantes')
+                DB::table('proyecto_integrantes')
                     ->where('proyecto_id', $project->id)
                     ->where('rol', $validated['rol_asesor'])
                     ->delete();
 
-                $updated = DB::table('proyectos_integrantes')
+                $updated = DB::table('proyecto_integrantes')
                     ->where('proyecto_id', $project->id)
                     ->where('usuario_id', $validated['user_id'])
                     ->whereIn('rol', $roleGroup)
                     ->update(['rol' => $validated['rol_asesor']]);
 
                 if (!$updated) {
-                    DB::table('proyectos_integrantes')->insert([
+                    DB::table('proyecto_integrantes')->insert([
                         'proyecto_id' => $project->id,
                         'usuario_id' => $validated['user_id'],
                         'rol' => $validated['rol_asesor'],
-                        'creado_en' => now(),
+                        'agregado_en' => now(),
                     ]);
                 }
             });
@@ -395,6 +417,73 @@ class ProjectController extends Controller
         return response()->json([
             'message' => 'Asesor removido',
             'project' => $project->load(['advisors']),
+        ]);
+    }
+
+    public function syncAdvisors(Request $request, $id)
+    {
+        $project = Project::find($id);
+        if (!$project) {
+            return response()->json(['error' => 'Proyecto no encontrado'], 404);
+        }
+
+        $guard = $this->guardAdvisorModification($request);
+        if ($guard) return $guard;
+
+        $allowedRoles = $project->is_thesis
+            ? ['asesor', 'revisor_1', 'revisor_2']
+            : ['primario', 'secundario'];
+
+        $validated = $request->validate([
+            'assignments' => ['required', 'array'],
+            'assignments.*' => [
+                'nullable',
+                'string',
+                Rule::exists('usuarios', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2]),
+            ],
+        ]);
+
+        $unexpectedRoles = array_diff(array_keys($validated['assignments']), $allowedRoles);
+        if ($unexpectedRoles) {
+            throw ValidationException::withMessages([
+                'assignments' => ['Se enviaron roles que no corresponden al tipo de proyecto.'],
+            ]);
+        }
+
+        $assignments = collect($allowedRoles)
+            ->mapWithKeys(fn ($role) => [$role => $validated['assignments'][$role] ?? null]);
+        $selectedUsers = $assignments->filter()->values();
+        if ($selectedUsers->duplicates()->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'assignments' => ['Una persona no puede ocupar dos puestos en el mismo proyecto.'],
+            ]);
+        }
+
+        DB::transaction(function () use ($project, $allowedRoles, $assignments) {
+            DB::table('proyecto_integrantes')
+                ->where('proyecto_id', $project->id)
+                ->whereIn('rol', $allowedRoles)
+                ->delete();
+
+            $rows = $assignments
+                ->filter()
+                ->map(fn ($userId, $role) => [
+                    'proyecto_id' => $project->id,
+                    'usuario_id' => $userId,
+                    'rol' => $role,
+                    'agregado_en' => now(),
+                ])
+                ->values()
+                ->all();
+
+            if ($rows) {
+                DB::table('proyecto_integrantes')->insert($rows);
+            }
+        });
+
+        return response()->json([
+            'message' => 'Asignaciones de asesores actualizadas',
+            'project' => $project->fresh()->load(['advisors']),
         ]);
     }
 
@@ -502,7 +591,7 @@ class ProjectController extends Controller
                             'company_contact_position' => null,
                             'company_address' => null,
                             'proposal_status' => 'aprobado',
-                            'is_proposal' => false,
+                            'tipo' => 'desarrollo',
                             'created_by' => $user->id,
                         ]);
 
@@ -619,15 +708,6 @@ class ProjectController extends Controller
             return response()->json(['error' => 'Solo un administrador puede modificar asesores'], 403);
         }
 
-        $password = $request->input('admin_password');
-        if (!$password) {
-            return response()->json(['error' => 'Se requiere la contraseña del administrador actual', 'requires_password' => true], 423);
-        }
-
-        if (!Hash::check($password, $currentAdmin->password)) {
-            return response()->json(['error' => 'Contraseña de administrador incorrecta'], 403);
-        }
-
         return null;
     }
 
@@ -644,12 +724,12 @@ class ProjectController extends Controller
             throw ValidationException::withMessages(['student_ids' => ['Solo se pueden agregar estudiantes activos como integrantes.']]);
         }
 
-        $assignedElsewhere = DB::table('proyectos_integrantes')
-            ->join('proyectos', 'proyectos.id', '=', 'proyectos_integrantes.proyecto_id')
-            ->whereIn('proyectos_integrantes.usuario_id', $studentIds)
-            ->where('proyectos_integrantes.rol', 'integrante')
-            ->where('proyectos_integrantes.proyecto_id', '!=', $project->id)
-            ->select('proyectos_integrantes.usuario_id as user_id', 'proyectos.titulo as title')
+        $assignedElsewhere = DB::table('proyecto_integrantes')
+            ->join('proyectos', 'proyectos.id', '=', 'proyecto_integrantes.proyecto_id')
+            ->whereIn('proyecto_integrantes.usuario_id', $studentIds)
+            ->where('proyecto_integrantes.rol', 'integrante')
+            ->where('proyecto_integrantes.proyecto_id', '!=', $project->id)
+            ->select('proyecto_integrantes.usuario_id as user_id', 'proyectos.titulo as title')
             ->get();
 
         if ($assignedElsewhere->isNotEmpty()) {
@@ -657,9 +737,14 @@ class ProjectController extends Controller
             throw ValidationException::withMessages(['student_ids' => ["Cada estudiante solo puede ser integrante de un proyecto. {$details}"]]);
         }
 
-        DB::table('proyectos_integrantes')->where('proyecto_id', $project->id)->where('rol', 'integrante')->delete();
+        DB::table('proyecto_integrantes')->where('proyecto_id', $project->id)->where('rol', 'integrante')->delete();
         foreach ($students as $student) {
-            DB::table('proyectos_integrantes')->insert(['proyecto_id' => $project->id, 'usuario_id' => $student->id, 'rol' => 'integrante']);
+            DB::table('proyecto_integrantes')->insert([
+                'proyecto_id' => $project->id,
+                'usuario_id' => $student->id,
+                'rol' => 'integrante',
+                'agregado_en' => now(),
+            ]);
         }
 
     }
@@ -707,24 +792,13 @@ class ProjectController extends Controller
 
     private function syncSubjectsFromGroup(Project $project): void
     {
-        if (!$project->subject_group_id) {
-            $project->asignaturas()->detach();
-            return;
-        }
-
-        $group = SubjectGroup::with('asignaturas')->find($project->subject_group_id);
-        if (!$group) {
-            $project->asignaturas()->detach();
-            return;
-        }
-
-        $project->asignaturas()->sync($group->asignaturas->pluck('id')->all());
+        // En el esquema v2 las materias pertenecen al grupo por medio de cursos.
+        // No existe una tabla proyecto-asignatura que sincronizar.
     }
 
     private function syncProposalSubject(Project $project): void
     {
-        $subject = Asignatura::where('nombre', 'Fundamentos de Ingeniería de Software')->firstOrFail();
-        $project->asignaturas()->sync([$subject->id]);
+        // En el esquema v2 la materia predeterminada se deriva de la carga del grupo.
     }
 
     private function updateCompany(Project $project, array $validated): void

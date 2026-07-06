@@ -7,25 +7,31 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SemesterPresentationException extends Model
 {
-    protected $table = 'excepciones_presentacion_semestre';
-
-    const CREATED_AT = 'creado_en';
-    const UPDATED_AT = 'actualizado_en';
+    protected $table = 'autorizaciones_excepcionales';
+    public $timestamps = false;
 
     protected $fillable = [
-        'periodo_id',
         'proyecto_id',
         'usuario_id',
-        'semestre_presentacion',
+        'tipo',
+        'valor',
         'motivo',
+        'vigente_hasta',
+        'autorizada_por',
+        'activa',
+    ];
+
+    protected $appends = [
+        'periodo_id',
+        'semestre_presentacion',
         'activo',
     ];
 
     protected $casts = [
-        'periodo_id' => 'integer',
         'proyecto_id' => 'integer',
-        'semestre_presentacion' => 'integer',
-        'activo' => 'boolean',
+        'activa' => 'boolean',
+        'vigente_hasta' => 'datetime',
+        'creada_en' => 'datetime',
     ];
 
     public function period(): BelongsTo
@@ -41,5 +47,44 @@ class SemesterPresentationException extends Model
     public function student(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario_id', 'id');
+    }
+
+    public function getPeriodoIdAttribute(): ?int
+    {
+        $value = $this->decodedValue()['period_id'] ?? null;
+
+        return $value === null ? null : (int) $value;
+    }
+
+    public function getSemestrePresentacionAttribute(): ?int
+    {
+        $value = $this->decodedValue()['semester'] ?? null;
+
+        return $value === null ? null : (int) $value;
+    }
+
+    public function getActivoAttribute(): bool
+    {
+        return (bool) $this->activa;
+    }
+
+    public static function encodedValue(int $periodId, int $semester): string
+    {
+        return json_encode([
+            'period_id' => $periodId,
+            'semester' => $semester,
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    private function decodedValue(): array
+    {
+        $decoded = json_decode((string) $this->valor, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+
+        return is_numeric($this->valor)
+            ? ['semester' => (int) $this->valor]
+            : [];
     }
 }

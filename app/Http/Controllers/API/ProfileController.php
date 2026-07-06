@@ -3,8 +3,12 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\SubjectGroup;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -13,7 +17,7 @@ class ProfileController extends Controller
 {
     public function show()
     {
-        return response()->json(auth('api')->user()->loadMissing('phoneNumbers'));
+        return response()->json($this->loadOptionalRelations(auth('api')->user()));
     }
 
     public function completeInitial(Request $request)
@@ -36,12 +40,17 @@ class ProfileController extends Controller
             $validated['photo_path'] = $request->file('photo')->store('profiles', 'public');
         }
 
+        $academicAssignment = $this->pullAcademicAssignment($validated);
         $validated['profile_completed_at'] = now();
-        $user->update($validated);
+
+        DB::transaction(function () use ($user, $validated, $academicAssignment) {
+            $user->update($validated);
+            $this->syncAcademicAssignment($user, $academicAssignment);
+        });
 
         return response()->json([
             'message' => 'Perfil inicial completado',
-            'user' => $user->fresh()->load('phoneNumbers'),
+            'user' => $this->loadOptionalRelations($user->fresh()),
         ]);
     }
 
@@ -94,12 +103,83 @@ class ProfileController extends Controller
             $validated['photo_path'] = $request->file('photo')->store('profiles', 'public');
         }
 
-        $user->update($validated);
+        $academicAssignment = $this->pullAcademicAssignment($validated);
+        if (array_key_exists('telefonos', $validated)) {
+            $validated['telefono'] = $this->primaryPhone($validated['telefonos']);
+            unset($validated['telefonos']);
+        }
+
+        DB::transaction(function () use ($user, $validated, $academicAssignment) {
+            $user->update($validated);
+            $this->syncAcademicAssignment($user, $academicAssignment);
+        });
 
         return response()->json([
             'message' => 'Perfil actualizado',
-            'user' => $user->fresh()->load('phoneNumbers'),
+            'user' => $this->loadOptionalRelations($user->fresh()),
         ]);
+    }
+
+    private function loadOptionalRelations(User $user): User
+    {
+        return Schema::hasTable('usuarios_telefonos')
+            ? $user->loadMissing('phoneNumbers')
+            : $user;
+    }
+
+    private function pullAcademicAssignment(array &$data): array
+    {
+        $requested = array_key_exists('semestre', $data) || array_key_exists('grupo', $data);
+        $semester = isset($data['semestre']) && $data['semestre'] !== ''
+            ? (int) $data['semestre']
+            : null;
+        $group = isset($data['grupo']) && trim((string) $data['grupo']) !== ''
+            ? strtoupper(trim((string) $data['grupo']))
+            : null;
+
+        unset($data['semestre'], $data['grupo']);
+
+        return compact('requested', 'semester', 'group');
+    }
+
+    private function syncAcademicAssignment(User $user, array $assignment): void
+    {
+        if (!$assignment['requested'] || (int) $user->perfil_id !== 3) {
+            return;
+        }
+
+        $targetGroup = null;
+        if ($assignment['semester'] !== null && $assignment['group'] !== null) {
+            $targetGroup = SubjectGroup::where('activo', true)
+                ->where('semestre', $assignment['semester'])
+                ->where('grupo', $assignment['group'])
+                ->first();
+
+            if (!$targetGroup) {
+                throw ValidationException::withMessages([
+                    'grupo' => ["No existe un grupo activo {$assignment['semester']} {$assignment['group']}."],
+                ]);
+            }
+        }
+
+        DB::table('grupo_estudiantes')
+            ->where('estudiante_id', $user->id)
+            ->where('activo', true)
+            ->update(['activo' => false]);
+
+        if ($targetGroup) {
+            DB::table('grupo_estudiantes')->updateOrInsert(
+                ['grupo_id' => $targetGroup->id, 'estudiante_id' => $user->id],
+                ['inscrito_en' => now(), 'activo' => true]
+            );
+        }
+    }
+
+    private function primaryPhone(?string $phones): ?string
+    {
+        return collect(preg_split('/[,;]+/', (string) $phones))
+            ->map(fn ($phone) => trim($phone))
+            ->first(fn ($phone) => $phone !== '');
     }
 
     private function normalizeAddress(?string $address): ?string

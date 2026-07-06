@@ -38,7 +38,7 @@ class DocumentTagController extends Controller
     {
         try {
             $validated = $request->validate([
-                'nombre' => 'required|string|max:100|unique:etiquetas_documentos,nombre',
+                'nombre' => 'required|string|max:100|unique:etiquetas,nombre',
                 'color' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
                 'descripcion' => 'nullable|string|max:1000',
             ]);
@@ -68,7 +68,7 @@ class DocumentTagController extends Controller
             }
 
             $validated = $request->validate([
-                'nombre' => 'nullable|string|max:100|unique:etiquetas_documentos,nombre,' . $tag->id,
+                'nombre' => 'nullable|string|max:100|unique:etiquetas,nombre,' . $tag->id,
                 'color' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
                 'descripcion' => 'nullable|string|max:1000',
                 'activo' => 'nullable|boolean',

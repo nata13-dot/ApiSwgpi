@@ -3,51 +3,57 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use App\Models\Asignatura;
-use App\Models\Deliverable;
 use App\Models\Project;
-use App\Models\TeacherGroupAssignment;
 use App\Models\User;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    private const PROPOSAL_STATUSES = ['pendiente', 'aprobado', 'requiere_cambios', 'rechazado'];
-    private const DELIVERABLE_STATUSES = ['pendiente', 'enviado', 'revisado', 'aprobado'];
+    private const PROPOSAL_STATUSES = ['borrador', 'pendiente', 'en_revision', 'requiere_cambios', 'aprobado', 'rechazado', 'finalizado', 'archivado'];
+    private const DELIVERABLE_STATUSES = ['borrador', 'publicado', 'cerrado'];
 
     public function stats()
     {
         $loadPayload = function () {
-            $recentProjects = Project::select(['id', 'title', 'created_by', 'created_at'])
-                ->with('creator:id,nombres,apa,ama')
-                ->orderByDesc('created_at')
+            $recentProjects = DB::table('proyectos')
+                ->leftJoin('usuarios as creador', 'creador.id', '=', 'proyectos.creado_por')
+                ->select([
+                    'proyectos.id',
+                    'proyectos.titulo',
+                    'proyectos.creado_por',
+                    'proyectos.creado_en',
+                    'creador.nombres as creador_nombres',
+                    'creador.apellido_paterno as creador_apa',
+                    'creador.apellido_materno as creador_ama',
+                ])
+                ->where('proyectos.activo', true)
+                ->orderByDesc('proyectos.creado_en')
                 ->limit(5)
                 ->get()
-                ->map(fn (Project $project) => [
+                ->map(fn ($project) => [
                     'id' => $project->id,
-                    'title' => $project->title,
-                    'created_at' => $project->created_at,
-                    'creator' => $project->creator ? [
-                        'id' => $project->creator->id,
-                        'nombres' => $project->creator->nombres,
-                        'apa' => $project->creator->apa,
-                        'ama' => $project->creator->ama,
+                    'title' => $project->titulo,
+                    'created_at' => $project->creado_en,
+                    'creator' => $project->creado_por ? [
+                        'id' => $project->creado_por,
+                        'nombres' => $project->creador_nombres,
+                        'apa' => $project->creador_apa,
+                        'ama' => $project->creador_ama,
                     ] : null,
                 ]);
 
             $deliverableStatusCounts = $this->statusCounts(
-                Deliverable::query()->where('activo', true),
+                DB::table('entregables')->where('activo', true),
                 'estado',
                 self::DELIVERABLE_STATUSES
             );
             $projectProposalCounts = $this->statusCounts(
-                Project::query()->where('activo', true)->where('is_proposal', true),
-                'proposal_status',
+                DB::table('proyectos')->where('activo', true)->where('tipo', 'propuesta'),
+                'estado',
                 self::PROPOSAL_STATUSES
             );
-            $userCounts = User::query()->selectRaw(
+            $userCounts = DB::table('usuarios')->selectRaw(
                 'COUNT(*) AS total_users,
                 SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) AS active_users,
                 SUM(CASE WHEN activo = 0 THEN 1 ELSE 0 END) AS inactive_users,
@@ -55,12 +61,12 @@ class DashboardController extends Controller
                 SUM(CASE WHEN perfil_id = 2 THEN 1 ELSE 0 END) AS teachers,
                 SUM(CASE WHEN perfil_id = 3 THEN 1 ELSE 0 END) AS students'
             )->first();
-            $projectCounts = Project::query()->selectRaw(
+            $projectCounts = DB::table('proyectos')->selectRaw(
                 'COUNT(*) AS total_projects,
                 SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) AS active_projects'
             )->first();
             $totalDeliverables = array_sum($deliverableStatusCounts);
-            $approvedDeliverables = $deliverableStatusCounts['aprobado'] ?? 0;
+            $approvedDeliverables = $deliverableStatusCounts['cerrado'] ?? 0;
 
             return [
                 'stats' => [
@@ -69,8 +75,8 @@ class DashboardController extends Controller
                     'inactive_users' => (int) $userCounts->inactive_users,
                     'total_projects' => (int) $projectCounts->total_projects,
                     'active_projects' => (int) $projectCounts->active_projects,
-                    'total_asignaturas' => Asignatura::count(),
-                    'pending_deliverables' => $deliverableStatusCounts['pendiente'] ?? 0,
+                    'total_asignaturas' => DB::table('asignaturas')->count(),
+                    'pending_deliverables' => $deliverableStatusCounts['publicado'] ?? 0,
                     'approved_deliverables' => $approvedDeliverables,
                     'deliverable_completion_rate' => $this->percentage($approvedDeliverables, $totalDeliverables),
                     'pending_proposals' => $projectProposalCounts['pendiente'] ?? 0,
@@ -90,7 +96,7 @@ class DashboardController extends Controller
 
         try {
             $payload = Cache::store(config('auth.activity_cache_store', 'file'))
-                ->remember('dashboard:admin:stats:v2', now()->addSeconds(20), $loadPayload);
+                ->remember('dashboard:admin:stats:v3', now()->addSeconds(20), $loadPayload);
         } catch (\Throwable) {
             $payload = $loadPayload();
         }
@@ -104,9 +110,11 @@ class DashboardController extends Controller
         $advisorProjectIds = Project::where('activo', true)->whereHas('advisors', function ($query) use ($userId) {
             $query->where('usuarios.id', $userId);
         })->pluck('id');
-        $responsibleGroupIds = TeacherGroupAssignment::where('teacher_id', $userId)
-            ->where('activo', true)
-            ->pluck('subject_group_id');
+        $responsibleGroupIds = DB::table('curso_docentes')
+            ->join('cursos', 'cursos.id', '=', 'curso_docentes.curso_id')
+            ->where('curso_docentes.docente_id', $userId)
+            ->where('curso_docentes.activo', true)
+            ->pluck('cursos.grupo_id');
 
         $projectIds = Project::where('activo', true)
             ->where(function ($query) use ($advisorProjectIds, $responsibleGroupIds) {
@@ -116,10 +124,6 @@ class DashboardController extends Controller
             ->pluck('id');
 
         $projects = Project::select(['id', 'title', 'created_by', 'created_at', 'subject_group_id', 'authors', 'semestre'])
-            ->withCount([
-                'deliverables',
-                'deliverables as approved_deliverables_count' => fn ($query) => $query->where('estado', 'aprobado'),
-            ])
             ->with([
                 'creator:id,nombres,apa,ama',
                 'advisors:id,nombres,apa,ama',
@@ -131,25 +135,29 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
+        $projectGroupIds = Project::whereIn('id', $projectIds)->pluck('grupo_id')->filter();
         $deliverableStatusCounts = $this->statusCounts(
-            Deliverable::query()->whereIn('project_id', $projectIds)->where('activo', true),
+            DB::table('entregables')
+                ->join('cursos', 'cursos.id', '=', 'entregables.curso_id')
+                ->whereIn('cursos.grupo_id', $projectGroupIds)
+                ->where('entregables.activo', true),
             'estado',
             self::DELIVERABLE_STATUSES
         );
         $proposalStatusCounts = $this->statusCounts(
-            Project::query()->whereIn('id', $projectIds)->where('activo', true)->where('is_proposal', true),
-            'proposal_status',
+            Project::query()->whereIn('id', $projectIds)->where('activo', true)->where('tipo', 'propuesta'),
+            'estado',
             self::PROPOSAL_STATUSES
         );
         $totalDeliverables = array_sum($deliverableStatusCounts);
-        $approvedDeliverables = $deliverableStatusCounts['aprobado'] ?? 0;
+        $approvedDeliverables = $deliverableStatusCounts['cerrado'] ?? 0;
 
         return response()->json([
             'stats' => [
                 'my_projects' => $projectIds->count(),
                 'students' => User::students()
                     ->where('activo', true)
-                    ->whereHas('projectsAsAdvisor', fn ($query) => $query->whereIn('proyectos.id', $projectIds)->where('proyectos_integrantes.rol', 'integrante'))
+                    ->whereHas('projectsAsAdvisor', fn ($query) => $query->whereIn('proyectos.id', $projectIds)->where('proyecto_integrantes.rol', 'integrante'))
                     ->count(),
                 'pending_deliverables' => $deliverableStatusCounts['pendiente'] ?? 0,
                 'approved_deliverables' => $approvedDeliverables,
@@ -175,10 +183,6 @@ class DashboardController extends Controller
             ->pluck('id');
 
         $projects = Project::select(['id', 'title', 'created_by', 'created_at', 'subject_group_id', 'authors', 'semestre'])
-            ->withCount([
-                'deliverables',
-                'deliverables as approved_deliverables_count' => fn ($query) => $query->where('estado', 'aprobado'),
-            ])
             ->with([
                 'creator:id,nombres,apa,ama',
                 'advisors:id,nombres,apa,ama',
@@ -190,23 +194,22 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
+        $projectGroupIds = Project::whereIn('id', $projectIds)->pluck('grupo_id')->filter();
         $deliverableStatusCounts = $this->statusCounts(
-            Deliverable::query()
-                ->where('activo', true)
-                ->where(function ($query) use ($userId, $projectIds) {
-                    $query->where('submitted_by', $userId)
-                        ->orWhereIn('project_id', $projectIds);
-                }),
+            DB::table('entregables')
+                ->join('cursos', 'cursos.id', '=', 'entregables.curso_id')
+                ->whereIn('cursos.grupo_id', $projectGroupIds)
+                ->where('entregables.activo', true),
             'estado',
             self::DELIVERABLE_STATUSES
         );
         $proposalStatusCounts = $this->statusCounts(
-            Project::query()->whereIn('id', $projectIds)->where('activo', true)->where('is_proposal', true),
-            'proposal_status',
+            Project::query()->whereIn('id', $projectIds)->where('activo', true)->where('tipo', 'propuesta'),
+            'estado',
             self::PROPOSAL_STATUSES
         );
         $totalDeliverables = array_sum($deliverableStatusCounts);
-        $approvedDeliverables = $deliverableStatusCounts['aprobado'] ?? 0;
+        $approvedDeliverables = $deliverableStatusCounts['cerrado'] ?? 0;
 
         return response()->json([
             'stats' => [
@@ -225,7 +228,7 @@ class DashboardController extends Controller
         ]);
     }
 
-    private function statusCounts(Builder $query, string $column, array $statuses): array
+    private function statusCounts($query, string $column, array $statuses): array
     {
         $counts = (clone $query)
             ->select($column, DB::raw('COUNT(*) as total'))

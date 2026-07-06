@@ -24,6 +24,24 @@ class CorsHeadersTest extends TestCase
             ->assertHeader('Access-Control-Allow-Credentials', 'true');
     }
 
+    public function test_capacitor_app_can_complete_api_preflight(): void
+    {
+        foreach (['capacitor://localhost', 'https://localhost'] as $origin) {
+            $response = $this
+                ->withHeaders([
+                    'Origin' => $origin,
+                    'Access-Control-Request-Method' => 'POST',
+                    'Access-Control-Request-Headers' => 'content-type,accept',
+                ])
+                ->options('/api/auth/login');
+
+            $response
+                ->assertNoContent()
+                ->assertHeader('Access-Control-Allow-Origin', $origin)
+                ->assertHeader('Access-Control-Allow-Credentials', 'true');
+        }
+    }
+
     public function test_unauthorized_api_response_keeps_cors_headers(): void
     {
         $response = $this

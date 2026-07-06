@@ -20,7 +20,7 @@ class RubricCriterion extends Model
     ];
 
     protected $fillable = [
-        'semestre', 'project_id', 'clave', 'pregunta', 'orden', 'activo',
+        'rubrica_id', 'semestre', 'project_id', 'clave', 'pregunta', 'orden', 'activo',
     ];
 
     protected $casts = [
@@ -33,5 +33,18 @@ class RubricCriterion extends Model
     public function project()
     {
         return $this->belongsTo(Project::class, 'proyecto_id');
+    }
+
+    public function getSemestreAttribute(): ?int
+    {
+        if (array_key_exists('semestre', $this->attributes)) {
+            return $this->attributes['semestre'] === null ? null : (int) $this->attributes['semestre'];
+        }
+
+        $value = \Illuminate\Support\Facades\DB::table('rubricas')
+            ->where('id', $this->rubrica_id)
+            ->value('semestre');
+
+        return $value === null ? null : (int) $value;
     }
 }

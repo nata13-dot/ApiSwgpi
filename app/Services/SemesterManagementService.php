@@ -93,29 +93,35 @@ class SemesterManagementService
     public function presentationSemester(int $projectId, ?int $academicSemester = null, ?AcademicPeriod $period = null): ?int
     {
         $period ??= $this->activePeriod();
-        if (!$period || !Schema::hasTable('excepciones_presentacion_semestre')) {
+        if (!$period || !Schema::hasTable('autorizaciones_excepcionales')) {
             return $academicSemester;
         }
 
         $projectSemester = SemesterPresentationException::query()
-            ->where('periodo_id', $period->id)
             ->where('proyecto_id', $projectId)
-            ->where('activo', true)
-            ->value('semestre_presentacion');
+            ->whereNull('usuario_id')
+            ->where('tipo', 'presentacion_semestre')
+            ->where('activa', true)
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn ($exception) => (int) $exception->periodo_id === (int) $period->id)
+            ?->semestre_presentacion;
 
         if ($projectSemester) {
             return (int) $projectSemester;
         }
 
         $studentSemester = SemesterPresentationException::query()
-            ->where('periodo_id', $period->id)
-            ->where('activo', true)
-            ->whereIn('usuario_id', DB::table('proyectos_integrantes')
+            ->where('tipo', 'presentacion_semestre')
+            ->where('activa', true)
+            ->whereIn('usuario_id', DB::table('proyecto_integrantes')
                 ->where('proyecto_id', $projectId)
-                ->where('rol', 'integrante')
+                ->whereIn('rol', ['lider', 'integrante'])
                 ->select('usuario_id'))
-            ->latest('actualizado_en')
-            ->value('semestre_presentacion');
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn ($exception) => (int) $exception->periodo_id === (int) $period->id)
+            ?->semestre_presentacion;
 
         return $studentSemester ? (int) $studentSemester : $academicSemester;
     }
@@ -127,32 +133,30 @@ class SemesterManagementService
         )->all();
         $period ??= $this->activePeriod();
 
-        if (!$period || !$projects->count() || !Schema::hasTable('excepciones_presentacion_semestre')) {
+        if (!$period || !$projects->count() || !Schema::hasTable('autorizaciones_excepcionales')) {
             return $semesters;
         }
 
         $projectIds = $projects->pluck('id')->map(fn ($id) => (int) $id)->all();
         $projectExceptions = SemesterPresentationException::query()
-            ->where('periodo_id', $period->id)
-            ->where('activo', true)
+            ->where('tipo', 'presentacion_semestre')
+            ->where('activa', true)
+            ->whereNull('usuario_id')
             ->whereIn('proyecto_id', $projectIds)
-            ->get(['proyecto_id', 'semestre_presentacion'])
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn ($exception) => (int) $exception->periodo_id === (int) $period->id)
             ->keyBy('proyecto_id');
 
-        $studentExceptions = DB::table('excepciones_presentacion_semestre as excepcion')
-            ->join('proyectos_integrantes as integrante', 'integrante.usuario_id', '=', 'excepcion.usuario_id')
-            ->where('excepcion.periodo_id', $period->id)
-            ->where('excepcion.activo', true)
-            ->where('integrante.rol', 'integrante')
-            ->whereIn('integrante.proyecto_id', $projectIds)
-            ->orderByDesc('excepcion.actualizado_en')
-            ->orderByDesc('excepcion.id')
-            ->get([
-                'integrante.proyecto_id',
-                'excepcion.semestre_presentacion',
-            ])
-            ->groupBy('proyecto_id')
-            ->map(fn ($items) => $items->first());
+        $studentExceptions = SemesterPresentationException::query()
+            ->where('tipo', 'presentacion_semestre')
+            ->where('activa', true)
+            ->whereNotNull('usuario_id')
+            ->whereIn('proyecto_id', $projectIds)
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn ($exception) => (int) $exception->periodo_id === (int) $period->id)
+            ->keyBy('proyecto_id');
 
         foreach ($projectIds as $projectId) {
             $exception = $projectExceptions->get($projectId) ?? $studentExceptions->get($projectId);

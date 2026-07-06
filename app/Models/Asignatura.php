@@ -25,12 +25,13 @@ class Asignatura extends Model
 
     public function projects(): BelongsToMany
     {
-        return $this->belongsToMany(Project::class, 'proyectos_asignaturas', 'asignatura_id', 'proyecto_id');
+        return $this->belongsToMany(Project::class, 'cursos', 'asignatura_id', 'grupo_id', 'id', 'grupo_id')
+            ->wherePivot('activo', true);
     }
 
     public function subjectGroups(): BelongsToMany
     {
-        return $this->belongsToMany(SubjectGroup::class, 'grupos_asignaturas', 'asignatura_id', 'grupo_academico_id');
+        return $this->belongsToMany(SubjectGroup::class, 'cursos', 'asignatura_id', 'grupo_id');
     }
 
     // SCOPES

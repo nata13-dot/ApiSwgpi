@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Models\Concerns\HasLegacyAliases;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class SystemSetting extends Model
 {
@@ -35,6 +37,8 @@ class SystemSetting extends Model
 
     protected $casts = [
         'valor' => 'array',
+        'valor_booleano' => 'boolean',
+        'valor_decimal' => 'decimal:6',
     ];
 
     public const DEFAULTS = [
@@ -76,12 +80,24 @@ class SystemSetting extends Model
 
     public static function setValue(string $key, mixed $value, string $type = 'string', ?string $description = null): void
     {
+        if (static::usesTypedValueColumns()) {
+            static::setTypedValue($key, $value, $type, $description);
+            self::$memoizedSettings = null;
+            static::clearCache();
+
+            return;
+        }
+
         static::updateOrCreate(
             ['key' => $key],
             ['value' => ['data' => $value], 'type' => $type, 'description' => $description]
         );
         self::$memoizedSettings = null;
+        static::clearCache();
+    }
 
+    private static function clearCache(): void
+    {
         try {
             Cache::store(config('auth.activity_cache_store', 'file'))->forget(self::CACHE_KEY);
         } catch (\Throwable) {
@@ -91,11 +107,110 @@ class SystemSetting extends Model
 
     private static function loadWithDefaults(): array
     {
-        $settings = static::query()
+        try {
+            $settings = static::usesTypedValueColumns()
+                ? static::loadTypedValues()
+                : static::loadJsonValues();
+        } catch (\Throwable) {
+            $settings = [];
+        }
+
+        return array_replace(static::DEFAULTS, array_filter($settings, fn ($value) => $value !== null));
+    }
+
+    private static function loadJsonValues(): array
+    {
+        if (! Schema::hasColumn((new static())->getTable(), 'valor')) {
+            return [];
+        }
+
+        return static::query()
             ->get(['clave', 'valor'])
             ->mapWithKeys(fn ($item) => [$item->key => $item->value['data'] ?? null])
             ->all();
+    }
 
-        return array_replace(static::DEFAULTS, array_filter($settings, fn ($value) => $value !== null));
+    private static function loadTypedValues(): array
+    {
+        return DB::table((new static())->getTable())
+            ->get(['clave', 'tipo', 'valor_texto', 'valor_entero', 'valor_booleano', 'valor_decimal'])
+            ->mapWithKeys(fn ($item) => [$item->clave => static::extractTypedValue($item)])
+            ->all();
+    }
+
+    private static function extractTypedValue(object $item): mixed
+    {
+        return match ($item->tipo) {
+            'entero', 'integer' => $item->valor_entero === null ? null : (int) $item->valor_entero,
+            'booleano', 'boolean' => $item->valor_booleano === null ? null : (bool) $item->valor_booleano,
+            'decimal' => $item->valor_decimal === null ? null : (float) $item->valor_decimal,
+            default => static::decodeTextValue($item->valor_texto),
+        };
+    }
+
+    private static function decodeTextValue(?string $value): mixed
+    {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+
+        $decoded = json_decode($value, true);
+
+        return json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
+    }
+
+    private static function setTypedValue(string $key, mixed $value, string $type, ?string $description = null): void
+    {
+        $storedType = static::typedStorageType($type, $value);
+        $row = [
+            'clave' => $key,
+            'tipo' => $storedType,
+            'valor_texto' => null,
+            'valor_entero' => null,
+            'valor_booleano' => null,
+            'valor_decimal' => null,
+            'descripcion' => $description,
+            'actualizada_en' => now(),
+        ];
+
+        match ($storedType) {
+            'entero' => $row['valor_entero'] = (int) $value,
+            'booleano' => $row['valor_booleano'] = (bool) $value,
+            'decimal' => $row['valor_decimal'] = $value,
+            default => $row['valor_texto'] = is_array($value) || is_object($value)
+                ? json_encode($value, JSON_UNESCAPED_UNICODE)
+                : $value,
+        };
+
+        $exists = DB::table((new static())->getTable())->where('clave', $key)->exists();
+
+        if ($exists) {
+            DB::table((new static())->getTable())->where('clave', $key)->update($row);
+            return;
+        }
+
+        $row['creada_en'] = now();
+        DB::table((new static())->getTable())->insert($row);
+    }
+
+    private static function typedStorageType(string $type, mixed $value): string
+    {
+        return match ($type) {
+            'integer', 'entero' => 'entero',
+            'boolean', 'booleano' => 'booleano',
+            'decimal' => 'decimal',
+            default => is_bool($value) ? 'booleano' : (is_int($value) ? 'entero' : 'texto'),
+        };
+    }
+
+    private static function usesTypedValueColumns(): bool
+    {
+        $table = (new static())->getTable();
+
+        return Schema::hasTable($table)
+            && Schema::hasColumn($table, 'valor_texto')
+            && Schema::hasColumn($table, 'valor_entero')
+            && Schema::hasColumn($table, 'valor_booleano')
+            && Schema::hasColumn($table, 'valor_decimal');
     }
 }
