@@ -302,7 +302,7 @@ class DeliverableController extends Controller
             });
         } elseif ((int) $user->perfil_id === 3) {
             $projectsQuery->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id));
-        } elseif ((int) $user->perfil_id !== 1) {
+        } elseif (!$user->canManageProjects()) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -336,7 +336,7 @@ class DeliverableController extends Controller
                     'clave' => $subject->clave,
                 ])->values(),
                 'requiere_documento_investigacion' => $this->requiresResearchDocument($project),
-                'puede_subir' => (int) $user->perfil_id === 1 || $project->students->contains(fn ($student) => (string) $student->id === (string) $user->id),
+                'puede_subir' => $user->canManageProjects() || $project->students->contains(fn ($student) => (string) $student->id === (string) $user->id),
                 'evaluaciones' => $project->evaluations->map(fn ($evaluation) => [
                     'id' => $evaluation->id,
                     'estado' => $evaluation->estado,
@@ -547,9 +547,9 @@ class DeliverableController extends Controller
             $isProjectMember = $deliverable->project && $deliverable->project->students->contains(fn ($student) => (string) $student->id === (string) $user->id);
 
             if ($isSpecialEvaluationDocument) {
-                $canUpload = (int) $user->perfil_id === 1 || ((int) $user->perfil_id === 3 && $isProjectMember);
+                $canUpload = $user->canManageProjects() || ((int) $user->perfil_id === 3 && $isProjectMember);
             } else {
-                $canUpload = $user->id === $deliverable->submitted_by || (int) $user->perfil_id === 1;
+                $canUpload = $user->id === $deliverable->submitted_by || $user->canManageProjects();
             }
 
             if (!$canUpload) {
@@ -653,7 +653,10 @@ class DeliverableController extends Controller
 
     private function courseIdForDeliverable(int $subjectId, $projectId = null): int
     {
-        $query = DB::table('cursos')->where('asignatura_id', $subjectId)->where('activo', true);
+        $query = DB::table('cursos')
+            ->where('carrera_id', app(\App\Support\CareerContext::class)->careerId())
+            ->where('asignatura_id', $subjectId)
+            ->where('activo', true);
 
         if ($projectId) {
             $groupId = Project::where('id', $projectId)->value('grupo_id');
@@ -692,7 +695,7 @@ class DeliverableController extends Controller
 
         $deliverable->loadMissing('project.advisors');
         $advisorIds = $deliverable->project?->advisors->pluck('id') ?? collect();
-        $adminIds = User::where('perfil_id', 1)->where('activo', true)->pluck('id');
+        $adminIds = User::admins()->where('activo', true)->pluck('id');
         $studentName = $actor->getFullName() ?: $actor->id;
 
         ActivityNotificationService::send(

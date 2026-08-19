@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasLegacyAliases;
+use App\Models\Concerns\ScopedToCareerMembership;
 use App\Models\Pivots\ProjectMemberPivot;
+use App\Support\CareerContext;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,7 +15,7 @@ use Tymon\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
 {
-    use HasFactory, Notifiable, HasLegacyAliases;
+    use HasFactory, Notifiable, HasLegacyAliases, ScopedToCareerMembership;
 
     protected $table = 'usuarios';
     public $incrementing = false;
@@ -72,6 +74,27 @@ class User extends Authenticatable implements JWTSubject
     public function getAuthPassword()
     {
         return $this->contrasena;
+    }
+
+    public function getPerfilIdAttribute($value): int
+    {
+        $context = app(CareerContext::class);
+        if ($context->isGeneralAdmin() && $context->user()?->id === $this->id) {
+            return 1;
+        }
+        if (array_key_exists('career_profile_id', $this->attributes) && $this->attributes['career_profile_id'] !== null) {
+            return (int) $this->attributes['career_profile_id'];
+        }
+        if ($context->user()?->id === $this->id && $context->profileId()) {
+            return (int) $context->profileId();
+        }
+
+        return (int) $value;
+    }
+
+    public function globalProfileId(): int
+    {
+        return (int) ($this->getRawOriginal('perfil_id') ?? $this->attributes['perfil_id'] ?? 0);
     }
 
     public function getPasswordAttribute()
@@ -149,11 +172,15 @@ class User extends Authenticatable implements JWTSubject
             return $this->attributes['semestre'] === null ? null : (int) $this->attributes['semestre'];
         }
 
-        $value = \Illuminate\Support\Facades\DB::table('grupo_estudiantes')
+        $query = \Illuminate\Support\Facades\DB::table('grupo_estudiantes')
             ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
             ->where('grupo_estudiantes.estudiante_id', $this->id)
             ->where('grupo_estudiantes.activo', true)
-            ->where('grupos_academicos.activo', true)
+            ->where('grupos_academicos.activo', true);
+        if ($careerId = app(CareerContext::class)->careerId()) {
+            $query->where('grupos_academicos.carrera_id', $careerId);
+        }
+        $value = $query
             ->orderByDesc('grupo_estudiantes.inscrito_en')
             ->value('grupos_academicos.semestre');
 
@@ -166,11 +193,16 @@ class User extends Authenticatable implements JWTSubject
             return $this->attributes['grupo'];
         }
 
-        return \Illuminate\Support\Facades\DB::table('grupo_estudiantes')
+        $query = \Illuminate\Support\Facades\DB::table('grupo_estudiantes')
             ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
             ->where('grupo_estudiantes.estudiante_id', $this->id)
             ->where('grupo_estudiantes.activo', true)
-            ->where('grupos_academicos.activo', true)
+            ->where('grupos_academicos.activo', true);
+        if ($careerId = app(CareerContext::class)->careerId()) {
+            $query->where('grupos_academicos.carrera_id', $careerId);
+        }
+
+        return $query
             ->orderByDesc('grupo_estudiantes.inscrito_en')
             ->value('grupos_academicos.clave_grupo');
     }
@@ -222,10 +254,28 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(UserPhone::class, 'usuario_id', 'id');
     }
 
+    public function careers(): BelongsToMany
+    {
+        return $this->belongsToMany(Career::class, 'usuario_carrera', 'usuario_id', 'carrera_id')
+            ->withPivot(['perfil_id', 'es_principal', 'activo', 'asignado_por'])
+            ->withTimestamps('creado_en', 'actualizado_en');
+    }
+
+    public function careerMemberships(): HasMany
+    {
+        return $this->hasMany(UserCareer::class, 'usuario_id', 'id');
+    }
+
     // MÉTODOS HELPER
-    public function isAdmin(): bool { return $this->perfil_id === 1; }
+    public function isAdmin(): bool { return in_array($this->perfil_id, [1, 5], true); }
+    public function isGeneralAdmin(): bool { return $this->globalProfileId() === 4; }
     public function isTeacher(): bool { return $this->perfil_id === 2; }
     public function isStudent(): bool { return $this->perfil_id === 3; }
+    public function isCareerHead(): bool { return $this->perfil_id === 5; }
+    public function isCareerHeadAssistant(): bool { return $this->perfil_id === 6; }
+    public function isProjectCoordinator(): bool { return $this->perfil_id === 7; }
+    public function canManageAcademics(): bool { return in_array($this->perfil_id, [1, 5, 6], true); }
+    public function canManageProjects(): bool { return in_array($this->perfil_id, [1, 5, 6, 7], true); }
     
     public function getFullName(): string
     {
@@ -233,8 +283,8 @@ class User extends Authenticatable implements JWTSubject
     }
 
     // SCOPES
-    public function scopeAdmins($query) { return $query->where('perfil_id', 1); }
-    public function scopeTeachers($query) { return $query->where('perfil_id', 2); }
-    public function scopeStudents($query) { return $query->where('perfil_id', 3); }
+    public function scopeAdmins($query) { return $query->withCareerProfiles([1, 5]); }
+    public function scopeTeachers($query) { return $query->withCareerProfiles(2); }
+    public function scopeStudents($query) { return $query->withCareerProfiles(3); }
     public function scopeActivos($query) { return $query->where('activo', true); }
 }

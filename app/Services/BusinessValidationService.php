@@ -78,7 +78,7 @@ class BusinessValidationService
      * 
      * @param int $deliverable_id ID del entregable
      * @param string $user_id ID del usuario (perfil desde token)
-     * @param int $perfil_id 1=Admin, 2=Docente, 3=Estudiante
+     * @param int $perfil_id Perfil activo dentro de la carrera.
      * @return bool true si tiene acceso
      */
     public static function validateAccesoEntrega(
@@ -88,7 +88,7 @@ class BusinessValidationService
     ): bool
     {
         // Admin: acceso total
-        if ($perfil_id === 1) {
+        if (in_array($perfil_id, [1, 5, 6, 7], true)) {
             return true;
         }
         

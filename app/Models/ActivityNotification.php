@@ -2,16 +2,20 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToCareer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ActivityNotification extends Model
 {
-    protected $table = 'notificaciones_actividad';
+    use BelongsToCareer;
+
+    protected $table = 'notificaciones';
     const CREATED_AT = 'creada_en';
     const UPDATED_AT = null;
 
     protected $fillable = [
+        'carrera_id',
         'usuario_id',
         'actor_id',
         'tipo',

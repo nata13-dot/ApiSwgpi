@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\SystemSetting;
+use App\Models\CareerSetting;
 use App\Support\AcademicPeriod;
 use App\Services\SemesterManagementService;
 use Carbon\Carbon;
@@ -45,11 +46,37 @@ class SystemSettingController extends Controller
 
     public function index()
     {
-        $settings = SystemSetting::allWithDefaults();
+        $settings = array_replace(SystemSetting::allWithDefaults(), CareerSetting::all());
         $settings['academic_period_info'] = AcademicPeriod::information($settings['active_academic_period']);
         $settings['academic_period_options'] = AcademicPeriod::options($settings['academic_period_info']['year']);
 
         return response()->json($settings);
+    }
+
+    public function current()
+    {
+        $this->purgeExpiredNotices();
+        $settings = array_replace(SystemSetting::allWithDefaults(), CareerSetting::all());
+        $periodInfo = AcademicPeriod::information($settings['active_academic_period']);
+        $today = now()->toDateString();
+
+        return response()->json([
+            'session_timeout_minutes' => $settings['session_timeout_minutes'],
+            'default_theme' => $settings['default_theme'],
+            'global_notice' => $settings['global_notice'],
+            'font_scale' => $settings['font_scale'],
+            'proposal_registration_enabled' => $settings['proposal_registration_enabled'],
+            'active_academic_period' => $settings['active_academic_period'],
+            'academic_period_info' => $periodInfo,
+            'academic_period_options' => AcademicPeriod::options($periodInfo['year']),
+            'max_file_size_mb' => $settings['max_file_size_mb'],
+            'allowed_file_types' => $settings['allowed_file_types'],
+            'max_project_members' => $settings['max_project_members'],
+            'grayscale_mode' => $settings['grayscale_mode'],
+            'system_notices' => collect($settings['system_notices'] ?? [])
+                ->filter(fn ($notice) => ($notice['active'] ?? true) && !empty($notice['message']) && $this->noticeIsVisible($notice, $today))
+                ->values(),
+        ]);
     }
 
     public function update(Request $request)
@@ -74,10 +101,12 @@ class SystemSettingController extends Controller
                 is_array($value) => 'array',
                 default => 'string',
             };
-            SystemSetting::setValue($key, $value, $type);
+            in_array($key, CareerSetting::KEYS, true)
+                ? CareerSetting::setValue($key, $value, $type)
+                : SystemSetting::setValue($key, $value, $type);
         }
 
-        $settings = SystemSetting::allWithDefaults();
+        $settings = array_replace(SystemSetting::allWithDefaults(), CareerSetting::all());
         $settings['academic_period_info'] = AcademicPeriod::information($settings['active_academic_period']);
         $settings['academic_period_options'] = AcademicPeriod::options($settings['academic_period_info']['year']);
 
@@ -87,7 +116,7 @@ class SystemSettingController extends Controller
     public function notices()
     {
         $this->purgeExpiredNotices();
-        return response()->json(['data' => SystemSetting::valueFor('system_notices', [])]);
+        return response()->json(['data' => CareerSetting::valueFor('system_notices', [])]);
     }
 
     public function updateNotices(Request $request)
@@ -129,7 +158,7 @@ class SystemSettingController extends Controller
             ->values()
             ->all();
 
-        SystemSetting::setValue('system_notices', $notices, 'array');
+        CareerSetting::setValue('system_notices', $notices, 'array');
 
         return response()->json([
             'message' => 'Avisos guardados',
@@ -140,14 +169,14 @@ class SystemSettingController extends Controller
     private function purgeExpiredNotices(): void
     {
         $today = now()->toDateString();
-        $notices = SystemSetting::valueFor('system_notices', []);
+        $notices = CareerSetting::valueFor('system_notices', []);
         $active = collect($notices)
             ->filter(fn ($notice) => !$this->noticeExpired($notice, $today))
             ->values()
             ->all();
 
         if (count($active) !== count($notices)) {
-            SystemSetting::setValue('system_notices', $active, 'array');
+            CareerSetting::setValue('system_notices', $active, 'array');
         }
     }
 

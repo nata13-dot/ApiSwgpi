@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasLegacyAliases;
+use App\Models\Concerns\BelongsToCareer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SubjectGroup extends Model
 {
-    use HasFactory, HasLegacyAliases;
+    use HasFactory, HasLegacyAliases, BelongsToCareer;
 
     protected $table = 'grupos_academicos';
     const CREATED_AT = 'creado_en';
@@ -24,7 +25,7 @@ class SubjectGroup extends Model
         'updated_at' => 'actualizado_en',
     ];
 
-    protected $fillable = ['nombre', 'semestre', 'grupo', 'periodo_id', 'registro_proyectos_desde', 'registro_proyectos_hasta', 'activo'];
+    protected $fillable = ['carrera_id', 'nombre', 'semestre', 'grupo', 'periodo_id', 'registro_proyectos_desde', 'registro_proyectos_hasta', 'activo'];
 
     protected $appends = ['periodo'];
 

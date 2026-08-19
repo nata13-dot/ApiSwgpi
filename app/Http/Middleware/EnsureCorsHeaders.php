@@ -25,15 +25,23 @@ class EnsureCorsHeaders
             return $response;
         }
 
-        $requestedHeaders = $request->headers->get(
-            'Access-Control-Request-Headers',
-            'Authorization, Content-Type, Accept, Origin, X-Requested-With, X-SGPI-Remember'
-        );
+        $allowedHeaders = array_map('strtolower', config('cors.allowed_headers', []));
+        $requestedHeaders = array_filter(array_map(
+            'trim',
+            explode(',', (string) $request->headers->get('Access-Control-Request-Headers', ''))
+        ));
+        $approvedHeaders = array_values(array_filter(
+            $requestedHeaders,
+            fn ($header) => in_array(strtolower($header), $allowedHeaders, true)
+        ));
+        if (!$approvedHeaders) {
+            $approvedHeaders = config('cors.allowed_headers', []);
+        }
 
         $response->headers->set('Access-Control-Allow-Origin', $origin);
         $response->headers->set('Access-Control-Allow-Credentials', 'true');
         $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        $response->headers->set('Access-Control-Allow-Headers', $requestedHeaders);
+        $response->headers->set('Access-Control-Allow-Headers', implode(', ', $approvedHeaders));
         $response->headers->set('Access-Control-Max-Age', '600');
         $response->headers->set('Vary', 'Origin', false);
 

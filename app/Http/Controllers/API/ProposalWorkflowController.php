@@ -23,7 +23,7 @@ class ProposalWorkflowController extends Controller
     public function configIndex()
     {
         $defaultSubject = $this->defaultProposalSubject();
-        $subjectGroups = SubjectGroup::with(['asignaturas'])
+        $subjectGroups = SubjectGroup::with(['asignaturas', 'teacherAssignments.teacher'])
             ->where('semestre', 5)
             ->whereHas('asignaturas', fn ($query) => $query->where('asignaturas.id', $defaultSubject->id))
             ->orderBy('semestre')
@@ -32,7 +32,6 @@ class ProposalWorkflowController extends Controller
             ->each(function (SubjectGroup $group) {
                 $window = $this->windowPayloadFromGroup($group);
                 $group->setRelation('registrationWindows', collect($window ? [$window] : []));
-                $group->setRelation('teacherAssignments', collect());
             });
 
         $exceptions = Schema::hasTable('excepciones_revision_propuesta')
@@ -46,7 +45,7 @@ class ProposalWorkflowController extends Controller
             'default_subject' => $defaultSubject,
             'subject_groups' => $subjectGroups,
             'grupos_academicos' => $subjectGroups,
-            'teachers' => User::where('perfil_id', 2)->where('activo', true)->orderBy('nombres')->get(['id', 'nombres', 'apa', 'ama']),
+            'teachers' => User::teachers()->where('activo', true)->orderBy('nombres')->get(['id', 'nombres', 'apa', 'ama']),
             'asignaturas' => Asignatura::orderBy('nombre')->get(['id', 'clave', 'nombre']),
             'exceptions' => $exceptions,
         ]);
@@ -111,12 +110,13 @@ class ProposalWorkflowController extends Controller
             'activo' => 'nullable|boolean',
         ]);
 
-        $teacher = User::where('id', $validated['teacher_id'])->where('perfil_id', 2)->where('activo', true)->first();
+        $teacher = User::where('id', $validated['teacher_id'])->teachers()->where('activo', true)->first();
         if (!$teacher) {
             throw ValidationException::withMessages(['teacher_id' => ['El responsable debe ser un docente activo.']]);
         }
 
         $belongsToGroup = DB::table('cursos')
+            ->where('carrera_id', app(\App\Support\CareerContext::class)->careerId())
             ->where('grupo_id', $validated['subject_group_id'])
             ->where('asignatura_id', $validated['asignatura_id'])
             ->exists();
@@ -266,7 +266,7 @@ class ProposalWorkflowController extends Controller
         }
 
         $term = trim((string) $request->query('q', ''));
-        $query = User::where('perfil_id', 3)->where('activo', true)
+        $query = User::students()->where('activo', true)
             ->when((int) $user->perfil_id === 3, fn ($q) => $q->where('id', '!=', $user->id))
             ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->where('proyecto_integrantes.rol', 'integrante'));
 
@@ -371,7 +371,7 @@ class ProposalWorkflowController extends Controller
     private function guardCanManageWindow(int $groupId): void
     {
         $user = auth('api')->user();
-        if ((int) $user->perfil_id === 1) {
+        if ($user->canManageProjects()) {
             return;
         }
 

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasLegacyAliases;
+use App\Models\Concerns\BelongsToCareer;
 use App\Models\Pivots\ProjectMemberPivot;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Project extends Model
 {
-    use HasFactory, HasLegacyAliases;
+    use HasFactory, HasLegacyAliases, BelongsToCareer;
 
     protected $table = 'proyectos';
     public $timestamps = true;
@@ -72,7 +73,7 @@ class Project extends Model
         'company_address',
     ];
 
-    protected $fillable = ['title', 'description', 'created_by', 'activo', 'tipo', 'is_thesis', 'is_proposal', 'subject_group_id', 'empresa_id', 'file_path', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
+    protected $fillable = ['career_id', 'title', 'description', 'created_by', 'activo', 'tipo', 'is_thesis', 'is_proposal', 'subject_group_id', 'empresa_id', 'file_path', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
 
     protected $casts = [
         'activo' => 'boolean',

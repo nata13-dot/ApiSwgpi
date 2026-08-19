@@ -50,4 +50,11 @@ En Gmail, `MAIL_PASSWORD` debe ser una contrasena de aplicacion, no la contrasen
 php artisan route:list --path=auth
 php artisan config:clear
 php artisan test
+php artisan sgpi:release-check --allow-local
 ```
+
+## Documentación multicarrera
+
+- [Despliegue](docs/MULTICAREER_DEPLOYMENT.md)
+- [Manual operativo](docs/OPERATIONS_RUNBOOK.md)
+- [Resumen de implementación](docs/IMPLEMENTATION_SUMMARY.md)

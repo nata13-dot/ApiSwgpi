@@ -36,16 +36,36 @@ class LegacyAliasBuilder extends Builder
 
     public function where($column, $operator = null, $value = null, $boolean = 'and')
     {
+        if (is_string($column)) {
+            if (func_num_args() === 2) {
+                $operator = $this->mapValue($column, $operator);
+            } else {
+                $value = $this->mapValue($column, $value);
+            }
+        }
+
         return parent::where($this->mapWhereColumn($column), $operator, $value, $boolean);
     }
 
     public function orWhere($column, $operator = null, $value = null)
     {
+        if (is_string($column)) {
+            if (func_num_args() === 2) {
+                $operator = $this->mapValue($column, $operator);
+            } else {
+                $value = $this->mapValue($column, $value);
+            }
+        }
+
         return parent::orWhere($this->mapWhereColumn($column), $operator, $value);
     }
 
     public function whereIn($column, $values, $boolean = 'and', $not = false)
     {
+        $values = is_iterable($values)
+            ? collect($values)->map(fn ($value) => $this->mapValue($column, $value))->all()
+            : $values;
+
         return parent::whereIn($this->mapColumn($column), $values, $boolean, $not);
     }
 
@@ -162,7 +182,7 @@ class LegacyAliasBuilder extends Builder
 
         foreach ($values as $key => $value) {
             if (!$this->isVirtualColumn($key)) {
-                $mapped[$this->mapColumn($key)] = $value;
+                $mapped[$this->mapColumn($key)] = $this->mapValue($key, $value);
             }
         }
 
@@ -201,5 +221,12 @@ class LegacyAliasBuilder extends Builder
         $virtuals = method_exists($this->model, 'getLegacyVirtualColumns') ? $this->model->getLegacyVirtualColumns() : [];
 
         return in_array($name, $virtuals, true);
+    }
+
+    protected function mapValue(string $column, mixed $value): mixed
+    {
+        return method_exists($this->model, 'mapLegacyValue')
+            ? $this->model->mapLegacyValue($column, $value)
+            : $value;
     }
 }

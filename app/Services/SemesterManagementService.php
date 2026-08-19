@@ -63,7 +63,7 @@ class SemesterManagementService
     {
         $destinationSemesters = $this->semestersForPeriod($destination);
         $students = User::query()
-            ->where('perfil_id', 3)
+            ->students()
             ->where('activo', true)
             ->whereBetween('semestre', [5, 9])
             ->get(['id', 'semestre']);

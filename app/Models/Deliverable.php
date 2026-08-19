@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToCareer;
 use App\Models\Concerns\HasLegacyAliases;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Deliverable extends Model
 {
-    use HasFactory, HasLegacyAliases;
+    use HasFactory, HasLegacyAliases, BelongsToCareer;
 
     protected $table = 'entregables';
     const CREATED_AT = 'creado_en';
@@ -36,7 +37,7 @@ class Deliverable extends Model
     ];
 
     protected $fillable = [
-        'curso_id', 'nombre', 'descripcion', 'tipo_documento', 'fecha_limite', 'estado', 'activo',
+        'carrera_id', 'curso_id', 'nombre', 'descripcion', 'tipo_documento', 'fecha_limite', 'estado', 'activo',
         'project_id', 'competencia_id', 'categoria', 'autores', 'archivo_path', 'submitted_by',
         'calificacion', 'fecha_calificacion', 'calificado_por', 'rama_asociada',
     ];

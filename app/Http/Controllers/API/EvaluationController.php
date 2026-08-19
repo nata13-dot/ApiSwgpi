@@ -10,7 +10,9 @@ use App\Models\EvaluationScore;
 use App\Models\Project;
 use App\Models\RepositoryDocument;
 use App\Models\RubricCriterion;
+use App\Models\Rubric;
 use App\Models\SystemSetting;
+use App\Models\CareerSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,7 @@ use Illuminate\Validation\Rule;
 use App\Services\ActivityNotificationService;
 use Illuminate\Validation\ValidationException;
 use App\Services\SemesterManagementService;
+use App\Support\CareerContext;
 
 class EvaluationController extends Controller
 {
@@ -71,6 +74,7 @@ class EvaluationController extends Controller
         $query = RubricCriterion::query()
             ->select('criterios_rubrica.*', 'rubricas.semestre as semestre')
             ->join('rubricas', 'rubricas.id', '=', 'criterios_rubrica.rubrica_id')
+            ->where('rubricas.carrera_id', app(CareerContext::class)->careerId())
             ->where('criterios_rubrica.activo', true)
             ->orderBy('rubricas.semestre')
             ->orderBy('criterios_rubrica.orden')
@@ -108,9 +112,41 @@ class EvaluationController extends Controller
 
         $modes = $this->rubricScoreModes();
         $modes[(string) $validated['semester']] = $validated['mode'];
-        SystemSetting::setValue('rubric_score_modes', $modes, 'array', 'Metodo de puntaje de rubrica por semestre');
+        CareerSetting::setValue('rubric_score_modes', $modes, 'array', 'Metodo de puntaje de rubrica por semestre');
 
         return response()->json(['message' => 'Metodo de rubrica guardado', 'score_modes' => $modes]);
+    }
+
+    public function initializeRubrics()
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        $definitions = [
+            5 => ['etapa' => 'propuesta', 'nombre' => 'Rúbrica de propuesta - 5.º semestre'],
+            6 => ['etapa' => 'avance', 'nombre' => 'Rúbrica de avance - 6.º semestre'],
+            7 => ['etapa' => 'avance', 'nombre' => 'Rúbrica de avance - 7.º semestre'],
+            8 => ['etapa' => 'titulacion', 'nombre' => 'Rúbrica de titulación - 8.º semestre'],
+        ];
+        $created = 0;
+
+        foreach ($definitions as $semester => $definition) {
+            $rubric = Rubric::firstOrCreate(
+                ['etapa' => $definition['etapa'], 'semestre' => $semester],
+                ['nombre' => $definition['nombre'], 'activa' => true]
+            );
+            $created += $rubric->wasRecentlyCreated ? 1 : 0;
+        }
+
+        $modes = CareerSetting::valueFor('rubric_score_modes', []);
+        CareerSetting::setValue('rubric_score_modes', array_replace([
+            '5' => 'numeric', '6' => 'levels', '7' => 'levels', '8' => 'levels',
+        ], $modes), 'array', 'Método de puntaje de rúbrica por semestre');
+
+        return response()->json([
+            'message' => $created ? 'Rúbricas inicializadas correctamente.' : 'Las rúbricas ya estaban inicializadas.',
+            'created' => $created,
+            'rubrics' => Rubric::query()->orderBy('semestre')->get(),
+        ]);
     }
 
     public function storeCriterion(Request $request)
@@ -139,20 +175,29 @@ class EvaluationController extends Controller
             }
 
             $baseKey = Str::limit(Str::slug($validated['pregunta'], '_') ?: 'criterio', 64, '');
+            $rubric = Rubric::query()
+                ->where('semestre', $validated['semestre'])
+                ->where('activa', true)
+                ->first();
+            if (!$rubric) {
+                throw ValidationException::withMessages([
+                    'semestre' => ['Inicializa las rúbricas de la carrera antes de agregar preguntas.'],
+                ]);
+            }
             $key = $project ? Str::limit('p' . $project->id . '_' . $baseKey, 80, '') : $baseKey;
             $suffix = 2;
-            while (RubricCriterion::where('semestre', $validated['semestre'])->where('clave', $key)->exists()) {
+            while (RubricCriterion::where('rubrica_id', $rubric->id)->where('clave', $key)->exists()) {
                 $prefix = $project ? 'p' . $project->id . '_' : '';
                 $key = $prefix . Str::limit($baseKey, 80 - strlen($prefix) - strlen((string) $suffix) - 1, '') . '_' . $suffix;
                 $suffix++;
             }
 
             $criterion = RubricCriterion::create([
-                'semestre' => $validated['semestre'],
+                'rubrica_id' => $rubric->id,
                 'project_id' => $validated['project_id'] ?? null,
                 'clave' => $key,
                 'pregunta' => $validated['pregunta'],
-                'orden' => $validated['orden'] ?? ((int) RubricCriterion::where('semestre', $validated['semestre'])->where('project_id', $validated['project_id'] ?? null)->max('orden') + 1),
+                'orden' => $validated['orden'] ?? ((int) RubricCriterion::where('rubrica_id', $rubric->id)->where('project_id', $validated['project_id'] ?? null)->max('orden') + 1),
                 'activo' => true,
             ]);
 
@@ -166,7 +211,7 @@ class EvaluationController extends Controller
     {
         if ($guard = $this->guardEvaluationManager()) return $guard;
 
-        $criterion = RubricCriterion::find($id);
+        $criterion = RubricCriterion::whereHas('rubric')->find($id);
         if (!$criterion) {
             return response()->json(['error' => 'Pregunta no encontrada'], 404);
         }
@@ -198,7 +243,7 @@ class EvaluationController extends Controller
     {
         if ($guard = $this->guardEvaluationManager()) return $guard;
 
-        $criterion = RubricCriterion::find($id);
+        $criterion = RubricCriterion::whereHas('rubric')->find($id);
         if (!$criterion) {
             return response()->json(['error' => 'Pregunta no encontrada'], 404);
         }
@@ -1019,7 +1064,7 @@ class EvaluationController extends Controller
         if ($guard = $this->guardEvaluationManager()) return $guard;
 
         $managerIds = $this->evaluationManagerIds();
-        $teachers = User::where('perfil_id', 2)
+        $teachers = User::teachers()
             ->where('activo', true)
             ->orderBy('nombres')
             ->get(['id', 'nombres', 'apa', 'ama', 'email']);
@@ -1411,7 +1456,7 @@ class EvaluationController extends Controller
 
     private function rubricScoreModes(): array
     {
-        $modes = SystemSetting::valueFor('rubric_score_modes', []);
+        $modes = CareerSetting::valueFor('rubric_score_modes', []);
         $defaults = ['5' => 'levels', '6' => 'levels', '7' => 'levels', '8' => 'levels'];
 
         return array_replace($defaults, array_intersect_key((array) $modes, $defaults));
@@ -1548,7 +1593,7 @@ class EvaluationController extends Controller
     public function updateManagers(Request $request)
     {
         $user = auth('api')->user();
-        if ((int) $user->perfil_id !== 1) {
+        if (!$user->canManageProjects()) {
             return response()->json(['error' => 'Solo administracion puede asignar responsables de evaluaciones.'], 403);
         }
 
@@ -1563,7 +1608,7 @@ class EvaluationController extends Controller
             ->values()
             ->all();
 
-        SystemSetting::setValue('evaluation_manager_teacher_ids', $teacherIds, 'array', 'Docentes con acceso completo a gestion de evaluaciones');
+        CareerSetting::setValue('evaluation_manager_teacher_ids', $teacherIds, 'array', 'Docentes con acceso completo a gestion de evaluaciones');
 
         return response()->json([
             'message' => 'Responsables de evaluaciones actualizados',
@@ -1623,6 +1668,7 @@ class EvaluationController extends Controller
         return RubricCriterion::query()
             ->select('criterios_rubrica.*', 'rubricas.semestre as semestre')
             ->join('rubricas', 'rubricas.id', '=', 'criterios_rubrica.rubrica_id')
+            ->where('rubricas.carrera_id', app(CareerContext::class)->careerId())
             ->where('rubricas.semestre', $evaluation->semestre)
             ->where('criterios_rubrica.activo', true)
             ->where(function ($query) use ($evaluation) {
@@ -1676,6 +1722,7 @@ class EvaluationController extends Controller
 
         return $this->criteriaLabelCache[$semester] = RubricCriterion::query()
             ->join('rubricas', 'rubricas.id', '=', 'criterios_rubrica.rubrica_id')
+            ->where('rubricas.carrera_id', app(CareerContext::class)->careerId())
             ->where('rubricas.semestre', $semester)
             ->where('criterios_rubrica.activo', true)
             ->pluck('criterios_rubrica.pregunta', 'criterios_rubrica.clave')
@@ -2085,7 +2132,7 @@ class EvaluationController extends Controller
 
     private function evaluationManagerIds(): array
     {
-        return collect(SystemSetting::valueFor('evaluation_manager_teacher_ids', []))
+        return collect(CareerSetting::valueFor('evaluation_manager_teacher_ids', []))
             ->map(fn ($id) => (string) $id)
             ->unique()
             ->values()
@@ -2097,7 +2144,7 @@ class EvaluationController extends Controller
         if (!$user) {
             return false;
         }
-        if ((int) $user->perfil_id === 1) {
+        if ($user->canManageProjects()) {
             return true;
         }
 

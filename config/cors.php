@@ -50,17 +50,21 @@ return [
         'http://127.0.0.1:8000',
         'https://swgpi.online',
         'https://www.swgpi.online',
-        'http://swgpi.online',
-        'http://www.swgpi.online',
         'https://frontsgwpi-production.up.railway.app',
     ], $frontendOrigins))),
 
     'allowed_origins_patterns' => [
-        '#^https://[a-z0-9-]+\.up\.railway\.app$#i',
         '#^https://([a-z0-9-]+\.)?swgpi\.online$#i',
     ],
 
-    'allowed_headers' => ['*'],
+    'allowed_headers' => [
+        'Authorization',
+        'Content-Type',
+        'Accept',
+        'Origin',
+        'X-Requested-With',
+        'X-SGPI-Remember',
+    ],
 
     'exposed_headers' => [],
 

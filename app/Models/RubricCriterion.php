@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\HasLegacyAliases;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RubricCriterion extends Model
 {
@@ -33,6 +34,11 @@ class RubricCriterion extends Model
     public function project()
     {
         return $this->belongsTo(Project::class, 'proyecto_id');
+    }
+
+    public function rubric(): BelongsTo
+    {
+        return $this->belongsTo(Rubric::class, 'rubrica_id');
     }
 
     public function getSemestreAttribute(): ?int

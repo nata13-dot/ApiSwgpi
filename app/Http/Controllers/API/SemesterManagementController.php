@@ -48,7 +48,7 @@ class SemesterManagementController extends Controller
             'periods' => $periods,
             'exceptions' => $exceptions,
             'stats' => [
-                'students' => User::where('perfil_id', 3)->where('activo', true)->count(),
+                'students' => User::students()->where('activo', true)->count(),
                 'projects' => Project::where('activo', true)->count(),
                 'groups' => SubjectGroup::where('activo', true)->whereBetween('semestre', [5, 9])->count(),
                 'exceptions' => $exceptions->count(),
@@ -83,7 +83,7 @@ class SemesterManagementController extends Controller
     {
         $destinationSemesters = $this->semesterService->semestersForPeriod($period);
         $students = User::query()
-            ->where('perfil_id', 3)
+            ->students()
             ->where('activo', true)
             ->whereBetween('semestre', [5, 9])
             ->get(['id', 'semestre', 'grupo']);
@@ -124,7 +124,7 @@ class SemesterManagementController extends Controller
         }
 
         $students = User::query()
-            ->where('perfil_id', 3)
+            ->students()
             ->where('activo', true)
             ->where(function ($query) use ($term) {
                 $query->where('id', 'like', "%{$term}%")

@@ -11,6 +11,7 @@ use App\Support\AcademicPeriod;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Support\CareerContext;
 
 class SubjectGroupController extends Controller
 {
@@ -42,7 +43,7 @@ class SubjectGroupController extends Controller
             $this->ensureUniqueGroup($groupData['semestre'], $groupData['grupo']);
 
             $group = SubjectGroup::create($groupData);
-            $group->asignaturas()->sync($validated['asignatura_ids'] ?? []);
+            $group->asignaturas()->sync($this->courseSyncPayload($validated['asignatura_ids'] ?? []));
 
             return response()->json([
                 'message' => 'Carga de asignaturas creada',
@@ -78,9 +79,9 @@ class SubjectGroupController extends Controller
             $this->ensureUniqueGroup($groupData['semestre'], $groupData['grupo'], (int) $group->id);
 
             $group->update($groupData);
-            $group->asignaturas()->sync($validated['asignatura_ids'] ?? []);
+            $group->asignaturas()->sync($this->courseSyncPayload($validated['asignatura_ids'] ?? []));
 
-            User::where('perfil_id', 3)
+            User::students()
                 ->where('activo', true)
                 ->where('semestre', $previousSemester)
                 ->where('grupo', $previousGroup)
@@ -113,7 +114,7 @@ class SubjectGroupController extends Controller
             return response()->json(['message' => 'No puedes eliminar una carga usada por proyectos.'], 422);
         }
 
-        User::where('perfil_id', 3)
+        User::students()
             ->where('activo', true)
             ->where('semestre', $group->semestre)
             ->where('grupo', $group->grupo)
@@ -133,7 +134,7 @@ class SubjectGroupController extends Controller
             return response()->json(['error' => 'Grupo no encontrado'], 404);
         }
 
-        $students = User::where('perfil_id', 3)
+        $students = User::students()
             ->where('activo', true)
             ->where('semestre', $group->semestre)
             ->where('grupo', $group->grupo)
@@ -157,7 +158,7 @@ class SubjectGroupController extends Controller
 
         $studentIds = array_values(array_unique($validated['student_ids'] ?? []));
         User::whereIn('id', $studentIds)
-            ->where('perfil_id', 3)
+            ->students()
             ->where('activo', true)
             ->update(['semestre' => $group->semestre, 'grupo' => $group->grupo]);
 
@@ -175,7 +176,11 @@ class SubjectGroupController extends Controller
             'grupo' => 'required|string|max:20',
             'periodo' => ['nullable', 'string', 'regex:/^20\d{2}-[12]$/'],
             'asignatura_ids' => 'nullable|array',
-            'asignatura_ids.*' => 'integer|exists:asignaturas,id',
+            'asignatura_ids.*' => [
+                'integer',
+                Rule::exists('asignaturas', 'id')
+                    ->where('carrera_id', app(CareerContext::class)->careerId()),
+            ],
         ]);
 
         $validated['nombre'] = trim($validated['nombre']);
@@ -232,5 +237,14 @@ class SubjectGroupController extends Controller
                 'grupo' => ["Ya existe un grupo {$semestre} {$grupo}. Usa otra letra o edita el grupo existente."],
             ]);
         }
+    }
+
+    private function courseSyncPayload(array $subjectIds): array
+    {
+        $careerId = app(CareerContext::class)->careerId();
+
+        return collect($subjectIds)
+            ->mapWithKeys(fn ($subjectId) => [(int) $subjectId => ['carrera_id' => $careerId]])
+            ->all();
     }
 }

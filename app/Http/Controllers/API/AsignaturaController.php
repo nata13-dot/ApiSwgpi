@@ -7,6 +7,7 @@ use App\Models\Asignatura;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Support\CareerContext;
 
 class AsignaturaController extends Controller
 {
@@ -23,7 +24,11 @@ class AsignaturaController extends Controller
     {
         try {
             $validated = $request->validate([
-                'clave' => 'nullable|string|max:50|unique:asignaturas,clave',
+                'clave' => [
+                    'nullable', 'string', 'max:50',
+                    Rule::unique('asignaturas', 'clave')
+                        ->where('carrera_id', app(CareerContext::class)->careerId()),
+                ],
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'nullable|string',
             ]);
@@ -63,7 +68,12 @@ class AsignaturaController extends Controller
             }
 
             $validated = $request->validate([
-                'clave' => ['nullable', 'string', 'max:50', Rule::unique('asignaturas', 'clave')->ignore($asignatura->id)],
+                'clave' => [
+                    'nullable', 'string', 'max:50',
+                    Rule::unique('asignaturas', 'clave')
+                        ->where('carrera_id', app(CareerContext::class)->careerId())
+                        ->ignore($asignatura->id),
+                ],
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'nullable|string',
             ]);

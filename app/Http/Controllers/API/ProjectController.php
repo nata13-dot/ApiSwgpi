@@ -10,6 +10,7 @@ use App\Models\ProjectRegistrationWindow;
 use App\Models\ProposalReviewException;
 use App\Models\SubjectGroup;
 use App\Models\SystemSetting;
+use App\Models\CareerSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -180,7 +181,7 @@ class ProjectController extends Controller
                     ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
             });
 
-        if ((int) $user->perfil_id === 1) {
+        if ($user->canManageProjects()) {
             $query->where(function ($scope) {
                 $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
             });
@@ -207,7 +208,7 @@ class ProjectController extends Controller
             $isStudentProposal = (int) $user->perfil_id === 3;
 
             if ($isStudentProposal) {
-                if (!SystemSetting::valueFor('proposal_registration_enabled', true)) {
+                if (!CareerSetting::valueFor('proposal_registration_enabled', true)) {
                     throw ValidationException::withMessages(['proposal_registration_enabled' => ['El registro de propuestas esta desactivado temporalmente.']]);
                 }
                 $this->guardStudentCanSubmitProposal($user, (int) ($validated['subject_group_id'] ?? 0));
@@ -233,7 +234,7 @@ class ProjectController extends Controller
                     'proposal_status' => $isStudentProposal ? 'pendiente' : 'aprobado',
                     'tipo' => $isStudentProposal
                         ? 'propuesta'
-                        : (((int) $user->perfil_id === 1 && (bool) ($validated['is_thesis'] ?? false)) ? 'tesis' : 'desarrollo'),
+                        : (($user->canManageProjects() && (bool) ($validated['is_thesis'] ?? false)) ? 'tesis' : 'desarrollo'),
                     'created_by' => $user->id,
                 ]);
 
@@ -275,7 +276,7 @@ class ProjectController extends Controller
 
             $user = auth('api')->user();
             $validated = $request->validate($this->projectRules(false, (int) $user->perfil_id));
-            if ((int) $user->perfil_id !== 1) {
+            if (!$user->canManageProjects()) {
                 unset($validated['is_thesis']);
             }
 
@@ -318,7 +319,7 @@ class ProjectController extends Controller
                 $this->syncSubjectsFromGroup($project);
             }
 
-            if ((int) $user->perfil_id === 1 && array_key_exists('student_ids', $validated)) {
+            if ($user->canManageProjects() && array_key_exists('student_ids', $validated)) {
                 $this->syncStudents($project, $validated['student_ids'] ?? []);
             }
 
@@ -337,7 +338,7 @@ class ProjectController extends Controller
         if (!$project) {
             return response()->json(['error' => 'Proyecto no encontrado'], 404);
         }
-        if ((int) auth('api')->user()->perfil_id !== 1) {
+        if (!auth('api')->user()->canManageProjects()) {
             return response()->json(['error' => 'Solo administradores pueden eliminar proyectos'], 403);
         }
         $project->delete();
@@ -494,7 +495,7 @@ class ProjectController extends Controller
             return response()->json(['error' => 'Proyecto no encontrado'], 404);
         }
 
-        if ((int) auth('api')->user()->perfil_id !== 1) {
+        if (!auth('api')->user()->canManageProjects()) {
             return response()->json(['error' => 'Solo administradores pueden ajustar materias del proyecto'], 403);
         }
 
@@ -704,8 +705,8 @@ class ProjectController extends Controller
     private function guardAdvisorModification(Request $request)
     {
         $currentAdmin = auth('api')->user();
-        if (!$currentAdmin || (int) $currentAdmin->perfil_id !== 1) {
-            return response()->json(['error' => 'Solo un administrador puede modificar asesores'], 403);
+        if (!$currentAdmin || !$currentAdmin->canManageProjects()) {
+            return response()->json(['error' => 'No tienes permisos para modificar asesores'], 403);
         }
 
         return null;
@@ -714,7 +715,7 @@ class ProjectController extends Controller
     private function syncStudents(Project $project, array $studentIds): void
     {
         $studentIds = array_values(array_unique(array_filter($studentIds)));
-        $maxMembers = (int) SystemSetting::valueFor('max_project_members', 4);
+        $maxMembers = (int) CareerSetting::valueFor('max_project_members', 4);
         if (count($studentIds) > $maxMembers) {
             throw ValidationException::withMessages(['student_ids' => ["El proyecto puede tener como maximo {$maxMembers} integrantes."]]);
         }

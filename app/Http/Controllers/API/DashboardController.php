@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\User;
+use App\Support\CareerContext;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -13,9 +14,14 @@ class DashboardController extends Controller
     private const PROPOSAL_STATUSES = ['borrador', 'pendiente', 'en_revision', 'requiere_cambios', 'aprobado', 'rechazado', 'finalizado', 'archivado'];
     private const DELIVERABLE_STATUSES = ['borrador', 'publicado', 'cerrado'];
 
+    public function __construct(private readonly CareerContext $careerContext)
+    {
+    }
+
     public function stats()
     {
-        $loadPayload = function () {
+        $careerId = $this->careerContext->careerId();
+        $loadPayload = function () use ($careerId) {
             $recentProjects = DB::table('proyectos')
                 ->leftJoin('usuarios as creador', 'creador.id', '=', 'proyectos.creado_por')
                 ->select([
@@ -27,6 +33,7 @@ class DashboardController extends Controller
                     'creador.apellido_paterno as creador_apa',
                     'creador.apellido_materno as creador_ama',
                 ])
+                ->where('proyectos.carrera_id', $careerId)
                 ->where('proyectos.activo', true)
                 ->orderByDesc('proyectos.creado_en')
                 ->limit(5)
@@ -44,24 +51,34 @@ class DashboardController extends Controller
                 ]);
 
             $deliverableStatusCounts = $this->statusCounts(
-                DB::table('entregables')->where('activo', true),
+                DB::table('entregables')
+                    ->join('cursos', 'cursos.id', '=', 'entregables.curso_id')
+                    ->join('grupos_academicos', 'grupos_academicos.id', '=', 'cursos.grupo_id')
+                    ->where('grupos_academicos.carrera_id', $careerId)
+                    ->where('entregables.activo', true),
                 'estado',
                 self::DELIVERABLE_STATUSES
             );
             $projectProposalCounts = $this->statusCounts(
-                DB::table('proyectos')->where('activo', true)->where('tipo', 'propuesta'),
+                DB::table('proyectos')->where('carrera_id', $careerId)->where('activo', true)->where('tipo', 'propuesta'),
                 'estado',
                 self::PROPOSAL_STATUSES
             );
-            $userCounts = DB::table('usuarios')->selectRaw(
+            $userCounts = DB::table('usuarios')
+                ->join('usuario_carrera', 'usuario_carrera.usuario_id', '=', 'usuarios.id')
+                ->where('usuario_carrera.carrera_id', $careerId)
+                ->selectRaw(
                 'COUNT(*) AS total_users,
-                SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) AS active_users,
-                SUM(CASE WHEN activo = 0 THEN 1 ELSE 0 END) AS inactive_users,
-                SUM(CASE WHEN perfil_id = 1 THEN 1 ELSE 0 END) AS administrators,
-                SUM(CASE WHEN perfil_id = 2 THEN 1 ELSE 0 END) AS teachers,
-                SUM(CASE WHEN perfil_id = 3 THEN 1 ELSE 0 END) AS students'
+                SUM(CASE WHEN usuarios.activo = 1 AND usuario_carrera.activo = 1 THEN 1 ELSE 0 END) AS active_users,
+                SUM(CASE WHEN usuarios.activo = 0 OR usuario_carrera.activo = 0 THEN 1 ELSE 0 END) AS inactive_users,
+                SUM(CASE WHEN usuario_carrera.perfil_id = 1 THEN 1 ELSE 0 END) AS administrators,
+                SUM(CASE WHEN usuario_carrera.perfil_id = 2 THEN 1 ELSE 0 END) AS teachers,
+                SUM(CASE WHEN usuario_carrera.perfil_id = 3 THEN 1 ELSE 0 END) AS students,
+                SUM(CASE WHEN usuario_carrera.perfil_id = 5 THEN 1 ELSE 0 END) AS career_heads,
+                SUM(CASE WHEN usuario_carrera.perfil_id = 6 THEN 1 ELSE 0 END) AS career_head_assistants,
+                SUM(CASE WHEN usuario_carrera.perfil_id = 7 THEN 1 ELSE 0 END) AS project_coordinators'
             )->first();
-            $projectCounts = DB::table('proyectos')->selectRaw(
+            $projectCounts = DB::table('proyectos')->where('carrera_id', $careerId)->selectRaw(
                 'COUNT(*) AS total_projects,
                 SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) AS active_projects'
             )->first();
@@ -73,9 +90,12 @@ class DashboardController extends Controller
                     'total_users' => (int) $userCounts->total_users,
                     'active_users' => (int) $userCounts->active_users,
                     'inactive_users' => (int) $userCounts->inactive_users,
+                    'career_heads' => (int) $userCounts->career_heads,
+                    'career_head_assistants' => (int) $userCounts->career_head_assistants,
+                    'project_coordinators' => (int) $userCounts->project_coordinators,
                     'total_projects' => (int) $projectCounts->total_projects,
                     'active_projects' => (int) $projectCounts->active_projects,
-                    'total_asignaturas' => DB::table('asignaturas')->count(),
+                    'total_asignaturas' => DB::table('asignaturas')->where('carrera_id', $careerId)->count(),
                     'pending_deliverables' => $deliverableStatusCounts['publicado'] ?? 0,
                     'approved_deliverables' => $approvedDeliverables,
                     'deliverable_completion_rate' => $this->percentage($approvedDeliverables, $totalDeliverables),
@@ -96,7 +116,7 @@ class DashboardController extends Controller
 
         try {
             $payload = Cache::store(config('auth.activity_cache_store', 'file'))
-                ->remember('dashboard:admin:stats:v3', now()->addSeconds(20), $loadPayload);
+                ->remember("dashboard:admin:stats:v5:career:{$careerId}", now()->addSeconds(20), $loadPayload);
         } catch (\Throwable) {
             $payload = $loadPayload();
         }

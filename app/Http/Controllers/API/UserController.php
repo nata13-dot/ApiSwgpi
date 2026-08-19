@@ -12,19 +12,29 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Models\UserCareer;
 
 class UserController extends Controller
 {
     public function index(Request $request)
     {
-        $compact = $request->boolean('compact');
+        $careerId = app(\App\Support\CareerContext::class)->careerId();
+        $canGovernUsers = auth('api')->user()?->globalProfileId() === 4;
+        $compact = !$canGovernUsers || $request->boolean('compact');
         $hasPhoneTable = Schema::hasTable('usuarios_telefonos');
-        $query = User::query();
+        $query = User::withoutGlobalScope('careerMembership')
+            ->whereHas('careerMemberships', fn ($membershipQuery) => $membershipQuery
+                ->where('carrera_id', $careerId));
 
         if ($compact) {
-            $query->select(['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo', 'telefono', 'perfil_id', 'activo']);
-            if ($hasPhoneTable) {
+            $columns = ['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'perfil_id', 'activo'];
+            if ($canGovernUsers) {
+                $columns = [...$columns, 'correo', 'telefono'];
+            }
+            $query->select($columns);
+            if ($canGovernUsers && $hasPhoneTable) {
                 $query->with('phoneNumbers');
             }
         } else {
@@ -37,45 +47,72 @@ class UserController extends Controller
             ]);
         }
 
+        $query->addSelect([
+            'career_profile_id' => UserCareer::query()
+                ->select('perfil_id')
+                ->whereColumn('usuario_carrera.usuario_id', 'usuarios.id')
+                ->where('usuario_carrera.carrera_id', $careerId)
+                ->limit(1),
+            'career_membership_active' => UserCareer::query()
+                ->select('activo')
+                ->whereColumn('usuario_carrera.usuario_id', 'usuarios.id')
+                ->where('usuario_carrera.carrera_id', $careerId)
+                ->limit(1),
+        ]);
+
         if ($request->query('status') === 'inactive') {
-            $query->where('activo', false);
+            $query->where(function ($statusQuery) use ($careerId): void {
+                $statusQuery->where('usuarios.activo', false)
+                    ->orWhereHas('careerMemberships', fn ($membershipQuery) => $membershipQuery
+                        ->where('carrera_id', $careerId)
+                        ->where('activo', false));
+            });
         } elseif ($request->query('status') !== 'all') {
-            $query->where('activo', true);
+            $query->where('usuarios.activo', true)
+                ->whereHas('careerMemberships', fn ($membershipQuery) => $membershipQuery
+                    ->where('carrera_id', $careerId)
+                    ->where('activo', true));
         }
 
         if ($request->filled('perfil_id')) {
-            $query->where('perfil_id', $request->perfil_id);
+            $query->whereHas('careerMemberships', fn ($membershipQuery) => $membershipQuery
+                ->where('carrera_id', $careerId)
+                ->where('perfil_id', (int) $request->perfil_id));
         } elseif ($request->filled('perfil_ids')) {
             $profileIds = collect(explode(',', (string) $request->query('perfil_ids')))
                 ->map(fn ($id) => (int) trim($id))
-                ->filter(fn ($id) => in_array($id, [1, 2, 3], true))
+                ->filter(fn ($id) => in_array($id, [1, 2, 3, 5, 6, 7], true))
                 ->unique()
                 ->values();
 
             if ($profileIds->isNotEmpty()) {
-                $query->whereIn('perfil_id', $profileIds);
+                $query->whereHas('careerMemberships', fn ($membershipQuery) => $membershipQuery
+                    ->where('carrera_id', $careerId)
+                    ->whereIn('perfil_id', $profileIds->all()));
             }
         }
 
         if ($request->filled('semestre')) {
-            $query->whereExists(function ($subquery) use ($request) {
+            $query->whereExists(function ($subquery) use ($request, $careerId) {
                 $subquery->selectRaw('1')
                     ->from('grupo_estudiantes')
                     ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
                     ->whereColumn('grupo_estudiantes.estudiante_id', 'usuarios.id')
                     ->where('grupo_estudiantes.activo', true)
+                    ->where('grupos_academicos.carrera_id', $careerId)
                     ->where('grupos_academicos.semestre', $request->semestre);
             });
         }
 
         if ($request->filled('grupo')) {
             $group = strtoupper($request->grupo);
-            $query->whereExists(function ($subquery) use ($group) {
+            $query->whereExists(function ($subquery) use ($group, $careerId) {
                 $subquery->selectRaw('1')
                     ->from('grupo_estudiantes')
                     ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
                     ->whereColumn('grupo_estudiantes.estudiante_id', 'usuarios.id')
                     ->where('grupo_estudiantes.activo', true)
+                    ->where('grupos_academicos.carrera_id', $careerId)
                     ->where('grupos_academicos.clave_grupo', $group);
             });
         }
@@ -98,12 +135,28 @@ class UserController extends Controller
         }
 
         if ($request->boolean('without_project')) {
-            $query->where('perfil_id', 3)
+            $query->students()
                 ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->where('proyecto_integrantes.rol', 'integrante'));
         }
 
         $perPage = min((int) $request->query('per_page', $compact ? 100 : 15), $compact ? 500 : 100);
-        return response()->json($query->orderByDesc('activo')->orderBy('perfil_id')->orderBy('nombres')->paginate($perPage));
+        $users = $query
+            ->orderByDesc('career_membership_active')
+            ->orderByDesc('usuarios.activo')
+            ->orderBy('career_profile_id')
+            ->orderBy('nombres')
+            ->paginate($perPage);
+        $users->getCollection()->transform(function (User $user): User {
+            $accountActive = (bool) $user->getRawOriginal('activo');
+            $membershipActive = (bool) $user->getAttribute('career_membership_active');
+            $user->setAttribute('account_active', $accountActive);
+            $user->setAttribute('membership_active', $membershipActive);
+            $user->setAttribute('activo', $accountActive && $membershipActive);
+
+            return $user;
+        });
+
+        return response()->json($users);
     }
 
     public function store(Request $request)
@@ -114,7 +167,7 @@ class UserController extends Controller
                 'nombres' => 'required|string|max:200',
                 'email' => 'nullable|email|unique:usuarios,correo',
                 'password' => 'required|string|min:6|max:72|confirmed',
-                'perfil_id' => 'required|integer|in:1,2,3',
+                'perfil_id' => 'required|integer|in:1,2,3,5,6,7',
                 'semestre' => 'nullable|integer|in:5,6,7,8,9',
                 'grupo' => 'nullable|string|max:20',
                 'apa' => 'nullable|string|max:100',
@@ -171,6 +224,7 @@ class UserController extends Controller
                 'nombres' => 'nullable|string|max:200',
                 'email' => 'nullable|email|unique:usuarios,correo,' . $user->id . ',id',
                 'activo' => 'nullable|boolean',
+                'perfil_id' => 'nullable|integer|in:1,2,3,5,6,7',
                 'admin_password' => 'nullable|string|max:72',
                 'semestre' => 'nullable|integer|in:5,6,7,8,9',
                 'grupo' => 'nullable|string|max:20',
@@ -181,9 +235,10 @@ class UserController extends Controller
                 'password' => 'nullable|string|min:6|max:72|confirmed',
             ]);
 
-            $touchesProtectedAdmin = (int) $user->perfil_id === 1
+            $touchesProtectedAdmin = $user->isAdmin()
                 && (
                     (array_key_exists('activo', $validated) && !$validated['activo'])
+                    || (array_key_exists('perfil_id', $validated) && (int) $validated['perfil_id'] !== (int) $user->perfil_id)
                 );
 
             if ($touchesProtectedAdmin) {
@@ -200,13 +255,18 @@ class UserController extends Controller
                 unset($validated['password']);
             }
 
-            $academicAssignment = $this->pullAcademicAssignment($validated, (int) $user->perfil_id);
+            $careerProfileId = (int) ($validated['perfil_id'] ?? $user->perfil_id);
+            $academicAssignment = $this->pullAcademicAssignment($validated, $careerProfileId);
+            unset($validated['perfil_id']);
             $this->preparePhoneData($validated);
             if (!empty($validated['direccion'])) {
                 $validated['direccion'] = $this->normalizeAddress($validated['direccion']);
             }
-            DB::transaction(function () use ($user, $validated, $academicAssignment) {
+            DB::transaction(function () use ($user, $validated, $academicAssignment, $careerProfileId) {
                 $user->update($validated);
+                $user->careerMemberships()
+                    ->where('carrera_id', app(\App\Support\CareerContext::class)->careerId())
+                    ->update(['perfil_id' => $careerProfileId, 'actualizado_en' => now()]);
                 $this->syncAcademicAssignment($user, $academicAssignment);
             });
             return response()->json([
@@ -220,7 +280,10 @@ class UserController extends Controller
 
     public function destroy(Request $request, $id)
     {
-        $user = User::find($id);
+        $careerId = app(\App\Support\CareerContext::class)->careerId();
+        $user = User::withoutGlobalScope('careerMembership')
+            ->whereHas('careerMemberships', fn ($query) => $query->where('carrera_id', $careerId))
+            ->find($id);
         if (!$user) {
             return response()->json(['error' => 'Usuario no encontrado'], 404);
         }
@@ -229,54 +292,76 @@ class UserController extends Controller
             return response()->json(['error' => 'No puedes eliminar tu propio usuario administrador.'], 422);
         }
 
-        $guard = $this->guardAdminSensitiveAction($request, $user);
+        $membership = $user->careerMemberships()->where('carrera_id', $careerId)->firstOrFail();
+        $guard = $this->guardAdminSensitiveAction($request, $user, (int) $membership->perfil_id);
         if ($guard) {
             return $guard;
         }
 
-        DB::transaction(function () use ($user) {
-            $user->update(['activo' => false]);
+        DB::transaction(function () use ($user, $careerId) {
+            $user->careerMemberships()->where('carrera_id', $careerId)->update([
+                'activo' => false,
+                'actualizado_en' => now(),
+            ]);
             $this->deactivateOperationalLinks($user);
+            if (!$user->careerMemberships()->where('activo', true)->exists()) {
+                $user->update(['activo' => false]);
+            }
         });
-        return response()->json(['message' => 'Usuario desactivado']);
+        return response()->json(['message' => 'Usuario desactivado en la carrera actual']);
     }
 
     public function toggleActive(Request $request, $id)
     {
-        $user = User::find($id);
+        $careerId = app(\App\Support\CareerContext::class)->careerId();
+        $user = User::withoutGlobalScope('careerMembership')
+            ->whereHas('careerMemberships', fn ($query) => $query->where('carrera_id', $careerId))
+            ->find($id);
         if (!$user) {
             return response()->json(['error' => 'Usuario no encontrado'], 404);
         }
 
-        $guard = $this->guardAdminSensitiveAction($request, $user);
+        $membership = $user->careerMemberships()->where('carrera_id', $careerId)->firstOrFail();
+        $guard = $this->guardAdminSensitiveAction($request, $user, (int) $membership->perfil_id);
         if ($guard) {
             return $guard;
         }
 
-        $willBeActive = !$user->activo;
-        DB::transaction(function () use ($user, $willBeActive) {
-            $user->update(['activo' => $willBeActive]);
+        $willBeActive = !$membership->activo;
+        DB::transaction(function () use ($user, $membership, $willBeActive) {
+            $membership->update(['activo' => $willBeActive]);
+            if ($willBeActive && !$user->activo) {
+                $user->update(['activo' => true]);
+            }
             if (!$willBeActive) {
                 $this->deactivateOperationalLinks($user);
+                if (!$user->careerMemberships()->where('activo', true)->exists()) {
+                    $user->update(['activo' => false]);
+                }
             }
         });
-        return response()->json(['message' => 'Estado actualizado', 'activo' => $user->activo]);
+        return response()->json(['message' => 'Estado actualizado', 'activo' => $willBeActive]);
     }
 
-    public function getInactive()
+    public function getInactive(Request $request)
     {
-        return response()->json(User::where('activo', false)->paginate(15));
+        $request->query->set('status', 'inactive');
+
+        return $this->index($request);
     }
 
     private function deactivateOperationalLinks(User $user): void
     {
+        $groupIds = SubjectGroup::query()->pluck('id');
         DB::table('grupo_estudiantes')
             ->where('estudiante_id', $user->id)
+            ->whereIn('grupo_id', $groupIds)
             ->where('activo', true)
             ->update(['activo' => false]);
 
         DB::table('curso_docentes')
             ->where('docente_id', $user->id)
+            ->whereIn('curso_id', DB::table('cursos')->whereIn('grupo_id', $groupIds)->select('id'))
             ->where('activo', true)
             ->update(['activo' => false]);
     }
@@ -312,9 +397,9 @@ class UserController extends Controller
                 'body' => 'required|string|min:20|max:5000',
                 'user_ids' => 'nullable|array|max:200',
                 'user_ids.*' => ['string', 'max:10', 'exists:usuarios,id'],
-                'perfil_id' => 'nullable|integer|in:1,2,3',
-                'perfil_ids' => 'nullable|array|max:3',
-                'perfil_ids.*' => 'integer|in:1,2,3',
+                'perfil_id' => 'nullable|integer|in:1,2,3,5,6,7',
+                'perfil_ids' => 'nullable|array|max:6',
+                'perfil_ids.*' => 'integer|in:1,2,3,5,6,7',
                 'status' => 'nullable|in:active,inactive,all',
                 'semestre' => 'nullable|integer|in:5,6,7,8,9',
                 'grupo' => 'nullable|string|max:20',
@@ -330,7 +415,7 @@ class UserController extends Controller
             ]);
 
             $currentAdmin = auth('api')->user();
-            if (!$currentAdmin || (int) $currentAdmin->perfil_id !== 1) {
+            if (!$currentAdmin || !$currentAdmin->isAdmin()) {
                 return response()->json(['error' => 'Solo un administrador puede enviar credenciales.'], 403);
             }
 
@@ -426,7 +511,7 @@ class UserController extends Controller
             'curp',
             'activo',
         ], [
-            'perfil: usa 1=Administrador, 2=Docente, 3=Estudiante.',
+            'perfil: usa 1=Administrador, 2=Docente, 3=Estudiante, 5=Jefe de Carrera, 6=Asistente de Jefe de Carrera o 7=Coordinador de Proyectos.',
             'semestre y grupo solo aplican para estudiantes.',
             'activo: usa 1 para activo o 0 para inactivo.',
             'No cambies el formato del archivo a .xlsx; usa la plantilla .xls generada por el sistema.',
@@ -442,8 +527,8 @@ class UserController extends Controller
             $this->guardImportExtension($request->file('archivo')->getClientOriginalExtension());
 
             $rows = $this->readTabularUpload($request->file('archivo')->getRealPath());
-            $created = 0;
             $errors = [];
+            $preparedRows = [];
 
             if (empty($rows)) {
                 throw ValidationException::withMessages([
@@ -451,12 +536,28 @@ class UserController extends Controller
                 ]);
             }
 
+            $duplicateIds = collect($rows)
+                ->map(fn ($row) => trim((string) ($row['id'] ?? '')))
+                ->filter()
+                ->duplicates()
+                ->unique()
+                ->values();
+            if ($duplicateIds->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'archivo' => ['Hay identificadores repetidos en el archivo: '.$duplicateIds->join(', ')],
+                ]);
+            }
+
             foreach ($rows as $index => $row) {
                 $line = $index + 2;
                 $profileId = $this->parseProfileValue($row['perfil_id'] ?? 0);
                 $semesterValue = $this->normalizeSpreadsheetValue($row['semestre'] ?? '');
+                $userId = trim((string) ($row['id'] ?? ''));
+                $existing = $userId === ''
+                    ? null
+                    : User::withoutGlobalScopes()->find($userId);
                 $data = [
-                    'id' => trim((string) ($row['id'] ?? '')),
+                    'id' => $userId,
                     'nombres' => trim((string) ($row['nombres'] ?? '')),
                     'apa' => trim((string) ($row['apa'] ?? '')) ?: null,
                     'ama' => trim((string) ($row['ama'] ?? '')) ?: null,
@@ -475,16 +576,16 @@ class UserController extends Controller
                 $validator = Validator::make(
                     $data,
                     [
-                        'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:usuarios,id'],
+                        'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/'],
                         'nombres' => 'required|string|max:200',
-                        'email' => 'nullable|email|unique:usuarios,correo',
+                        'email' => ['nullable', 'email', Rule::unique('usuarios', 'correo')->ignore($existing?->id, 'id')],
                         'password' => 'required|string|min:6|max:72|confirmed',
-                        'perfil_id' => 'required|integer|in:1,2,3',
+                        'perfil_id' => 'required|integer|in:1,2,3,5,6,7',
                         'semestre' => 'nullable|integer|in:5,6,7,8,9',
                         'grupo' => 'nullable|string|max:20',
                         'apa' => 'nullable|string|max:100',
                         'ama' => 'nullable|string|max:100',
-                        'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:usuarios,curp'],
+                        'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', Rule::unique('usuarios', 'curp')->ignore($existing?->id, 'id')],
                         'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
                         'telefonos' => 'nullable|string|max:200',
                         'activo' => 'nullable|boolean',
@@ -498,31 +599,75 @@ class UserController extends Controller
                     continue;
                 }
 
+                if ($existing && $data['email'] && $existing->email && strcasecmp($data['email'], $existing->email) !== 0) {
+                    $errors[] = ['fila' => $line, 'errores' => ['El identificador ya existe con un correo diferente.']];
+                    continue;
+                }
+
+                if ($existing && $profileId === 3 && $existing->careerMemberships()
+                    ->where('activo', true)
+                    ->where('perfil_id', 3)
+                    ->where('carrera_id', '<>', app(\App\Support\CareerContext::class)->careerId())
+                    ->exists()) {
+                    $errors[] = ['fila' => $line, 'errores' => ['El estudiante ya tiene otra carrera activa.']];
+                    continue;
+                }
+
                 $academicAssignment = $this->pullAcademicAssignment($data);
                 $this->preparePhoneData($data);
                 if (!empty($data['direccion'])) {
                     $data['direccion'] = $this->normalizeAddress($data['direccion']);
                 }
-                $data['password'] = Hash::make($data['password']);
                 unset($data['password_confirmation']);
-
-                try {
-                    DB::transaction(function () use ($data, $academicAssignment) {
-                        $user = User::create($data);
-                        $this->syncAcademicAssignment($user, $academicAssignment);
-                    });
-                    $created++;
-                } catch (\Throwable $e) {
-                    report($e);
-                    $errors[] = ['fila' => $line, 'errores' => ['No se pudo crear el usuario: ' . $e->getMessage()]];
-                }
+                $preparedRows[] = compact('data', 'academicAssignment', 'existing', 'profileId', 'line');
             }
+
+            if ($errors) {
+                return response()->json([
+                    'message' => 'No se importó ninguna fila. Corrige el archivo e intenta nuevamente.',
+                    'created' => 0,
+                    'linked' => 0,
+                    'errors' => $errors,
+                ], 422);
+            }
+
+            $summary = DB::transaction(function () use ($preparedRows) {
+                $created = 0;
+                $linked = 0;
+                $careerId = app(\App\Support\CareerContext::class)->careerId();
+
+                foreach ($preparedRows as $prepared) {
+                    $data = $prepared['data'];
+                    $existing = $prepared['existing'];
+                    if ($existing) {
+                        $user = $existing;
+                        UserCareer::updateOrCreate(
+                            ['usuario_id' => $user->id, 'carrera_id' => $careerId],
+                            [
+                                'perfil_id' => $prepared['profileId'],
+                                'activo' => (bool) ($data['activo'] ?? true),
+                                'es_principal' => !$user->careerMemberships()->where('activo', true)->exists(),
+                                'asignado_por' => auth('api')->id(),
+                            ]
+                        );
+                        $linked++;
+                    } else {
+                        $data['password'] = Hash::make($data['password']);
+                        $user = User::create($data);
+                        $created++;
+                    }
+                    $this->syncAcademicAssignment($user, $prepared['academicAssignment']);
+                }
+
+                return compact('created', 'linked');
+            });
 
             return response()->json([
                 'message' => 'Importacion procesada',
-                'created' => $created,
-                'errors' => $errors,
-            ], $errors ? 207 : 201);
+                'created' => $summary['created'],
+                'linked' => $summary['linked'],
+                'errors' => [],
+            ], 201);
         } catch (ValidationException $e) {
             return response()->json(['message' => 'No se pudo importar el archivo', 'errors' => $e->errors()], 422);
         } catch (\Throwable $e) {
@@ -534,15 +679,16 @@ class UserController extends Controller
         }
     }
 
-    private function guardAdminSensitiveAction(Request $request, User $target)
+    private function guardAdminSensitiveAction(Request $request, User $target, ?int $careerProfileId = null)
     {
-        if ((int) $target->perfil_id !== 1) {
+        $protectedProfile = $careerProfileId ?? (int) $target->perfil_id;
+        if (!in_array($protectedProfile, [1, 5], true)) {
             return null;
         }
 
         $currentAdmin = auth('api')->user();
-        if (!$currentAdmin || (int) $currentAdmin->perfil_id !== 1) {
-            return response()->json(['error' => 'Solo un administrador puede modificar otro administrador'], 403);
+        if (!$currentAdmin || $currentAdmin->globalProfileId() !== 4) {
+            return response()->json(['error' => 'Solo el Administrador General puede modificar perfiles con autoridad'], 403);
         }
 
         $password = $request->input('admin_password');
@@ -608,6 +754,7 @@ class UserController extends Controller
 
         DB::table('grupo_estudiantes')
             ->where('estudiante_id', $user->id)
+            ->whereIn('grupo_id', SubjectGroup::query()->pluck('id'))
             ->where('activo', true)
             ->update(['activo' => false]);
 
@@ -657,9 +804,9 @@ class UserController extends Controller
             }
 
             if ($request->filled('perfil_ids')) {
-                $query->whereIn('perfil_id', array_map('intval', $request->input('perfil_ids', [])));
+                $query->withCareerProfiles(array_map('intval', $request->input('perfil_ids', [])));
             } elseif ($request->filled('perfil_id')) {
-                $query->where('perfil_id', $request->input('perfil_id'));
+                $query->withCareerProfiles((int) $request->input('perfil_id'));
             }
 
             if ($request->filled('semestre')) {
@@ -732,6 +879,9 @@ class UserController extends Controller
             1 => 'Administrador',
             2 => 'Docente',
             3 => 'Estudiante',
+            5 => 'Jefe de Carrera',
+            6 => 'Asistente de Jefe de Carrera',
+            7 => 'Coordinador de Proyectos',
             default => 'Usuario',
         };
     }
@@ -1060,6 +1210,9 @@ class UserController extends Controller
             'administrador', 'admin', 'administrativo', 'administrativa' => 1,
             'docente', 'profesor', 'maestro', 'teacher' => 2,
             'estudiante', 'alumno', 'student' => 3,
+            'jefe de carrera', 'jefe_carrera', 'jefatura' => 5,
+            'asistente de jefe de carrera', 'asistente_jefe_carrera', 'asistente de jefatura' => 6,
+            'coordinador de proyectos', 'coordinador_proyectos', 'coordinador' => 7,
             default => 0,
         };
     }

@@ -2,18 +2,19 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToCareer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class DocumentTag extends Model
 {
-    use HasFactory;
+    use HasFactory, BelongsToCareer;
 
     protected $table = 'etiquetas';
     public $timestamps = false;
 
-    protected $fillable = ['nombre', 'color', 'descripcion', 'activo'];
+    protected $fillable = ['carrera_id', 'nombre', 'color', 'descripcion', 'activo'];
 
     protected $casts = [
         'activo' => 'boolean',

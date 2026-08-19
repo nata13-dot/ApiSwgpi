@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(\App\Http\Middleware\EnsureCorsHeaders::class);
+        $middleware->prepend(\App\Http\Middleware\SecurityHeaders::class);
         $middleware->redirectGuestsTo(null);
 
         $middleware->api(prepend: [
@@ -22,6 +23,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
             'active' => \App\Http\Middleware\EnsureUserIsActive::class,
+            'career' => \App\Http\Middleware\ResolveCareerContext::class,
+            'career.module' => \App\Http\Middleware\EnsureCareerModuleEnabled::class,
+            'audit' => \App\Http\Middleware\AuditCareerMutation::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -26,7 +26,7 @@ class RepositoryController extends Controller
     public function adminIndex(Request $request)
     {
         $user = auth('api')->user();
-        if (!$user || (int) $user->perfil_id !== 1) {
+        if (!$user || !$user->isAdmin()) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -45,7 +45,7 @@ class RepositoryController extends Controller
 
     private function repositoryIndex(Request $request, bool $publicOnly, $studentUser = null)
     {
-        $query = RepositoryDocument::with(['tags', 'uploader'])
+        $query = RepositoryDocument::with(['tags', 'uploader', 'latestVersion'])
             ->where('activo', true);
 
         if (!$this->repositoryDocumentsHas('visibility')) {
@@ -132,7 +132,7 @@ class RepositoryController extends Controller
                                         $q->where('etiquetas.id', $tagId);
                                    })
                                    ->where('activo', true)
-                                   ->with(['tags', 'uploader'])
+                                   ->with(['tags', 'uploader', 'latestVersion'])
                                    ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
                                    ->paginate(12);
         return response()->json($documents);
@@ -140,7 +140,7 @@ class RepositoryController extends Controller
 
     public function show($id)
     {
-        $document = RepositoryDocument::with(['tags', 'uploader'])->find($id);
+        $document = RepositoryDocument::with(['tags', 'uploader', 'latestVersion'])->find($id);
         if (!$document || !$document->activo || !$this->canAccessDocument($document)) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }
@@ -623,7 +623,7 @@ class RepositoryController extends Controller
         }
 
         $user = auth('api')->user();
-        if ((int) $user->perfil_id !== 1) {
+        if (!$user->isAdmin()) {
             return response()->json(['error' => 'Solo administradores pueden publicar documentos.'], 403);
         }
 
@@ -731,7 +731,7 @@ class RepositoryController extends Controller
             return false;
         }
 
-        if ((int) $user->perfil_id === 1) {
+        if ($user->canManageProjects()) {
             return true;
         }
 

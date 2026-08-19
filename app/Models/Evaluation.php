@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToCareer;
 use App\Models\Concerns\HasLegacyAliases;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Evaluation extends Model
 {
-    use HasLegacyAliases;
+    use HasLegacyAliases, BelongsToCareer;
 
     protected $table = 'evaluaciones';
     const CREATED_AT = 'creada_en';
@@ -34,7 +35,7 @@ class Evaluation extends Model
     protected array $legacyVirtualColumns = ['sala', 'semestre', 'etapa', 'sequence_status'];
 
     protected $fillable = [
-        'project_id', 'evaluation_room_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
+        'carrera_id', 'project_id', 'evaluation_room_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
         'presentation_order', 'sequence_status', 'estado', 'resultado', 'room_feedback',
         'feedback_by', 'feedback_at', 'finalized_at', 'archived_at', 'archived_by',
         'apto_titulacion', 'created_by',

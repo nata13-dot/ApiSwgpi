@@ -17,15 +17,25 @@ use App\Http\Controllers\API\ProposalWorkflowController;
 use App\Http\Controllers\API\SystemSettingController;
 use App\Http\Controllers\API\ActivityNotificationController;
 use App\Http\Controllers\API\SemesterManagementController;
+use App\Http\Controllers\API\CareerManagementController;
+use App\Http\Controllers\API\CareerModuleController;
+use App\Http\Controllers\API\CareerSetupController;
+use App\Http\Controllers\API\CareerAuditController;
+use App\Http\Controllers\API\CareerExportController;
+use App\Http\Controllers\API\CareerIntegrityController;
+use App\Http\Controllers\API\DatabaseBackupController;
+use App\Http\Controllers\API\OperationalAlertController;
+use App\Http\Controllers\API\ContinuityReportController;
+use App\Http\Controllers\API\ContinuityPolicyController;
 
 // ========================
 // AUTENTICACIÓN (sin protección)
 // ========================
-Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/auth/refresh', [AuthController::class, 'refresh']);
-Route::post('/auth/password/request-token', [AuthController::class, 'requestPasswordReset']);
-Route::post('/auth/password/verify-token', [AuthController::class, 'verifyPasswordResetToken']);
-Route::post('/auth/password/reset', [AuthController::class, 'resetPasswordWithToken']);
+Route::post('/auth/password/request-token', [AuthController::class, 'requestPasswordReset'])->middleware('throttle:password-recovery');
+Route::post('/auth/password/verify-token', [AuthController::class, 'verifyPasswordResetToken'])->middleware('throttle:password-recovery');
+Route::post('/auth/password/reset', [AuthController::class, 'resetPasswordWithToken'])->middleware('throttle:password-recovery');
 Route::get('/settings/public', [SystemSettingController::class, 'public']);
 Route::get('/users-template.csv', [UserController::class, 'blankCsvTemplate']);
 Route::get('/users-template.xls', [UserController::class, 'usersExcelTemplate']);
@@ -39,7 +49,7 @@ Route::prefix('repositorio')->group(function () {
     Route::get('/buscar', [RepositoryController::class, 'search']);
     Route::get('/proyecto/{projectId}', [RepositoryController::class, 'byProject']);
     Route::get('/etiqueta/{tagId}', [RepositoryController::class, 'byTag']);
-    Route::middleware(['auth:api', 'active'])->group(function () {
+    Route::middleware(['auth:api', 'active', 'career'])->group(function () {
         Route::get('/evaluation-documents', [RepositoryController::class, 'evaluationDocuments']);
         Route::post('/evaluation-documents', [RepositoryController::class, 'storeEvaluationDocument']);
         Route::put('/evaluation-documents/{id}/release-status', [RepositoryController::class, 'reviewEvaluationRelease']);
@@ -51,18 +61,68 @@ Route::prefix('repositorio')->group(function () {
     Route::get('/{id}', [RepositoryController::class, 'show']);
 });
 
+// Estas rutas no exigen un contexto vigente para permitir recuperarse si la
+// membresía de la carrera que estaba activa fue revocada.
+Route::middleware(['auth:api', 'active'])->group(function () {
+    Route::get('/auth/careers', [AuthController::class, 'careers']);
+    Route::post('/auth/switch-career', [AuthController::class, 'switchCareer']);
+});
+
 // ========================
 // RUTAS PROTEGIDAS (con JWT)
 // ========================
-Route::middleware(['auth:api', 'active'])->group(function () {
+Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit'])->group(function () {
+    Route::get('/career/modules', [CareerModuleController::class, 'index']);
+    Route::get('/career/module-records', [CareerModuleController::class, 'records']);
+    Route::middleware('role:admin')->group(function () {
+        Route::get('/career/export', [CareerExportController::class, 'activeCareer']);
+        Route::post('/career/setup/catalog', [CareerSetupController::class, 'importCatalog']);
+        Route::put('/career/modules/{module}', [CareerModuleController::class, 'updateModule']);
+        Route::post('/career/module-records', [CareerModuleController::class, 'storeRecord']);
+        Route::put('/career/module-records/{record}', [CareerModuleController::class, 'updateRecord']);
+        Route::delete('/career/module-records/{record}', [CareerModuleController::class, 'destroyRecord']);
+        Route::post('/career/indicators', [CareerModuleController::class, 'storeIndicator']);
+        Route::put('/career/indicators/{indicator}', [CareerModuleController::class, 'updateIndicator']);
+        Route::delete('/career/indicators/{indicator}', [CareerModuleController::class, 'destroyIndicator']);
+    });
+    Route::middleware('role:general_admin')->prefix('admin')->group(function () {
+        Route::get('/operational-alerts', [OperationalAlertController::class, 'index']);
+        Route::get('/operational-alerts/summary', [OperationalAlertController::class, 'summary']);
+        Route::post('/operational-alerts/scan', [OperationalAlertController::class, 'scan']);
+        Route::put('/operational-alerts/{alert}/acknowledge', [OperationalAlertController::class, 'acknowledge']);
+        Route::get('/continuity-report', [ContinuityReportController::class, 'show']);
+        Route::get('/continuity-report.pdf', [ContinuityReportController::class, 'pdf']);
+        Route::get('/continuity-history', [ContinuityReportController::class, 'history']);
+        Route::post('/continuity-history', [ContinuityReportController::class, 'store']);
+        Route::get('/continuity-policy', [ContinuityPolicyController::class, 'show']);
+        Route::put('/continuity-policy', [ContinuityPolicyController::class, 'update']);
+        Route::get('/integrity', [CareerIntegrityController::class, 'index']);
+        Route::post('/integrity/run', [CareerIntegrityController::class, 'run']);
+        Route::get('/integrity/history', [CareerIntegrityController::class, 'history']);
+        Route::get('/database-backups', [DatabaseBackupController::class, 'index']);
+        Route::get('/database-backups-health', [DatabaseBackupController::class, 'health']);
+        Route::post('/database-backups', [DatabaseBackupController::class, 'store']);
+        Route::post('/database-backups-cleanup', [DatabaseBackupController::class, 'cleanup']);
+        Route::post('/database-backups/{backup}/verify', [DatabaseBackupController::class, 'verify']);
+        Route::get('/database-backups/{backup}/download', [DatabaseBackupController::class, 'download']);
+        Route::get('/careers/export', [CareerExportController::class, 'institutionalSummary']);
+        Route::get('/audit', [CareerAuditController::class, 'index']);
+        Route::get('/careers', [CareerManagementController::class, 'index']);
+        Route::put('/careers/{career}', [CareerManagementController::class, 'update']);
+        Route::get('/career-memberships', [CareerManagementController::class, 'memberships']);
+        Route::post('/career-memberships', [CareerManagementController::class, 'storeMembership']);
+        Route::put('/career-memberships/{membership}', [CareerManagementController::class, 'updateMembership']);
+        Route::delete('/career-memberships/{membership}', [CareerManagementController::class, 'destroyMembership']);
+    });
     
     // Evaluaciones (solo docentes y administradores)
-    Route::middleware('role:admin,teacher')->group(function () {
+    Route::middleware('role:admin,teacher,project_manager')->group(function () {
         Route::get('/evaluation-managers', [EvaluationController::class, 'managers']);
         Route::put('/evaluation-managers', [EvaluationController::class, 'updateManagers']);
         Route::get('/evaluations/managers', [EvaluationController::class, 'managers']);
         Route::put('/evaluations/managers', [EvaluationController::class, 'updateManagers']);
         Route::get('/evaluations/criteria', [EvaluationController::class, 'criteria']);
+        Route::post('/evaluations/rubrics/initialize', [EvaluationController::class, 'initializeRubrics']);
         Route::put('/evaluations/rubric-score-modes', [EvaluationController::class, 'updateRubricScoreModes']);
         Route::post('/evaluations/rubric-criteria', [EvaluationController::class, 'storeCriterion']);
         Route::put('/evaluations/rubric-criteria/{id}', [EvaluationController::class, 'updateCriterion']);
@@ -96,6 +156,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
     Route::get('/dashboard/teacher', [DashboardController::class, 'teacher']);
     Route::get('/dashboard/student', [DashboardController::class, 'student']);
+    Route::get('/settings/current', [SystemSettingController::class, 'current']);
 
     // Auth
     Route::get('/auth/me', [AuthController::class, 'me']);
@@ -118,7 +179,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/proposal/students/search', [ProposalWorkflowController::class, 'searchStudents']);
     Route::get('/proposal/teacher-projects', [ProposalWorkflowController::class, 'teacherProjects']);
     Route::post('/proposal/projects/{id}/review', [ProposalWorkflowController::class, 'review']);
-    Route::middleware('role:admin,teacher')->group(function () {
+    Route::middleware('role:admin,teacher,project_manager')->group(function () {
         Route::get('/proposal/window-groups', [ProposalWorkflowController::class, 'windowGroups']);
         Route::post('/proposal/windows', [ProposalWorkflowController::class, 'storeWindow']);
         Route::put('/proposal/windows/{id}', [ProposalWorkflowController::class, 'updateWindow']);
@@ -127,17 +188,18 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/repositorio/student/list', [RepositoryController::class, 'studentIndex']);
     Route::post('/repositorio', [RepositoryController::class, 'store']);
 
-    // Users (solo Admin)
-    Route::middleware('role:admin')->group(function () {
+    // Coordinación de proyectos: administrador, jefatura, asistencia y coordinación.
+    Route::middleware('role:admin,project_manager')->group(function () {
         Route::get('/proposal/config', [ProposalWorkflowController::class, 'configIndex']);
         Route::post('/proposal/assignments', [ProposalWorkflowController::class, 'storeAssignment']);
         Route::delete('/proposal/assignments/{id}', [ProposalWorkflowController::class, 'destroyAssignment']);
         Route::post('/proposal/exceptions', [ProposalWorkflowController::class, 'storeException']);
         Route::delete('/proposal/exceptions/{id}', [ProposalWorkflowController::class, 'destroyException']);
-        Route::get('/settings', [SystemSettingController::class, 'index']);
-        Route::put('/settings', [SystemSettingController::class, 'update']);
-        Route::get('/notices', [SystemSettingController::class, 'notices']);
-        Route::put('/notices', [SystemSettingController::class, 'updateNotices']);
+        Route::get('/users', [UserController::class, 'index']);
+    });
+
+    // Operación académica: administrador, jefatura y asistencia de jefatura.
+    Route::middleware('role:admin,academic_manager')->group(function () {
         Route::get('/semester-management', [SemesterManagementController::class, 'summary']);
         Route::get('/semester-management/search', [SemesterManagementController::class, 'search']);
         Route::post('/semester-management/periods', [SemesterManagementController::class, 'storePeriod']);
@@ -147,16 +209,27 @@ Route::middleware(['auth:api', 'active'])->group(function () {
         Route::post('/semester-management/periods/{period}/promote', [SemesterManagementController::class, 'applyPromotion']);
         Route::post('/semester-management/exceptions', [SemesterManagementController::class, 'storeException']);
         Route::delete('/semester-management/exceptions/{exception}', [SemesterManagementController::class, 'destroyException']);
+    });
+
+    // Controles administrativos críticos.
+    Route::middleware('role:admin')->group(function () {
+        Route::get('/settings', [SystemSettingController::class, 'index']);
+        Route::put('/settings', [SystemSettingController::class, 'update']);
+        Route::get('/notices', [SystemSettingController::class, 'notices']);
+        Route::put('/notices', [SystemSettingController::class, 'updateNotices']);
         Route::get('/repositorio/admin/list', [RepositoryController::class, 'adminIndex']);
         Route::post('/repositorio/{id}', [RepositoryController::class, 'update']);
         Route::post('/repositorio/{id}/publish', [RepositoryController::class, 'publish']);
         Route::delete('/repositorio/{id}', [RepositoryController::class, 'destroy']);
-        Route::get('/users', [UserController::class, 'index']);
+    });
+
+    // Gobierno de identidades: exclusivamente Administrador General.
+    Route::middleware('role:user_governance')->group(function () {
+        Route::get('/users/{id}', [UserController::class, 'show']);
         Route::get('/users/credential-email-template', [UserController::class, 'credentialEmailTemplate']);
         Route::post('/users/send-credentials', [UserController::class, 'sendCredentialEmails']);
         Route::post('/users/import-excel', [UserController::class, 'importExcel']);
         Route::post('/users', [UserController::class, 'store']);
-        Route::get('/users/{id}', [UserController::class, 'show']);
         Route::put('/users/{id}', [UserController::class, 'update']);
         Route::delete('/users/{id}', [UserController::class, 'destroy']);
         Route::post('/users/{id}/toggle-active', [UserController::class, 'toggleActive']);
@@ -166,7 +239,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     // Cargas de asignaturas por semestre/grupo
     Route::get('/subject-groups', [SubjectGroupController::class, 'index']);
     Route::get('/subject-groups/{id}', [SubjectGroupController::class, 'show']);
-    Route::middleware('role:admin')->group(function () {
+    Route::middleware('role:admin,academic_manager')->group(function () {
         Route::post('/subject-groups', [SubjectGroupController::class, 'store']);
         Route::put('/subject-groups/{id}', [SubjectGroupController::class, 'update']);
         Route::delete('/subject-groups/{id}', [SubjectGroupController::class, 'destroy']);
@@ -177,7 +250,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     // Projects (CRUD)
     Route::get('/my-projects', [ProjectController::class, 'myProjects']);
     Route::get('/projects', [ProjectController::class, 'index']);
-    Route::middleware('role:admin')->group(function () {
+    Route::middleware('role:admin,project_manager')->group(function () {
         Route::post('/projects/import-excel', [ProjectController::class, 'importExcel']);
     });
     Route::post('/projects', [ProjectController::class, 'store']);
@@ -207,7 +280,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     // Asignaturas (solo Admin puede crear/editar)
     Route::get('/asignaturas', [AsignaturaController::class, 'index']);
     Route::get('/asignaturas/{id}', [AsignaturaController::class, 'show']);
-    Route::middleware('role:admin')->group(function () {
+    Route::middleware('role:admin,academic_manager')->group(function () {
         Route::post('/asignaturas', [AsignaturaController::class, 'store']);
         Route::put('/asignaturas/{id}', [AsignaturaController::class, 'update']);
         Route::delete('/asignaturas/{id}', [AsignaturaController::class, 'destroy']);
@@ -216,7 +289,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
     // Competencias (solo Admin puede crear/editar)
     Route::get('/competencias', [CompetenciaController::class, 'index']);
     Route::get('/competencias/{id}', [CompetenciaController::class, 'show']);
-    Route::middleware('role:admin')->group(function () {
+    Route::middleware('role:admin,academic_manager')->group(function () {
         Route::post('/competencias', [CompetenciaController::class, 'store']);
         Route::put('/competencias/{id}', [CompetenciaController::class, 'update']);
         Route::delete('/competencias/{id}', [CompetenciaController::class, 'destroy']);

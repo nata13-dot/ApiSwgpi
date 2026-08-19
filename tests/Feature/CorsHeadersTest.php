@@ -84,4 +84,28 @@ class CorsHeadersTest extends TestCase
             ->assertInternalServerError()
             ->assertHeader('Access-Control-Allow-Origin', 'https://swgpi.online');
     }
+
+    public function test_untrusted_origin_never_receives_credentialed_cors_headers(): void
+    {
+        Route::get('/api/test-untrusted-cors', fn () => response()->json(['ok' => true]));
+
+        $this->withHeader('Origin', 'https://attacker.example')
+            ->getJson('/api/test-untrusted-cors')
+            ->assertOk()
+            ->assertHeaderMissing('Access-Control-Allow-Origin')
+            ->assertHeaderMissing('Access-Control-Allow-Credentials');
+    }
+
+    public function test_preflight_does_not_reflect_unapproved_headers(): void
+    {
+        $response = $this->withHeaders([
+            'Origin' => 'https://swgpi.online',
+            'Access-Control-Request-Method' => 'POST',
+            'Access-Control-Request-Headers' => 'authorization, x-injected-header',
+        ])->options('/api/auth/login');
+
+        $response->assertNoContent();
+        $this->assertStringContainsString('authorization', strtolower((string) $response->headers->get('Access-Control-Allow-Headers')));
+        $this->assertStringNotContainsString('x-injected-header', strtolower((string) $response->headers->get('Access-Control-Allow-Headers')));
+    }
 }
