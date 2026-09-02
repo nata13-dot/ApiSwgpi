@@ -54,6 +54,9 @@ class ProjectController extends Controller
                 $query->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->where('semestre', $request->semestre));
             }
             $this->applyRecordTypeFilter($query, $request);
+            if ($request->filled('modalidad')) {
+                $query->where('modalidad', $request->query('modalidad'));
+            }
 
             $perPage = min((int) $request->query('per_page', 100), 500);
             return response()->json($query->orderByDesc('created_at')->paginate($perPage));
@@ -104,6 +107,9 @@ class ProjectController extends Controller
         }
 
         $this->applyRecordTypeFilter($query, $request);
+        if ($request->filled('modalidad')) {
+            $query->where('modalidad', $request->query('modalidad'));
+        }
 
         if ($request->filled('q')) {
             $search = trim((string) $request->query('q'));
