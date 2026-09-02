@@ -55,6 +55,8 @@ return [
 
     'allowed_origins_patterns' => [
         '#^https://([a-z0-9-]+\.)?swgpi\.online$#i',
+        '#^https?://localhost(?::\d+)?$#i',
+        '#^https?://127\.0\.0\.1(?::\d+)?$#i',
     ],
 
     'allowed_headers' => [

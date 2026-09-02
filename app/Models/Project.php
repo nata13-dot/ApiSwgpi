@@ -46,6 +46,7 @@ class Project extends Model
         'company_contact_name',
         'company_contact_position',
         'company_address',
+        'company_rfc',
     ];
 
     protected $appends = [
@@ -71,9 +72,10 @@ class Project extends Model
         'company_contact_name',
         'company_contact_position',
         'company_address',
+        'company_rfc',
     ];
 
-    protected $fillable = ['career_id', 'title', 'description', 'created_by', 'activo', 'tipo', 'is_thesis', 'is_proposal', 'subject_group_id', 'empresa_id', 'file_path', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
+    protected $fillable = ['career_id', 'title', 'description', 'created_by', 'activo', 'tipo', 'modalidad', 'is_thesis', 'is_proposal', 'subject_group_id', 'empresa_id', 'file_path', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
 
     protected $casts = [
         'activo' => 'boolean',
@@ -262,6 +264,7 @@ class Project extends Model
     public function getCompanyContactNameAttribute(): ?string { return $this->empresa?->contacto_nombre; }
     public function getCompanyContactPositionAttribute(): ?string { return $this->empresa?->contacto_cargo; }
     public function getCompanyAddressAttribute(): ?string { return $this->empresa?->direccion; }
+    public function getCompanyRfcAttribute(): ?string { return $this->empresa?->rfc; }
 
     // SCOPES
     public function scopeActivos($query) { return $query->where('activo', true); }

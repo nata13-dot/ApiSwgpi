@@ -92,6 +92,11 @@ class CareerModuleController extends Controller
             'habilitado' => 'required|boolean',
             'configuracion' => 'nullable|array',
         ]);
+        if (in_array($module->modulo, ['evaluaciones', 'entregables'], true) && !$validated['habilitado']) {
+            throw ValidationException::withMessages([
+                'habilitado' => ['Evaluaciones y entregables son funciones compartidas obligatorias para todas las carreras.'],
+            ]);
+        }
         $module->update($validated);
 
         return response()->json(['module' => $module->fresh()]);

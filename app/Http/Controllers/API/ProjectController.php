@@ -24,7 +24,7 @@ class ProjectController extends Controller
     {
         if ($request->boolean('compact')) {
             $query = Project::query()
-                ->select(['id', 'title', 'semestre', 'year', 'authors', 'subject_group_id', 'activo', 'tipo', 'is_thesis', 'created_at'])
+                ->select(['id', 'title', 'semestre', 'year', 'authors', 'subject_group_id', 'activo', 'tipo', 'modalidad', 'is_thesis', 'created_at'])
                 ->with([
                     'students:id,nombres,apa,ama,semestre,grupo',
                     'advisors:id,nombres,apa,ama,perfil_id',
@@ -61,10 +61,10 @@ class ProjectController extends Controller
 
         $query = Project::query()
             ->select([
-                'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'tipo', 'is_thesis',
+                'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'tipo', 'modalidad', 'is_thesis',
                 'semestre', 'subject_group_id', 'year', 'authors',
                 'company_name', 'company_giro', 'company_contact_name',
-                'company_contact_position', 'company_address',
+                'company_contact_position', 'company_address', 'company_rfc',
                 'proposal_status', 'proposal_reviewed_by',
             ])
             ->with([
@@ -218,13 +218,7 @@ class ProjectController extends Controller
             }
 
             $project = DB::transaction(function () use ($validated, $user, $isStudentProposal) {
-                $company = Empresa::create([
-                    'nombre' => $validated['company_name'],
-                    'giro' => $validated['company_giro'] ?? null,
-                    'contacto_nombre' => $validated['company_contact_name'] ?? null,
-                    'contacto_cargo' => $validated['company_contact_position'] ?? null,
-                    'direccion' => $validated['company_address'] ?? null,
-                ]);
+                $company = $this->resolveCompany($validated, $user);
 
                 $project = Project::create([
                     'title' => $validated['title'],
@@ -235,6 +229,7 @@ class ProjectController extends Controller
                     'tipo' => $isStudentProposal
                         ? 'propuesta'
                         : (($user->canManageProjects() && (bool) ($validated['is_thesis'] ?? false)) ? 'tesis' : 'desarrollo'),
+                    'modalidad' => $validated['modalidad'],
                     'created_by' => $user->id,
                 ]);
 
@@ -302,6 +297,9 @@ class ProjectController extends Controller
                 'company_contact_name',
                 'company_contact_position',
                 'company_address',
+                'company_rfc',
+                'company_id',
+                'request_company_registration',
             ])->toArray();
             $thesisWasUpdated = array_key_exists('is_thesis', $projectData);
             if ($thesisWasUpdated) {
@@ -641,9 +639,13 @@ class ProjectController extends Controller
             'year' => [($creating && !$studentCreating) ? 'required' : 'nullable', 'integer', 'min:2000', 'max:2100'],
             'activo' => 'nullable|boolean',
             'is_thesis' => 'nullable|boolean',
+            'modalidad' => [$creating ? 'required' : 'nullable', Rule::in(['dual', 'proyecto_integrador', 'caso_integrador'])],
             'student_ids' => [($creating && !$studentCreating) ? 'required' : 'nullable', 'array'],
             'student_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
             'company_name' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
+            'company_id' => ['nullable', 'integer', Rule::exists('empresas', 'id')->where('estado_validacion', 'aprobada')],
+            'company_rfc' => [$creating ? 'required_without:company_id' : 'nullable', 'string', 'max:13', 'regex:/^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3}$/i'],
+            'request_company_registration' => ['exclude_with:company_id', $creating ? 'required' : 'nullable', 'accepted'],
             'company_giro' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
             'company_contact_name' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
             'company_contact_position' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
@@ -808,19 +810,45 @@ class ProjectController extends Controller
             return;
         }
 
-        $company = $project->empresa ?: new Empresa();
-        $company->fill([
-            'nombre' => $validated['company_name'],
-            'giro' => $validated['company_giro'] ?? null,
-            'contacto_nombre' => $validated['company_contact_name'] ?? null,
-            'contacto_cargo' => $validated['company_contact_position'] ?? null,
-            'direccion' => $validated['company_address'] ?? null,
-        ]);
-        $company->save();
+        $company = $this->resolveCompany($validated, auth('api')->user(), $project->empresa);
 
         if ((int) $project->empresa_id !== (int) $company->id) {
             $project->empresa_id = $company->id;
         }
+    }
+
+    private function resolveCompany(array $validated, User $user, ?Empresa $current = null): Empresa
+    {
+        if (!empty($validated['company_id'])) {
+            return Empresa::where('estado_validacion', 'aprobada')->findOrFail($validated['company_id']);
+        }
+
+        $rfc = strtoupper(trim((string) ($validated['company_rfc'] ?? '')));
+        $existing = $rfc !== '' ? Empresa::where('rfc', $rfc)->first() : null;
+        if ($existing && (!$current || (int) $existing->id !== (int) $current->id)) return $existing;
+
+        $company = $current ?: new Empresa();
+        $company->fill([
+            'nombre' => trim($validated['company_name']), 'rfc' => $rfc,
+            'giro' => trim($validated['company_giro'] ?? ''),
+            'contacto_nombre' => trim($validated['company_contact_name'] ?? ''),
+            'contacto_cargo' => trim($validated['company_contact_position'] ?? ''),
+            'direccion' => trim($validated['company_address'] ?? ''),
+        ]);
+        if (!$company->exists) {
+            $company->estado_validacion = $user->canManageProjects() ? 'aprobada' : 'pendiente';
+            $company->solicitada_por = $user->id;
+            if ($user->canManageProjects()) {
+                $company->validada_por = $user->id;
+                $company->validada_en = now();
+            }
+        } elseif ($company->estado_validacion === 'rechazada' && $requestRegistration = ($validated['request_company_registration'] ?? false)) {
+            $company->estado_validacion = 'pendiente';
+            $company->solicitada_por = $user->id;
+            $company->comentario_validacion = null;
+        }
+        $company->save();
+        return $company;
     }
 
     private function excelTemplateResponse(string $filename, string $title, array $headers, array $notes = [])

@@ -27,6 +27,8 @@ use App\Http\Controllers\API\DatabaseBackupController;
 use App\Http\Controllers\API\OperationalAlertController;
 use App\Http\Controllers\API\ContinuityReportController;
 use App\Http\Controllers\API\ContinuityPolicyController;
+use App\Http\Controllers\API\CompanyController;
+use App\Http\Controllers\API\CourseEnrollmentController;
 
 // ========================
 // AUTENTICACIÓN (sin protección)
@@ -136,6 +138,8 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit'])->g
         Route::post('/evaluations/rooms/{id}/unarchive', [EvaluationController::class, 'unarchiveRoom']);
         Route::post('/evaluations/rooms/{id}/lock-sequence', [EvaluationController::class, 'lockRoomSequence']);
         Route::post('/evaluations/rooms/{id}/advance', [EvaluationController::class, 'advanceRoom']);
+        Route::post('/evaluations/rooms/{id}/timer', [EvaluationController::class, 'controlRoomTimer']);
+        Route::put('/evaluations/rooms/{id}/schedule', [EvaluationController::class, 'updateRoomSchedule']);
         Route::get('/evaluations/rooms/{id}/report.pdf', [EvaluationController::class, 'exportRoomPdf']);
         Route::get('/evaluations', [EvaluationController::class, 'index']);
         Route::post('/evaluations', [EvaluationController::class, 'store']);
@@ -157,6 +161,14 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit'])->g
     Route::get('/dashboard/teacher', [DashboardController::class, 'teacher']);
     Route::get('/dashboard/student', [DashboardController::class, 'student']);
     Route::get('/settings/current', [SystemSettingController::class, 'current']);
+    Route::get('/companies', [CompanyController::class, 'index']);
+    Route::middleware('role:project_manager')->put('/companies/{company}/review', [CompanyController::class, 'review']);
+
+    Route::get('/course-enrollments', [CourseEnrollmentController::class, 'index']);
+    Route::middleware('role:student')->group(function () {
+        Route::post('/course-enrollments/{course}', [CourseEnrollmentController::class, 'enroll']);
+    });
+    Route::middleware('role:teacher')->put('/courses/{course}/self-enrollment', [CourseEnrollmentController::class, 'updateAccess']);
 
     // Auth
     Route::get('/auth/me', [AuthController::class, 'me']);
@@ -253,14 +265,16 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit'])->g
     Route::middleware('role:admin,project_manager')->group(function () {
         Route::post('/projects/import-excel', [ProjectController::class, 'importExcel']);
     });
-    Route::post('/projects', [ProjectController::class, 'store']);
+    Route::middleware('role:student,project_manager')->post('/projects', [ProjectController::class, 'store']);
     Route::get('/projects/{id}', [ProjectController::class, 'show']);
-    Route::put('/projects/{id}', [ProjectController::class, 'update']);
-    Route::delete('/projects/{id}', [ProjectController::class, 'destroy']);
-    Route::post('/projects/{id}/advisors', [ProjectController::class, 'addAdvisor']);
-    Route::put('/projects/{id}/advisors', [ProjectController::class, 'syncAdvisors']);
-    Route::post('/projects/{id}/asignaturas', [ProjectController::class, 'syncAsignaturas']);
-    Route::delete('/projects/{projectId}/advisors/{userId}', [ProjectController::class, 'removeAdvisor']);
+    Route::middleware('role:student,project_manager')->put('/projects/{id}', [ProjectController::class, 'update']);
+    Route::middleware('role:project_manager')->group(function () {
+        Route::delete('/projects/{id}', [ProjectController::class, 'destroy']);
+        Route::post('/projects/{id}/advisors', [ProjectController::class, 'addAdvisor']);
+        Route::put('/projects/{id}/advisors', [ProjectController::class, 'syncAdvisors']);
+        Route::post('/projects/{id}/asignaturas', [ProjectController::class, 'syncAsignaturas']);
+        Route::delete('/projects/{projectId}/advisors/{userId}', [ProjectController::class, 'removeAdvisor']);
+    });
 
     // Deliverables (CRUD + Calificación + Upload + Descarga)
     Route::get('/teacher/deliverables-matrix', [DeliverableController::class, 'teacherMatrix']);
