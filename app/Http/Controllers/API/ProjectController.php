@@ -53,10 +53,7 @@ class ProjectController extends Controller
             if ($request->filled('semestre')) {
                 $query->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->where('semestre', $request->semestre));
             }
-            $this->applyRecordTypeFilter($query, $request);
-            if ($request->filled('modalidad')) {
-                $query->where('modalidad', $request->query('modalidad'));
-            }
+            $this->applyProjectCategoryFilters($query, $request);
 
             $perPage = min((int) $request->query('per_page', 100), 500);
             return response()->json($query->orderByDesc('created_at')->paginate($perPage));
@@ -106,10 +103,7 @@ class ProjectController extends Controller
             $query->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->where('semestre', $request->semestre));
         }
 
-        $this->applyRecordTypeFilter($query, $request);
-        if ($request->filled('modalidad')) {
-            $query->where('modalidad', $request->query('modalidad'));
-        }
+        $this->applyProjectCategoryFilters($query, $request);
 
         if ($request->filled('q')) {
             $search = trim((string) $request->query('q'));
@@ -162,12 +156,24 @@ class ProjectController extends Controller
         }
     }
 
-    public function myProjects()
+    private function applyProjectCategoryFilters($query, Request $request): void
+    {
+        $this->applyRecordTypeFilter($query, $request);
+
+        if ($request->filled('modalidad')) {
+            $modality = $request->validate([
+                'modalidad' => ['required', Rule::in(['dual', 'proyecto_integrador', 'caso_integrador'])],
+            ])['modalidad'];
+            $query->where('modalidad', $modality);
+        }
+    }
+
+    public function myProjects(Request $request)
     {
         $user = auth('api')->user();
         $query = Project::query()
             ->select([
-                'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'tipo', 'is_thesis',
+                'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'tipo', 'modalidad', 'is_thesis',
                 'semestre', 'subject_group_id', 'year', 'authors',
                 'company_name', 'company_contact_name', 'company_contact_position',
                 'proposal_status', 'proposal_reviewed_by',
@@ -186,6 +192,8 @@ class ProjectController extends Controller
                 $scope->whereNull('subject_group_id')
                     ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
             });
+
+        $this->applyProjectCategoryFilters($query, $request);
 
         if ($user->canManageProjects()) {
             $query->where(function ($scope) {
