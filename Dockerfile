@@ -1,7 +1,7 @@
 # =========================================
 # Stage 1: Build (Compilation & Dependencies)
 # =========================================
-FROM php:8.4-fpm AS build
+FROM php:8.2-fpm-bookworm AS build
 
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
@@ -97,7 +97,7 @@ RUN APP_ENV=production \
 # =========================================
 # Stage 2: Runtime (Production Image)
 # =========================================
-FROM php:8.4-fpm
+FROM php:8.2-fpm-bookworm
 
 # Install only runtime tools and minimal dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -108,7 +108,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libonig5 \
     libpng16-16 \
     libxml2 \
-    libzip5 \
+    libzip4 \
     nginx \
     supervisor \
     && rm -rf /var/lib/apt/lists/*

@@ -14,8 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(\App\Http\Middleware\EnsureCorsHeaders::class);
         $middleware->prepend(\App\Http\Middleware\SecurityHeaders::class);
-        $middleware->redirectGuestsTo(null);
-
+        $middleware->redirectGuestsTo(fn () => null);
         $middleware->api(prepend: [
             \App\Http\Middleware\SanitizeApiInput::class,
         ]);

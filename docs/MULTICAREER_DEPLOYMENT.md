@@ -6,7 +6,7 @@ Esta versión soporta ISC, Ingeniería Industrial, Ingeniería Electromecánica 
 
 ## Requisitos
 
-- PHP 8.4 o superior con extensiones requeridas por Composer.
+- PHP 8.2 o superior con extensiones requeridas por Composer.
 - MySQL 8.
 - Composer 2.
 - `mysql`, `mysqldump` y `gzip` disponibles para el usuario del servicio.
