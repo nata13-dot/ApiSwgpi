@@ -24,6 +24,27 @@ class CorsHeadersTest extends TestCase
             ->assertHeader('Access-Control-Allow-Credentials', 'true');
     }
 
+    public function test_local_network_php_frontend_can_access_api(): void
+    {
+        $origin = 'http://192.168.100.80:8080';
+        Route::get('/api/test-local-network-cors', fn () => response()->json(['ok' => true]));
+
+        $this->withHeader('Origin', $origin)
+            ->getJson('/api/test-local-network-cors')
+            ->assertOk()
+            ->assertHeader('Access-Control-Allow-Origin', $origin)
+            ->assertHeader('Access-Control-Allow-Credentials', 'true');
+
+        $this->withHeaders([
+            'Origin' => $origin,
+            'Access-Control-Request-Method' => 'POST',
+            'Access-Control-Request-Headers' => 'content-type,authorization',
+        ])->options('/api/auth/login')
+            ->assertNoContent()
+            ->assertHeader('Access-Control-Allow-Origin', $origin)
+            ->assertHeader('Access-Control-Allow-Credentials', 'true');
+    }
+
     public function test_capacitor_app_can_complete_api_preflight(): void
     {
         foreach (['capacitor://localhost', 'https://localhost'] as $origin) {
