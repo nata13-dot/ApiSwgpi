@@ -3,20 +3,25 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use App\Models\DocumentTag;
 use App\Models\EvaluationDocumentRelease;
 use App\Models\Project;
 use App\Models\RepositoryDocument;
 use App\Models\SystemSetting;
+use App\Services\ProtectedDownloadService;
+use App\Services\RepositoryFileService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class RepositoryController extends Controller
 {
     private const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'webp', 'epub'];
+
+    public function __construct(
+        private readonly RepositoryFileService $files,
+        private readonly ProtectedDownloadService $downloads
+    ) {}
 
     public function index(Request $request)
     {
@@ -26,7 +31,7 @@ class RepositoryController extends Controller
     public function adminIndex(Request $request)
     {
         $user = auth('api')->user();
-        if (!$user || !$user->isAdmin()) {
+        if (! $user || ! $user->isAdmin()) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -36,7 +41,7 @@ class RepositoryController extends Controller
     public function studentIndex(Request $request)
     {
         $user = auth('api')->user();
-        if (!$user || (int) $user->perfil_id !== 3) {
+        if (! $user || (int) $user->perfil_id !== 3) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -48,7 +53,7 @@ class RepositoryController extends Controller
         $query = RepositoryDocument::with(['tags', 'uploader', 'latestVersion'])
             ->where('activo', true);
 
-        if (!$this->repositoryDocumentsHas('visibility')) {
+        if (! $this->repositoryDocumentsHas('visibility')) {
             return response()->json([
                 'data' => [],
                 'current_page' => 1,
@@ -59,12 +64,15 @@ class RepositoryController extends Controller
         }
 
         if ($publicOnly) {
-            $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC);
+            $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
+                ->whereNotNull('published_at');
         }
 
         if ($studentUser) {
             $query->where(function ($scope) use ($studentUser) {
-                $scope->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
+                $scope->where(fn ($public) => $public
+                    ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
+                    ->whereNotNull('published_at'))
                     ->orWhere('uploaded_by', $studentUser->id)
                     ->orWhereHas('project.students', fn ($studentQuery) => $studentQuery->where('usuarios.id', $studentUser->id));
             });
@@ -85,11 +93,11 @@ class RepositoryController extends Controller
 
         if ($request->filled('buscar')) {
             $term = $request->buscar;
-            $query->where(function($q) use ($term) {
+            $query->where(function ($q) use ($term) {
                 $q->where('nombre', 'like', "%{$term}%")
-                  ->orWhere('descripcion', 'like', "%{$term}%")
-                  ->orWhereHas('authorRecords', fn ($authorQuery) => $authorQuery
-                      ->where('nombre_autor', 'like', "%{$term}%"));
+                    ->orWhere('descripcion', 'like', "%{$term}%")
+                    ->orWhereHas('authorRecords', fn ($authorQuery) => $authorQuery
+                        ->where('nombre_autor', 'like', "%{$term}%"));
             });
         }
 
@@ -118,7 +126,7 @@ class RepositoryController extends Controller
 
     public function byTag($tagId)
     {
-        if (!$this->repositoryDocumentsHas('visibility')) {
+        if (! $this->repositoryDocumentsHas('visibility')) {
             return response()->json([
                 'data' => [],
                 'current_page' => 1,
@@ -128,28 +136,31 @@ class RepositoryController extends Controller
             ]);
         }
 
-        $documents = RepositoryDocument::whereHas('tags', function($q) use ($tagId) {
-                                        $q->where('etiquetas.id', $tagId);
-                                   })
-                                   ->where('activo', true)
-                                   ->with(['tags', 'uploader', 'latestVersion'])
-                                   ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
-                                   ->paginate(12);
+        $documents = RepositoryDocument::whereHas('tags', function ($q) use ($tagId) {
+            $q->where('etiquetas.id', $tagId);
+        })
+            ->where('activo', true)
+            ->with(['tags', 'uploader', 'latestVersion'])
+            ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
+            ->whereNotNull('published_at')
+            ->paginate(12);
+
         return response()->json($documents);
     }
 
     public function show($id)
     {
         $document = RepositoryDocument::with(['tags', 'uploader', 'latestVersion'])->find($id);
-        if (!$document || !$document->activo || !$this->canAccessDocument($document)) {
+        if (! $document || ! $document->activo || ! $this->canAccessDocument($document)) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }
+
         return response()->json($document);
     }
 
     public function evaluationDocuments()
     {
-        if (!$this->repositoryVisibilityEnabled() || !$this->repositoryDocumentsHas('project_id')) {
+        if (! $this->repositoryVisibilityEnabled() || ! $this->repositoryDocumentsHas('project_id')) {
             return response()->json(['error' => 'El repositorio privado requiere ejecutar las migraciones pendientes en la API.'], 503);
         }
 
@@ -177,7 +188,7 @@ class RepositoryController extends Controller
 
         if ((int) $user->perfil_id === 3) {
             $projectsQuery->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id));
-        } elseif (!in_array((int) $user->perfil_id, [1, 2], true)) {
+        } elseif (! in_array((int) $user->perfil_id, [1, 2], true)) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -232,7 +243,7 @@ class RepositoryController extends Controller
     public function storeEvaluationDocument(Request $request)
     {
         try {
-            if (!$this->repositoryVisibilityEnabled() || !$this->repositoryDocumentsHas('project_id')) {
+            if (! $this->repositoryVisibilityEnabled() || ! $this->repositoryDocumentsHas('project_id')) {
                 return response()->json(['error' => 'El repositorio privado requiere ejecutar las migraciones pendientes en la API.'], 503);
             }
 
@@ -259,13 +270,8 @@ class RepositoryController extends Controller
                 ->where('activo', true)
                 ->find($validated['project_id']);
 
-            if (!$project || !$project->students->contains(fn ($student) => (string) $student->id === (string) $user->id)) {
+            if (! $project || ! $project->students->contains(fn ($student) => (string) $student->id === (string) $user->id)) {
                 return response()->json(['error' => 'No puedes subir documentos para este proyecto.'], 403);
-            }
-
-            [$path, $extension] = $this->storeRepositoryFile($request->file('archivo'));
-            if (!$path) {
-                return response()->json(['message' => 'No se pudo guardar el archivo.'], 500);
             }
 
             $category = $validated['document_type'] === 'release_sheet'
@@ -275,44 +281,53 @@ class RepositoryController extends Controller
                 ? 'Hoja de liberacion'
                 : 'Presentacion';
 
-            $document = DB::transaction(function () use (
-                $category,
-                $defaultName,
-                $extension,
-                $path,
-                $project,
+            $allowedExtensions = $validated['document_type'] === 'presentation'
+                ? ['pdf', 'ppt', 'pptx']
+                : ['pdf', 'doc', 'docx'];
+            $result = $this->files->persist(
+                $request->file('archivo'),
                 $user,
-                $validated
-            ) {
-                RepositoryDocument::where('project_id', $project->id)
-                    ->where('document_category', $category)
-                    ->where('activo', true)
-                    ->update(['activo' => false]);
+                function () use ($category, $defaultName, $project, $user, $validated) {
+                    $document = RepositoryDocument::query()
+                        ->where('project_id', $project->id)
+                        ->where('document_category', $category)
+                        ->where('activo', true)
+                        ->lockForUpdate()
+                        ->first();
+                    $attributes = [
+                        'project_id' => $project->id,
+                        'nombre' => trim((string) ($validated['nombre'] ?? '')) ?: $defaultName,
+                        'descripcion' => trim((string) ($validated['descripcion'] ?? '')),
+                        'autores' => trim((string) ($validated['autores'] ?? '')) ?: $this->projectAuthors($project),
+                        'document_category' => $category,
+                        'visibility' => RepositoryDocument::VISIBILITY_PRIVATE,
+                        'uploaded_by' => $user->id,
+                        'activo' => true,
+                    ];
 
-                $document = RepositoryDocument::create([
-                    'project_id' => $project->id,
-                    'nombre' => trim((string) ($validated['nombre'] ?? '')) ?: $defaultName,
-                    'descripcion' => trim((string) ($validated['descripcion'] ?? '')),
-                    'autores' => trim((string) ($validated['autores'] ?? '')) ?: $this->projectAuthors($project),
-                    'archivo_path' => $path,
-                    'archivo_tipo' => $extension,
-                    'document_category' => $category,
-                    'visibility' => RepositoryDocument::VISIBILITY_PRIVATE,
-                    'uploaded_by' => $user->id,
-                    'activo' => true,
-                ]);
+                    if ($document) {
+                        $document->update($attributes);
 
-                if ($category === RepositoryDocument::CATEGORY_EVALUATION_RELEASE) {
-                    $document->releaseStatuses()->createMany(
-                        $project->students->map(fn ($student) => [
-                            'alumno_id' => $student->id,
-                            'liberado' => false,
-                        ])->all()
-                    );
-                }
+                        return $document;
+                    }
 
-                return $document;
-            });
+                    $document = RepositoryDocument::create($attributes);
+                    if ($category === RepositoryDocument::CATEGORY_EVALUATION_RELEASE) {
+                        $document->releaseStatuses()->createMany(
+                            $project->students->map(fn ($student) => [
+                                'alumno_id' => $student->id,
+                                'liberado' => false,
+                            ])->all()
+                        );
+                    }
+
+                    return $document;
+                },
+                $allowedExtensions,
+                (int) SystemSetting::valueFor('max_file_size_mb', 50),
+                "repository/career-{$project->carrera_id}/project-{$project->id}"
+            );
+            $document = $result['document'];
 
             return response()->json([
                 'message' => 'Entrega guardada para revision.',
@@ -330,7 +345,7 @@ class RepositoryController extends Controller
     public function reviewEvaluationRelease(Request $request, $id)
     {
         $user = auth('api')->user();
-        if (!in_array((int) $user->perfil_id, [1, 2], true)) {
+        if (! in_array((int) $user->perfil_id, [1, 2], true)) {
             return response()->json(['error' => 'Solo administradores y docentes pueden revisar la liberacion.'], 403);
         }
 
@@ -338,7 +353,7 @@ class RepositoryController extends Controller
             ->where('activo', true)
             ->where('document_category', RepositoryDocument::CATEGORY_EVALUATION_RELEASE)
             ->find($id);
-        if (!$document || !$document->project) {
+        if (! $document || ! $document->project) {
             return response()->json(['error' => 'Hoja de liberacion no encontrada.'], 404);
         }
 
@@ -383,7 +398,7 @@ class RepositoryController extends Controller
 
     public function thesisDocuments()
     {
-        if (!$this->repositoryVisibilityEnabled()) {
+        if (! $this->repositoryVisibilityEnabled()) {
             return response()->json(['error' => 'El apartado de tesis y residencias requiere ejecutar las migraciones pendientes en la API.'], 503);
         }
 
@@ -398,7 +413,7 @@ class RepositoryController extends Controller
 
         if ((int) $user->perfil_id === 3) {
             $query->where('uploaded_by', $user->id);
-        } elseif (!in_array((int) $user->perfil_id, [1, 2], true)) {
+        } elseif (! in_array((int) $user->perfil_id, [1, 2], true)) {
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
@@ -410,7 +425,7 @@ class RepositoryController extends Controller
     public function storeThesisDocument(Request $request)
     {
         try {
-            if (!$this->repositoryVisibilityEnabled()) {
+            if (! $this->repositoryVisibilityEnabled()) {
                 return response()->json(['error' => 'El apartado de tesis y residencias requiere ejecutar las migraciones pendientes en la API.'], 503);
             }
 
@@ -435,26 +450,26 @@ class RepositoryController extends Controller
                 'archivo' => 'archivo',
             ]);
 
-            [$path, $extension] = $this->storeRepositoryFile($request->file('archivo'));
-            if (!$path) {
-                return response()->json(['message' => 'No se pudo guardar el archivo.'], 500);
-            }
-
             $category = $validated['tipo'] === 'residencias'
                 ? RepositoryDocument::CATEGORY_THESIS_RESIDENCY
                 : RepositoryDocument::CATEGORY_THESIS_GENERAL;
-
-            $document = RepositoryDocument::create([
-                'nombre' => trim($validated['nombre']),
-                'descripcion' => trim((string) ($validated['descripcion'] ?? '')),
-                'autores' => trim((string) ($validated['autores'] ?? '')) ?: trim("{$user->nombres} {$user->apa} {$user->ama}"),
-                'archivo_path' => $path,
-                'archivo_tipo' => $extension,
-                'document_category' => $category,
-                'visibility' => RepositoryDocument::VISIBILITY_PRIVATE,
-                'uploaded_by' => $user->id,
-                'activo' => true,
-            ]);
+            $result = $this->files->persist(
+                $request->file('archivo'),
+                $user,
+                fn () => RepositoryDocument::create([
+                    'nombre' => trim($validated['nombre']),
+                    'descripcion' => trim((string) ($validated['descripcion'] ?? '')),
+                    'autores' => trim((string) ($validated['autores'] ?? '')) ?: trim("{$user->nombres} {$user->apa} {$user->ama}"),
+                    'document_category' => $category,
+                    'visibility' => RepositoryDocument::VISIBILITY_PRIVATE,
+                    'uploaded_by' => $user->id,
+                    'activo' => true,
+                ]),
+                ['pdf', 'doc', 'docx'],
+                (int) SystemSetting::valueFor('max_file_size_mb', 50),
+                'repository/thesis'
+            );
+            $document = $result['document'];
 
             return response()->json([
                 'message' => 'Avance guardado en repositorio privado para revision.',
@@ -469,7 +484,7 @@ class RepositoryController extends Controller
     {
         try {
             $user = auth('api')->user();
-            if (!$user || !in_array((int) $user->perfil_id, [1, 3], true)) {
+            if (! $user || ! in_array((int) $user->perfil_id, [1, 3], true)) {
                 return response()->json(['error' => 'Solo administradores o estudiantes con proyecto asignado pueden subir documentos.'], 403);
             }
 
@@ -495,17 +510,11 @@ class RepositoryController extends Controller
                     ->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id))
                     ->find($validated['project_id']);
 
-                if (!$project) {
+                if (! $project) {
                     return response()->json(['error' => 'No puedes subir documentos para un proyecto que no tienes asignado.'], 403);
                 }
-            } elseif (!empty($validated['project_id'])) {
+            } elseif (! empty($validated['project_id'])) {
                 $project = Project::where('activo', true)->find($validated['project_id']);
-            }
-
-            $file = $request->file('archivo');
-            [$path, $extension] = $this->storeRepositoryFile($file);
-            if (!$path) {
-                return response()->json(['message' => 'No se pudo guardar el archivo.'], 500);
             }
 
             $documentData = [
@@ -513,8 +522,6 @@ class RepositoryController extends Controller
                 'descripcion' => trim($validated['descripcion']),
                 'autores' => trim($validated['autores']),
                 'project_id' => $project?->id,
-                'archivo_path' => $path,
-                'archivo_tipo' => $extension,
                 'uploaded_by' => $user->id,
                 'activo' => true,
             ];
@@ -531,8 +538,20 @@ class RepositoryController extends Controller
                 $documentData['published_by'] = $visibility === RepositoryDocument::VISIBILITY_PUBLIC ? $user->id : null;
             }
 
-            $document = RepositoryDocument::create($documentData);
-            $document->tags()->sync($validated['tag_ids'] ?? []);
+            $result = $this->files->persist(
+                $request->file('archivo'),
+                $user,
+                function () use ($documentData, $validated) {
+                    $document = RepositoryDocument::create($documentData);
+                    $document->tags()->sync($validated['tag_ids'] ?? []);
+
+                    return $document;
+                },
+                self::ALLOWED_EXTENSIONS,
+                (int) SystemSetting::valueFor('max_file_size_mb', 50),
+                'repository/general'
+            );
+            $document = $result['document'];
 
             return response()->json([
                 'message' => 'Documento agregado al repositorio',
@@ -547,7 +566,7 @@ class RepositoryController extends Controller
     {
         try {
             $document = RepositoryDocument::find($id);
-            if (!$document || !$document->activo) {
+            if (! $document || ! $document->activo) {
                 return response()->json(['error' => 'Documento no encontrado'], 404);
             }
 
@@ -574,21 +593,27 @@ class RepositoryController extends Controller
             }
 
             if ($request->hasFile('archivo')) {
-                [$path, $extension] = $this->storeRepositoryFile($request->file('archivo'));
-                if (!$path) {
-                    return response()->json(['message' => 'No se pudo guardar el archivo.'], 500);
-                }
+                $result = $this->files->persist(
+                    $request->file('archivo'),
+                    auth('api')->user(),
+                    function () use ($document, $updates, $validated) {
+                        $locked = RepositoryDocument::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+                        $locked->update($updates);
+                        $locked->tags()->sync($validated['tag_ids'] ?? []);
 
-                if ($document->archivo_path && Storage::disk('public')->exists($document->archivo_path)) {
-                    Storage::disk('public')->delete($document->archivo_path);
-                }
-
-                $updates['archivo_path'] = $path;
-                $updates['archivo_tipo'] = $extension;
+                        return $locked;
+                    },
+                    self::ALLOWED_EXTENSIONS,
+                    (int) SystemSetting::valueFor('max_file_size_mb', 50),
+                    'repository/general'
+                );
+                $document = $result['document'];
+            } else {
+                DB::transaction(function () use ($document, $updates, $validated): void {
+                    $document->update($updates);
+                    $document->tags()->sync($validated['tag_ids'] ?? []);
+                });
             }
-
-            $document->update($updates);
-            $document->tags()->sync($validated['tag_ids'] ?? []);
 
             return response()->json([
                 'message' => 'Documento actualizado',
@@ -602,12 +627,8 @@ class RepositoryController extends Controller
     public function destroy($id)
     {
         $document = RepositoryDocument::find($id);
-        if (!$document || !$document->activo) {
+        if (! $document || ! $document->activo) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
-        }
-
-        if ($document->archivo_path && Storage::disk('public')->exists($document->archivo_path)) {
-            Storage::disk('public')->delete($document->archivo_path);
         }
 
         $document->tags()->detach();
@@ -618,17 +639,17 @@ class RepositoryController extends Controller
 
     public function publish(Request $request, $id)
     {
-        if (!$this->repositoryVisibilityEnabled()) {
+        if (! $this->repositoryVisibilityEnabled()) {
             return response()->json(['error' => 'Publicar documentos requiere ejecutar las migraciones pendientes en la API.'], 503);
         }
 
         $user = auth('api')->user();
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             return response()->json(['error' => 'Solo administradores pueden publicar documentos.'], 403);
         }
 
         $document = RepositoryDocument::where('activo', true)->find($id);
-        if (!$document) {
+        if (! $document) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }
 
@@ -647,49 +668,22 @@ class RepositoryController extends Controller
 
     public function download($id)
     {
-        $document = RepositoryDocument::find($id);
-        if (!$document || !$document->activo || !$document->archivo_path || !$this->canAccessDocument($document)) {
+        $document = RepositoryDocument::with('latestVersion')->find($id);
+        if (! $document || ! $document->activo || ! $document->latestVersion || ! $this->canAccessDocument($document)) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }
 
-        if (!Storage::disk('public')->exists($document->archivo_path)) {
-            return response()->json(['error' => 'El archivo no existe en el servidor'], 404);
-        }
-
-        return Storage::disk('public')->download($document->archivo_path);
+        return $this->downloads->download($document->latestVersion);
     }
 
     public function view($id)
     {
-        $document = RepositoryDocument::find($id);
-        if (!$document || !$document->activo || !$document->archivo_path || !$this->canAccessDocument($document)) {
+        $document = RepositoryDocument::with('latestVersion')->find($id);
+        if (! $document || ! $document->activo || ! $document->latestVersion || ! $this->canAccessDocument($document)) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }
 
-        if (!Storage::disk('public')->exists($document->archivo_path)) {
-            return response()->json(['error' => 'El archivo no existe en el servidor'], 404);
-        }
-
-        $mimeTypes = [
-            'pdf' => 'application/pdf',
-            'doc' => 'application/msword',
-            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'xls' => 'application/vnd.ms-excel',
-            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'zip' => 'application/zip',
-            'txt' => 'text/plain',
-            'jpg' => 'image/jpeg',
-            'jpeg' => 'image/jpeg',
-            'png' => 'image/png',
-            'webp' => 'image/webp',
-            'epub' => 'application/epub+zip',
-        ];
-        $type = strtolower($document->archivo_tipo ?: pathinfo($document->archivo_path, PATHINFO_EXTENSION));
-
-        return response()->file(Storage::disk('public')->path($document->archivo_path), [
-            'Content-Type' => $mimeTypes[$type] ?? 'application/octet-stream',
-            'Content-Disposition' => 'inline; filename="' . basename($document->archivo_path) . '"',
-        ]);
+        return $this->downloads->download($document->latestVersion, null, true);
     }
 
     private function fileValidationRule(bool $required, ?array $extensions = null): string
@@ -698,36 +692,21 @@ class RepositoryController extends Controller
         $presence = $required ? 'required' : 'nullable';
         $extensions = $extensions ?: self::ALLOWED_EXTENSIONS;
 
-        return $presence . '|file|mimes:' . implode(',', $extensions) . '|max:' . $maxFileSizeKb;
-    }
-
-    private function storeRepositoryFile($file): array
-    {
-        $extension = strtolower($file->getClientOriginalExtension());
-        if (!in_array($extension, self::ALLOWED_EXTENSIONS, true)) {
-            throw ValidationException::withMessages([
-                'archivo' => ['Tipo de archivo no permitido. Permitidos: ' . strtoupper(implode(', ', self::ALLOWED_EXTENSIONS)) . '.'],
-            ]);
-        }
-
-        $fileName = 'repo_' . auth('api')->id() . '_' . time() . '_' . uniqid() . '.' . $extension;
-        $path = Storage::disk('public')->putFileAs('repositorio', $file, $fileName);
-
-        return [$path, $extension];
+        return $presence.'|file|max:'.$maxFileSizeKb;
     }
 
     private function canAccessDocument(RepositoryDocument $document): bool
     {
-        if (!$this->repositoryVisibilityEnabled()) {
+        if (! $this->repositoryVisibilityEnabled()) {
             return false;
         }
 
-        if ($document->visibility === RepositoryDocument::VISIBILITY_PUBLIC) {
+        if ($document->visibility === RepositoryDocument::VISIBILITY_PUBLIC && $document->published_at !== null) {
             return true;
         }
 
         $user = auth('api')->user();
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -790,8 +769,7 @@ class RepositoryController extends Controller
         Project $project,
         ?RepositoryDocument $document,
         string $type
-    ): array
-    {
+    ): array {
         $isReleaseSheet = $type === 'release_sheet';
         $statuses = $document?->releaseStatuses?->keyBy(fn ($status) => (string) $status->alumno_id)
             ?? collect();
@@ -869,7 +847,7 @@ class RepositoryController extends Controller
         ];
         $databaseColumn = $normalizedColumns[$column] ?? $column;
 
-        if (!array_key_exists($column, $columns)) {
+        if (! array_key_exists($column, $columns)) {
             $columns[$column] = Schema::hasColumn('documentos', $databaseColumn);
         }
 

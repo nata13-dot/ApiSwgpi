@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Competencia;
 use App\Models\Project;
 use App\Models\Deliverable;
+use App\Models\Delivery;
 use App\Models\EvaluationRoom;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -92,22 +93,18 @@ class BusinessValidationService
             return true;
         }
         
-        $deliverable = Deliverable::find($deliverable_id);
-        if (!$deliverable) {
+        if (!Deliverable::whereKey($deliverable_id)->exists()) {
             return false;
         }
-        
-        $project = $deliverable->project;
-        if (!$project) {
-            return false;
-        }
+
+        $projectIds = Delivery::where('entregable_id', $deliverable_id)->pluck('proyecto_id');
         
         // Docente: solo sus proyectos (donde es asesor)
         if ($perfil_id === 2) {
-            return $project->advisors()
-                ->where('usuarios.id', $user_id)
+            return Project::whereIn('id', $projectIds)
+                ->whereHas('advisors', fn ($query) => $query->where('usuarios.id', $user_id))
                 ->exists()
-                || EvaluationRoom::whereHas('projects', fn ($query) => $query->where('proyectos.id', $project->id))
+                || EvaluationRoom::whereHas('projects', fn ($query) => $query->whereIn('proyectos.id', $projectIds))
                     ->where(function ($query) use ($user_id) {
                         $query->where('responsible_teacher_id', $user_id)
                             ->orWhereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('usuarios.id', $user_id));
@@ -117,8 +114,8 @@ class BusinessValidationService
         
         // Estudiante: solo proyectos donde es miembro
         if ($perfil_id === 3) {
-            return $project->students()
-                ->where('usuarios.id', $user_id)
+            return Project::whereIn('id', $projectIds)
+                ->whereHas('students', fn ($query) => $query->where('usuarios.id', $user_id))
                 ->exists();
         }
         

@@ -47,6 +47,32 @@ return [
             'report' => false,
         ],
 
+        'swgpi_public' => [
+            'driver' => 'local',
+            'root' => env('SWGPI_PUBLIC_STORAGE_PATH', storage_path('app/public')),
+            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            'visibility' => 'public',
+            'throw' => true,
+            'report' => true,
+        ],
+
+        'swgpi_private' => [
+            'driver' => 'local',
+            'root' => env('SWGPI_PRIVATE_STORAGE_PATH', storage_path('app/private')),
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => true,
+        ],
+
+        'legacy_public' => [
+            'driver' => 'local',
+            'root' => storage_path('app/public'),
+            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            'visibility' => 'public',
+            'throw' => true,
+            'report' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

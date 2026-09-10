@@ -239,9 +239,15 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(Project::class, 'creado_por', 'id');
     }
 
-    public function deliverables(): HasMany
+    public function deliveries(): HasMany
     {
-        return $this->hasMany(Deliverable::class, 'enviado_por', 'id');
+        return $this->hasMany(Delivery::class, 'enviado_por', 'id');
+    }
+
+    public function deliverables(): BelongsToMany
+    {
+        return $this->belongsToMany(Deliverable::class, 'entregas', 'enviado_por', 'entregable_id')
+            ->withPivot(['id', 'proyecto_id', 'documento_id', 'entregado_en', 'calificacion', 'comentarios_docente']);
     }
 
     public function feedbacks(): HasMany

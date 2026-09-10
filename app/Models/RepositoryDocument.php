@@ -2,31 +2,42 @@
 
 namespace App\Models;
 
-use App\Models\Concerns\HasLegacyAliases;
 use App\Models\Concerns\BelongsToCareer;
+use App\Models\Concerns\HasLegacyAliases;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class RepositoryDocument extends Model
 {
-    use HasFactory, HasLegacyAliases, BelongsToCareer;
+    use BelongsToCareer, HasFactory, HasLegacyAliases;
 
     protected $table = 'documentos';
+
     const CREATED_AT = 'creado_en';
+
     const UPDATED_AT = 'actualizado_en';
 
     public const CATEGORY_REPOSITORY = 'repository';
+
+    public const CATEGORY_DELIVERABLE = 'deliverable';
+
     public const CATEGORY_EVALUATION_DOCUMENT = 'evaluation_document';
+
     public const CATEGORY_EVALUATION_RELEASE = 'evaluation_release_sheet';
+
     public const CATEGORY_EVALUATION_PRESENTATION = 'evaluation_presentation';
+
     public const CATEGORY_THESIS_GENERAL = 'thesis_general';
+
     public const CATEGORY_THESIS_RESIDENCY = 'thesis_residency';
+
     public const VISIBILITY_PUBLIC = 'public';
+
     public const VISIBILITY_PRIVATE = 'private';
 
     protected array $legacyAliases = [
@@ -51,16 +62,13 @@ class RepositoryDocument extends Model
         'archivo_path', 'archivo_tipo', 'file_available',
     ];
 
-    protected ?array $pendingFile = null;
-
     protected $fillable = [
         'carrera_id',
         'project_id',
         'nombre',
         'descripcion',
+        'estado',
         'autores',
-        'archivo_path',
-        'archivo_tipo',
         'document_category',
         'visibility',
         'published_at',
@@ -107,6 +115,16 @@ class RepositoryDocument extends Model
     public function latestVersion(): HasOne
     {
         return $this->hasOne(DocumentVersion::class, 'documento_id')->latestOfMany('numero_version');
+    }
+
+    public function versions(): HasMany
+    {
+        return $this->hasMany(DocumentVersion::class, 'documento_id')->orderBy('numero_version');
+    }
+
+    public function delivery(): HasOne
+    {
+        return $this->hasOne(Delivery::class, 'documento_id');
     }
 
     public function getProjectIdAttribute(): ?int
@@ -174,6 +192,7 @@ class RepositoryDocument extends Model
     {
         return match ($value) {
             'repositorio' => self::CATEGORY_REPOSITORY,
+            'entregable' => self::CATEGORY_DELIVERABLE,
             'evaluacion' => self::CATEGORY_EVALUATION_DOCUMENT,
             'tesis' => self::CATEGORY_THESIS_GENERAL,
             default => (string) $value,
@@ -200,13 +219,12 @@ class RepositoryDocument extends Model
         if (in_array($column, ['document_category', 'categoria'], true)) {
             return match ($value) {
                 self::CATEGORY_REPOSITORY, 'repositorio' => 'repositorio',
-                self::CATEGORY_EVALUATION_DOCUMENT,
-                self::CATEGORY_EVALUATION_RELEASE,
-                self::CATEGORY_EVALUATION_PRESENTATION,
-                'evaluacion' => 'evaluacion',
-                self::CATEGORY_THESIS_GENERAL,
-                self::CATEGORY_THESIS_RESIDENCY,
-                'tesis' => 'tesis',
+                self::CATEGORY_DELIVERABLE, 'entregable' => 'entregable',
+                self::CATEGORY_EVALUATION_DOCUMENT, 'evaluacion' => 'evaluacion',
+                self::CATEGORY_EVALUATION_RELEASE => self::CATEGORY_EVALUATION_RELEASE,
+                self::CATEGORY_EVALUATION_PRESENTATION => self::CATEGORY_EVALUATION_PRESENTATION,
+                self::CATEGORY_THESIS_GENERAL, 'tesis' => 'tesis',
+                self::CATEGORY_THESIS_RESIDENCY => self::CATEGORY_THESIS_RESIDENCY,
                 default => $value,
             };
         }
@@ -219,26 +237,31 @@ class RepositoryDocument extends Model
         return $this->latestFileValue('ruta_archivo');
     }
 
-    public function setArchivoPathAttribute(?string $value): void
-    {
-        $this->pendingFile = array_merge($this->pendingFile ?? [], ['path' => $value]);
-    }
-
     public function getArchivoTipoAttribute(): ?string
     {
         return $this->latestFileValue('extension');
     }
 
-    public function setArchivoTipoAttribute(?string $value): void
-    {
-        $this->pendingFile = array_merge($this->pendingFile ?? [], ['extension' => $value]);
-    }
-
     public function getFileAvailableAttribute(): bool
     {
-        $path = $this->archivo_path;
+        $version = $this->relationLoaded('latestVersion')
+            ? $this->getRelation('latestVersion')
+            : $this->latestVersion()->first();
+        if (! $version?->ruta_archivo) {
+            return false;
+        }
 
-        return (bool) $path && \Illuminate\Support\Facades\Storage::disk('public')->exists($path);
+        $disk = $version->disco ?: config('uploads.legacy_disk', 'legacy_public');
+        if (isset(config('filesystems.disks')[$disk])
+            && Storage::disk($disk)->exists($version->ruta_archivo)) {
+            return true;
+        }
+
+        $legacy = config('uploads.legacy_disk', 'legacy_public');
+
+        return config('uploads.legacy_public_fallback', true)
+            && $disk !== $legacy
+            && Storage::disk($legacy)->exists($version->ruta_archivo);
     }
 
     public function getAutoresAttribute(): string
@@ -265,32 +288,6 @@ class RepositoryDocument extends Model
             }
         });
 
-        static::saved(function (RepositoryDocument $document): void {
-            $path = $document->pendingFile['path'] ?? null;
-            if (!$path) {
-                $document->pendingFile = null;
-                return;
-            }
-
-            $extension = strtolower((string) ($document->pendingFile['extension'] ?? pathinfo($path, PATHINFO_EXTENSION)));
-            $version = ((int) DB::table('documento_versiones')
-                ->where('documento_id', $document->id)
-                ->max('numero_version')) + 1;
-            DB::table('documento_versiones')->insert([
-                'documento_id' => $document->id,
-                'numero_version' => $version,
-                'nombre_archivo' => basename($path),
-                'ruta_archivo' => $path,
-                'extension' => $extension ?: null,
-                'mime_type' => null,
-                'tamano_bytes' => null,
-                'descripcion' => $version === 1 ? 'Versión inicial' : 'Archivo actualizado',
-                'subido_por' => auth('api')->id() ?: $document->subido_por,
-                'creado_en' => now(),
-            ]);
-            $document->pendingFile = null;
-            $document->unsetRelation('latestVersion');
-        });
     }
 
     private function latestFileValue(string $column): ?string

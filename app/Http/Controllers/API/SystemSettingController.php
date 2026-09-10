@@ -86,7 +86,7 @@ class SystemSettingController extends Controller
             'default_theme' => ['required', Rule::in(['light', 'dark', 'system'])],
             'max_file_size_mb' => 'required|integer|min:1|max:200',
             'allowed_file_types' => 'required|array|min:1',
-            'allowed_file_types.*' => ['string', Rule::in(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'webp'])],
+            'allowed_file_types.*' => ['string', Rule::in(config('uploads.default_extensions'))],
             'max_project_members' => 'required|integer|min:1|max:10',
             'global_notice' => 'nullable|string|max:1000',
             'proposal_registration_enabled' => 'required|boolean',

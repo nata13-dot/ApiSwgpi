@@ -2,22 +2,25 @@
 
 namespace App\Models;
 
-use App\Models\Concerns\HasLegacyAliases;
 use App\Models\Concerns\BelongsToCareer;
+use App\Models\Concerns\HasLegacyAliases;
 use App\Models\Pivots\ProjectMemberPivot;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Project extends Model
 {
-    use HasFactory, HasLegacyAliases, BelongsToCareer;
+    use BelongsToCareer, HasFactory, HasLegacyAliases;
 
     protected $table = 'proyectos';
+
     public $timestamps = true;
+
     const CREATED_AT = 'creado_en';
+
     const UPDATED_AT = 'actualizado_en';
 
     protected array $legacyAliases = [
@@ -35,7 +38,6 @@ class Project extends Model
     ];
 
     protected array $legacyVirtualColumns = [
-        'file_path',
         'is_thesis',
         'is_proposal',
         'semestre',
@@ -56,7 +58,6 @@ class Project extends Model
         'created_at',
         'updated_at',
         'subject_group_id',
-        'file_path',
         'is_thesis',
         'is_proposal',
         'proposal_status',
@@ -75,7 +76,7 @@ class Project extends Model
         'company_rfc',
     ];
 
-    protected $fillable = ['career_id', 'title', 'description', 'created_by', 'activo', 'tipo', 'modalidad', 'is_thesis', 'is_proposal', 'subject_group_id', 'empresa_id', 'file_path', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
+    protected $fillable = ['career_id', 'title', 'description', 'created_by', 'activo', 'tipo', 'modalidad', 'is_thesis', 'is_proposal', 'subject_group_id', 'empresa_id', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
 
     protected $casts = [
         'activo' => 'boolean',
@@ -97,10 +98,10 @@ class Project extends Model
     public function advisors(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'proyecto_integrantes', 'proyecto_id', 'usuario_id')
-                    ->using(ProjectMemberPivot::class)
-                    ->where('usuarios.activo', true)
-                    ->wherePivotNotIn('rol', ['lider', 'integrante'])
-                    ->withPivot('rol');
+            ->using(ProjectMemberPivot::class)
+            ->where('usuarios.activo', true)
+            ->wherePivotNotIn('rol', ['lider', 'integrante'])
+            ->withPivot('rol');
     }
 
     public function proposalReviewer(): BelongsTo
@@ -123,6 +124,11 @@ class Project extends Model
     {
         return $this->belongsToMany(Deliverable::class, 'entregas', 'proyecto_id', 'entregable_id')
             ->withPivot(['documento_id', 'enviado_por', 'entregado_en', 'calificacion', 'comentarios_docente']);
+    }
+
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(Delivery::class, 'proyecto_id');
     }
 
     public function repositoryDocuments(): HasMany
@@ -151,32 +157,35 @@ class Project extends Model
     }
 
     // MÉTODOS
-    public function isActive(): bool { return $this->activo === true; }
-    
+    public function isActive(): bool
+    {
+        return $this->activo === true;
+    }
+
     /**
      * Obtener solo los estudiantes del proyecto (sin rol_asesor)
      */
     public function students(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'proyecto_integrantes', 'proyecto_id', 'usuario_id')
-                    ->using(ProjectMemberPivot::class)
-                    ->where('usuarios.activo', true)
-                    ->wherePivotIn('rol', ['lider', 'integrante'])
-                    ->withPivot('rol');
+            ->using(ProjectMemberPivot::class)
+            ->where('usuarios.activo', true)
+            ->wherePivotIn('rol', ['lider', 'integrante'])
+            ->withPivot('rol');
     }
-    
+
     /**
      * Obtener solo los asesores del proyecto (con rol_asesor)
      */
     public function onlyAdvisors(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'proyecto_integrantes', 'proyecto_id', 'usuario_id')
-                    ->using(ProjectMemberPivot::class)
-                    ->where('usuarios.activo', true)
-                    ->wherePivotNotIn('rol', ['lider', 'integrante'])
-                    ->withPivot('rol');
+            ->using(ProjectMemberPivot::class)
+            ->where('usuarios.activo', true)
+            ->wherePivotNotIn('rol', ['lider', 'integrante'])
+            ->withPivot('rol');
     }
-    
+
     public function getAsesorTesis()
     {
         return $this->advisors()
@@ -211,30 +220,83 @@ class Project extends Model
             ->wherePivot('rol', 'secundario')
             ->first();
     }
-    
+
     public function getProgress(): float
     {
-        $total = $this->deliverables()->count();
-        if ($total === 0) return 0;
-        
-        $approved = $this->deliverables()->where('estado', 'aprobado')->count();
+        $total = $this->deliveries()->count();
+        if ($total === 0) {
+            return 0;
+        }
+
+        $approved = $this->deliveries()->where('calificacion', '>=', 70)->count();
+
         return ($approved / $total) * 100;
     }
 
-    public function getTitleAttribute(): ?string { return $this->titulo; }
-    public function getDescriptionAttribute(): ?string { return $this->descripcion; }
-    public function getCreatedByAttribute(): ?string { return $this->creado_por; }
-    public function getCreatedAtAttribute() { return $this->creado_en; }
-    public function getUpdatedAtAttribute() { return $this->actualizado_en; }
-    public function getSubjectGroupIdAttribute(): ?int { return $this->grupo_id; }
-    public function getFilePathAttribute(): ?string { return $this->attributes['archivo_ruta'] ?? null; }
-    public function getIsThesisAttribute(): bool { return ($this->tipo ?? null) === 'tesis'; }
-    public function getIsProposalAttribute(): bool { return ($this->tipo ?? null) === 'propuesta'; }
-    public function getProposalStatusAttribute(): ?string { return $this->estado; }
-    public function getProposalReviewedByAttribute(): ?string { return $this->revisado_por; }
-    public function getProposalReviewCommentAttribute(): ?string { return $this->comentario_revision; }
-    public function getProposalReviewedAtAttribute() { return $this->revisado_en; }
-    public function getRevisionAllowedUntilAttribute() { return $this->revision_permitida_hasta; }
+    public function getTitleAttribute(): ?string
+    {
+        return $this->titulo;
+    }
+
+    public function getDescriptionAttribute(): ?string
+    {
+        return $this->descripcion;
+    }
+
+    public function getCreatedByAttribute(): ?string
+    {
+        return $this->creado_por;
+    }
+
+    public function getCreatedAtAttribute()
+    {
+        return $this->creado_en;
+    }
+
+    public function getUpdatedAtAttribute()
+    {
+        return $this->actualizado_en;
+    }
+
+    public function getSubjectGroupIdAttribute(): ?int
+    {
+        return $this->grupo_id;
+    }
+
+    public function getIsThesisAttribute(): bool
+    {
+        return ($this->tipo ?? null) === 'tesis';
+    }
+
+    public function getIsProposalAttribute(): bool
+    {
+        return ($this->tipo ?? null) === 'propuesta';
+    }
+
+    public function getProposalStatusAttribute(): ?string
+    {
+        return $this->estado;
+    }
+
+    public function getProposalReviewedByAttribute(): ?string
+    {
+        return $this->revisado_por;
+    }
+
+    public function getProposalReviewCommentAttribute(): ?string
+    {
+        return $this->comentario_revision;
+    }
+
+    public function getProposalReviewedAtAttribute()
+    {
+        return $this->revisado_en;
+    }
+
+    public function getRevisionAllowedUntilAttribute()
+    {
+        return $this->revision_permitida_hasta;
+    }
 
     public function empresa(): BelongsTo
     {
@@ -259,19 +321,50 @@ class Project extends Model
             ->join(', ');
     }
 
-    public function getCompanyNameAttribute(): ?string { return $this->empresa?->nombre; }
-    public function getCompanyGiroAttribute(): ?string { return $this->empresa?->giro; }
-    public function getCompanyContactNameAttribute(): ?string { return $this->empresa?->contacto_nombre; }
-    public function getCompanyContactPositionAttribute(): ?string { return $this->empresa?->contacto_cargo; }
-    public function getCompanyAddressAttribute(): ?string { return $this->empresa?->direccion; }
-    public function getCompanyRfcAttribute(): ?string { return $this->empresa?->rfc; }
+    public function getCompanyNameAttribute(): ?string
+    {
+        return $this->empresa?->nombre;
+    }
+
+    public function getCompanyGiroAttribute(): ?string
+    {
+        return $this->empresa?->giro;
+    }
+
+    public function getCompanyContactNameAttribute(): ?string
+    {
+        return $this->empresa?->contacto_nombre;
+    }
+
+    public function getCompanyContactPositionAttribute(): ?string
+    {
+        return $this->empresa?->contacto_cargo;
+    }
+
+    public function getCompanyAddressAttribute(): ?string
+    {
+        return $this->empresa?->direccion;
+    }
+
+    public function getCompanyRfcAttribute(): ?string
+    {
+        return $this->empresa?->rfc;
+    }
 
     // SCOPES
-    public function scopeActivos($query) { return $query->where('activo', true); }
-    public function scopeInactivos($query) { return $query->where('activo', false); }
+    public function scopeActivos($query)
+    {
+        return $query->where('activo', true);
+    }
+
+    public function scopeInactivos($query)
+    {
+        return $query->where('activo', false);
+    }
+
     public function scopeSearch($query, $term)
     {
         return $query->where('title', 'like', "%{$term}%")
-                    ->orWhere('description', 'like', "%{$term}%");
+            ->orWhere('description', 'like', "%{$term}%");
     }
 }

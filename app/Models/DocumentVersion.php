@@ -15,17 +15,33 @@ class DocumentVersion extends Model
     public $timestamps = false;
 
     protected array $legacyAliases = [
-        'deliverable_id' => 'documento_id',
+        'document_id' => 'documento_id',
         'version_number' => 'numero_version',
-        'archivo_path' => 'archivo_ruta',
+        'file_name' => 'nombre_archivo',
+        'original_name' => 'nombre_original',
+        'file_path' => 'ruta_archivo',
+        'disk' => 'disco',
+        'mime_type' => 'mime_type',
+        'size_bytes' => 'tamano_bytes',
+        'checksum' => 'checksum_sha256',
         'uploaded_by' => 'subido_por',
         'created_at' => 'creado_en',
     ];
 
-    protected $fillable = ['deliverable_id', 'version_number', 'descripcion', 'archivo_path', 'uploaded_by'];
+    protected $fillable = [
+        'document_id', 'version_number', 'file_name', 'original_name', 'file_path',
+        'disk', 'extension', 'mime_type', 'size_bytes', 'checksum', 'descripcion',
+        'uploaded_by', 'created_at',
+    ];
+
+    protected $casts = [
+        'numero_version' => 'integer',
+        'tamano_bytes' => 'integer',
+        'creado_en' => 'datetime',
+    ];
 
     // RELACIONES
-    public function deliverable(): BelongsTo
+    public function document(): BelongsTo
     {
         return $this->belongsTo(RepositoryDocument::class, 'documento_id');
     }

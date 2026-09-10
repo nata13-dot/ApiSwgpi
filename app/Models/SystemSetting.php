@@ -46,7 +46,7 @@ class SystemSetting extends Model
         'default_theme' => 'system',
         'active_academic_period' => '2026-1',
         'max_file_size_mb' => 50,
-        'allowed_file_types' => ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'webp'],
+        'allowed_file_types' => ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'webp', 'epub', 'rar', '7z'],
         'max_project_members' => 4,
         'global_notice' => '',
         'proposal_registration_enabled' => true,
