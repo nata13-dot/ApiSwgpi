@@ -168,6 +168,11 @@ class User extends Authenticatable implements JWTSubject
 
     public function getSemestreAttribute(): ?int
     {
+        if (app(CareerContext::class)->careerId() && \Illuminate\Support\Facades\Schema::hasTable('matriculas_academicas')) {
+            $enrollment = app(\App\Services\AcademicWorkflowService::class)->enrollment($this->id);
+            return $enrollment?->semestre;
+        }
+
         if (array_key_exists('semestre', $this->attributes)) {
             return $this->attributes['semestre'] === null ? null : (int) $this->attributes['semestre'];
         }
@@ -189,6 +194,11 @@ class User extends Authenticatable implements JWTSubject
 
     public function getGrupoAttribute(): ?string
     {
+        if (app(CareerContext::class)->careerId() && \Illuminate\Support\Facades\Schema::hasTable('matriculas_academicas')) {
+            $enrollment = app(\App\Services\AcademicWorkflowService::class)->enrollment($this->id);
+            return $enrollment?->clave_grupo;
+        }
+
         if (array_key_exists('grupo', $this->attributes)) {
             return $this->attributes['grupo'];
         }

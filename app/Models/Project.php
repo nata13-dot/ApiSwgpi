@@ -99,7 +99,7 @@ class Project extends Model
     {
         return $this->belongsToMany(User::class, 'proyecto_integrantes', 'proyecto_id', 'usuario_id')
             ->using(ProjectMemberPivot::class)
-            ->where('usuarios.activo', true)
+            ->withoutGlobalScope('careerMembership')
             ->wherePivotNotIn('rol', ['lider', 'integrante'])
             ->withPivot('rol');
     }
@@ -169,7 +169,7 @@ class Project extends Model
     {
         return $this->belongsToMany(User::class, 'proyecto_integrantes', 'proyecto_id', 'usuario_id')
             ->using(ProjectMemberPivot::class)
-            ->where('usuarios.activo', true)
+            ->withoutGlobalScope('careerMembership')
             ->wherePivotIn('rol', ['lider', 'integrante'])
             ->withPivot('rol');
     }
@@ -181,7 +181,7 @@ class Project extends Model
     {
         return $this->belongsToMany(User::class, 'proyecto_integrantes', 'proyecto_id', 'usuario_id')
             ->using(ProjectMemberPivot::class)
-            ->where('usuarios.activo', true)
+            ->withoutGlobalScope('careerMembership')
             ->wherePivotNotIn('rol', ['lider', 'integrante'])
             ->withPivot('rol');
     }
@@ -305,6 +305,10 @@ class Project extends Model
 
     public function getSemestreAttribute(): ?int
     {
+        if (\Illuminate\Support\Facades\Schema::hasTable('proyecto_periodos') && app(\App\Support\CareerContext::class)->careerId()) {
+            $period = app(\App\Services\AcademicWorkflowService::class)->period();
+            if ($period) return app(\App\Services\AcademicWorkflowService::class)->projectSemester($this, $period->id) ?? $this->subjectGroup?->semestre;
+        }
         return $this->subjectGroup?->semestre;
     }
 

@@ -9,6 +9,7 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use App\Support\AcademicPeriod;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use App\Support\CareerContext;
@@ -72,27 +73,20 @@ class SubjectGroupController extends Controller
                 return response()->json(['error' => 'Carga de asignaturas no encontrada'], 404);
             }
 
-            $previousSemester = $group->semestre;
-            $previousGroup = $group->grupo;
             $validated = $this->validatePayload($request);
             $groupData = $this->groupData($validated);
             $this->ensureUniqueGroup($groupData['semestre'], $groupData['grupo'], (int) $group->id);
 
-            $group->update($groupData);
-            $group->asignaturas()->sync($this->courseSyncPayload($validated['asignatura_ids'] ?? []));
-
-            User::students()
-                ->where('activo', true)
-                ->where('semestre', $previousSemester)
-                ->where('grupo', $previousGroup)
-                ->update([
-                    'semestre' => $group->semestre,
-                    'grupo' => $group->grupo,
-                ]);
-
-            foreach ($group->projects as $project) {
-                $project->asignaturas()->sync($validated['asignatura_ids'] ?? []);
-            }
+            $linked = DB::table('matriculas_academicas')->where('grupo_id', $group->id)->exists() || $group->projects()->exists()
+                || DB::table('curso_estudiantes')->whereIn('curso_id', DB::table('cursos')->where('grupo_id', $group->id)->select('id'))->exists();
+            if ($linked) abort_if((int) $group->semestre !== (int) $groupData['semestre'] || $group->grupo !== $groupData['grupo'] || (int) $group->periodo_id !== (int) $groupData['periodo_id'], 409, 'Un grupo con historial conserva su semestre, clave y periodo. Crea el grupo destino.');
+            DB::transaction(function () use ($group, $groupData, $validated) {
+                $group->update($groupData);
+                $subjects = $validated['asignatura_ids'] ?? [];
+                DB::table('cursos')->where('grupo_id', $group->id)->whereNotIn('asignatura_id', $subjects)->update(['activo' => false]);
+                $payload = array_map(fn ($row) => $row + ['activo' => true], $this->courseSyncPayload($subjects));
+                $group->asignaturas()->syncWithoutDetaching($payload);
+            });
 
             return response()->json([
                 'message' => 'Carga de asignaturas actualizada',
@@ -114,14 +108,7 @@ class SubjectGroupController extends Controller
             return response()->json(['message' => 'No puedes eliminar una carga usada por proyectos.'], 422);
         }
 
-        User::students()
-            ->where('activo', true)
-            ->where('semestre', $group->semestre)
-            ->where('grupo', $group->grupo)
-            ->update([
-                'semestre' => null,
-                'grupo' => null,
-            ]);
+        abort_if(DB::table('matriculas_academicas')->where('grupo_id', $group->id)->exists(), 409, 'El grupo tiene matrículas; conserva su historial.');
 
         $group->update(['activo' => false]);
         return response()->json(['message' => 'Carga de asignaturas eliminada']);
@@ -136,8 +123,7 @@ class SubjectGroupController extends Controller
 
         $students = User::students()
             ->where('activo', true)
-            ->where('semestre', $group->semestre)
-            ->where('grupo', $group->grupo)
+            ->whereIn('usuarios.id', DB::table('matriculas_academicas')->where('carrera_id', $group->carrera_id)->where('periodo_id', $group->periodo_id)->where('grupo_id', $group->id)->where('estado', 'activa')->select('estudiante_id'))
             ->orderBy('nombres')
             ->get(['id', 'nombres', 'apa', 'ama', 'email', 'semestre', 'grupo']);
 
@@ -153,14 +139,13 @@ class SubjectGroupController extends Controller
 
         $validated = $request->validate([
             'student_ids' => 'nullable|array',
-            'student_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
+            'student_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)],
         ]);
 
         $studentIds = array_values(array_unique($validated['student_ids'] ?? []));
-        User::whereIn('id', $studentIds)
-            ->students()
-            ->where('activo', true)
-            ->update(['semestre' => $group->semestre, 'grupo' => $group->grupo]);
+        DB::transaction(function () use ($studentIds, $group) {
+            foreach ($studentIds as $studentId) app(\App\Services\AcademicWorkflowService::class)->assign($studentId, $group);
+        });
 
         return response()->json([
             'message' => 'Alumnos actualizados en el grupo',
@@ -174,7 +159,7 @@ class SubjectGroupController extends Controller
             'nombre' => 'required|string|max:255',
             'semestre' => 'required|integer|in:5,6,7,8,9',
             'grupo' => 'required|string|max:20',
-            'periodo' => ['nullable', 'string', 'regex:/^20\d{2}-[12]$/'],
+            'periodo' => 'required|string|exists:periodos_academicos,nombre',
             'asignatura_ids' => 'nullable|array',
             'asignatura_ids.*' => [
                 'integer',
@@ -185,15 +170,7 @@ class SubjectGroupController extends Controller
 
         $validated['nombre'] = trim($validated['nombre']);
         $validated['grupo'] = strtoupper(trim($validated['grupo']));
-        $validated['periodo'] = AcademicPeriod::normalize(
-            ($validated['periodo'] ?? null) ?: (string) SystemSetting::valueFor('active_academic_period', '2026-1')
-        );
-
-        if (!in_array((int) $validated['semestre'], AcademicPeriod::semesters($validated['periodo']), true)) {
-            throw ValidationException::withMessages([
-                'semestre' => ["El semestre {$validated['semestre']} no corresponde al periodo {$validated['periodo']}."],
-            ]);
-        }
+        $validated['periodo'] = trim($validated['periodo']);
 
         if ($validated['nombre'] === '') {
             throw ValidationException::withMessages(['nombre' => ['El nombre del grupo es obligatorio.']]);
@@ -208,11 +185,9 @@ class SubjectGroupController extends Controller
 
     private function groupData(array $validated): array
     {
-        $period = AcademicPeriodModel::firstOrCreate(
-            ['nombre' => $validated['periodo']],
-            ['activo' => true]
-        );
+        $period = AcademicPeriodModel::where('nombre', $validated['periodo'])->firstOrFail();
 
+        abort_if(DB::table('carrera_periodos')->where('carrera_id', app(CareerContext::class)->careerId())->where('periodo_id', $period->id)->whereIn('estado', ['en_cierre', 'cerrado'])->exists(), 409, 'El periodo no admite cambios de grupos.');
         return [
             'nombre' => $validated['nombre'],
             'semestre' => $validated['semestre'],
@@ -226,7 +201,7 @@ class SubjectGroupController extends Controller
     {
         $query = SubjectGroup::where('activo', true)
             ->where('semestre', $semestre)
-            ->where('grupo', $grupo);
+            ->where('grupo', $grupo)->whereIn('periodo_id', AcademicPeriodModel::where('nombre', request('periodo'))->select('id'));
 
         if ($ignoreId) {
             $query->where('id', '<>', $ignoreId);

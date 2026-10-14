@@ -99,6 +99,9 @@ RUN APP_ENV=production \
 # =========================================
 FROM php:8.2-fpm-bookworm
 
+# Enable only on the single designated scheduler service after schema verification.
+ENV SGPI_SCHEDULER_ENABLED=false
+
 # Install only runtime tools and minimal dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -181,22 +184,8 @@ sed -i "s/listen 8000;/listen ${PORT:-8000};/" /etc/nginx/sites-available/defaul
 # Public storage symlink for Laravel files
 php artisan storage:link || true
 
-# Run database migrations. Keep serving traffic if Railway's database is not ready yet;
-# API endpoints that depend on new columns return a clear 503 until migrations complete.
-echo "📊 Running database migrations..."
-for attempt in 1 2 3 4 5; do
-    if php artisan migrate --force; then
-        break
-    fi
-
-    if [ "$attempt" = "5" ]; then
-        echo "⚠️ Database migrations failed after 5 attempts. Continuing startup."
-        break
-    fi
-
-    echo "Database not ready or migration failed. Retrying in 5 seconds..."
-    sleep 5
-done
+# Apply reviewed additive migrations in the release job, after backup rehearsal.
+# Web replicas never run migrations automatically.
 
 # Cache Laravel configurations for performance
 echo "⚡ Caching configurations..."

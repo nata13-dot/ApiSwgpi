@@ -77,6 +77,10 @@ class DeliverySubmissionService
     ): array {
         return DB::transaction(function () use ($deliverable, $project, $user, $prepared, $stored): array {
             Deliverable::query()->whereKey($deliverable->id)->lockForUpdate()->firstOrFail();
+            if (Schema::hasTable('matriculas_academicas')) {
+                DB::table('cursos')->where('id', $deliverable->curso_id)->lockForUpdate()->first();
+                $this->authorizeContext($deliverable->fresh(), $project, $user);
+            }
 
             $delivery = Delivery::query()
                 ->where('entregable_id', $deliverable->id)
@@ -118,6 +122,11 @@ class DeliverySubmissionService
                 ]);
             }
 
+            if (Schema::hasTable('entrega_participantes')) {
+                $participants = DB::table('curso_estudiantes')->where('curso_id', $deliverable->curso_id)->where('activo', true)
+                    ->whereIn('estudiante_id', $project->students()->pluck('usuarios.id'))->pluck('estudiante_id');
+                foreach ($participants as $student) DB::table('entrega_participantes')->insertOrIgnore(['entrega_id' => $delivery->id, 'estudiante_id' => $student]);
+            }
             RepositoryDocument::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
             $versionNumber = ((int) DocumentVersion::query()
                 ->where('documento_id', $document->id)
@@ -160,9 +169,17 @@ class DeliverySubmissionService
     {
         $deliverable->loadMissing('course');
         $sameCareer = (int) $deliverable->carrera_id === (int) $project->carrera_id;
+        $modern = Schema::hasTable('matriculas_academicas');
         $sameGroup = $deliverable->course
             && (int) $deliverable->course->grupo_id === (int) $project->grupo_id;
 
+        if ($modern && $deliverable->course) {
+            $workflow = app(AcademicWorkflowService::class);
+            $period = (int) $deliverable->course->group->periodo_id;
+            $workflow->requireOpen($period);
+            $sameGroup = $workflow->projectSemester($project, $period) !== null;
+            if ($user->isStudent()) abort_unless(app(CourseAdmissionService::class)->enrolled($deliverable->curso_id, $user->id), 403, 'No estás inscrito en esta materia.');
+        }
         if (! $sameCareer || ! $sameGroup || ! $deliverable->activo || ! $project->activo) {
             throw ValidationException::withMessages([
                 'project_id' => ['El proyecto no corresponde al entregable seleccionado.'],

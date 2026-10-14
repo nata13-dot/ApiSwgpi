@@ -42,6 +42,6 @@ class EvaluationAttempt extends Model
 
     public function teacher(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'docente_id', 'id')->where('activo', true);
+        return $this->belongsTo(User::class, 'docente_id', 'id')->withoutGlobalScope('careerMembership');
     }
 }

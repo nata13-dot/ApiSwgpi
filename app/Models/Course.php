@@ -16,11 +16,11 @@ class Course extends Model
 
     public $timestamps = false;
 
-    protected $fillable = ['carrera_id', 'grupo_id', 'asignatura_id', 'activo', 'es_seguimiento_proyecto', 'clave_autoregistro', 'clave_actualizada_en', 'clave_actualizada_por'];
+    protected $fillable = ['carrera_id', 'grupo_id', 'asignatura_id', 'activo', 'es_seguimiento_proyecto', 'clave_autoregistro', 'clave_actualizada_en', 'clave_actualizada_por', 'inscripcion_desde', 'inscripcion_hasta'];
 
     protected $hidden = ['clave_autoregistro'];
 
-    protected $casts = ['activo' => 'boolean', 'es_seguimiento_proyecto' => 'boolean', 'clave_actualizada_en' => 'datetime'];
+    protected $casts = ['inscripcion_desde' => 'datetime', 'inscripcion_hasta' => 'datetime', 'activo' => 'boolean', 'es_seguimiento_proyecto' => 'boolean', 'clave_actualizada_en' => 'datetime'];
 
     public function subject(): BelongsTo
     {

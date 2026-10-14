@@ -89,7 +89,7 @@ class RepositoryDocument extends Model
 
     public function uploader(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'subido_por', 'id')->where('activo', true);
+        return $this->belongsTo(User::class, 'subido_por', 'id')->withoutGlobalScope('careerMembership');
     }
 
     public function publisher(): BelongsTo
@@ -190,6 +190,7 @@ class RepositoryDocument extends Model
 
     public function getCategoriaAttribute($value): string
     {
+        if (!empty($this->attributes['categoria_detalle'])) return $this->attributes['categoria_detalle'];
         return match ($value) {
             'repositorio' => self::CATEGORY_REPOSITORY,
             'entregable' => self::CATEGORY_DELIVERABLE,
@@ -201,7 +202,11 @@ class RepositoryDocument extends Model
 
     public function setCategoriaAttribute($value): void
     {
-        $this->attributes['categoria'] = $this->mapLegacyValue('document_category', $value);
+        $detail = in_array($value, [self::CATEGORY_EVALUATION_RELEASE, self::CATEGORY_EVALUATION_PRESENTATION, self::CATEGORY_THESIS_RESIDENCY], true);
+        if (\Illuminate\Support\Facades\Schema::hasColumn('documentos', 'categoria_detalle')) {
+            $this->attributes['categoria_detalle'] = $detail ? $value : null;
+            $this->attributes['categoria'] = $detail ? ($value === self::CATEGORY_THESIS_RESIDENCY ? 'tesis' : 'evaluacion') : $this->mapLegacyValue('document_category', $value);
+        } else $this->attributes['categoria'] = $this->mapLegacyValue('document_category', $value);
     }
 
     public function mapLegacyValue(string $column, mixed $value): mixed

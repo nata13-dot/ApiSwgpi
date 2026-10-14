@@ -262,6 +262,7 @@ class DeliverySubmissionServiceTest extends TestCase
             'creado_en' => now()->subMinute(),
         ]);
 
+        $this->seedEnrollmentListingContext();
         $this->withoutMiddleware();
         auth('api')->setUser(User::findOrFail('student'));
         $response = $this->getJson('/api/my-deliverables')->assertOk();
@@ -300,6 +301,7 @@ class DeliverySubmissionServiceTest extends TestCase
             $this->pdf('proyecto-dos.pdf'), ['pdf'], 50
         );
 
+        $this->seedEnrollmentListingContext();
         $this->withoutMiddleware();
         auth('api')->setUser(User::findOrFail('student'));
         $items = collect($this->getJson('/api/my-deliverables')->assertOk()->json('data'));
@@ -322,6 +324,7 @@ class DeliverySubmissionServiceTest extends TestCase
         $this->submit('matriz.pdf');
         DB::table('entregas')->update(['calificacion' => 88]);
 
+        $this->seedEnrollmentListingContext();
         $this->withoutMiddleware();
         auth('api')->setUser(User::findOrFail('teacher'));
         $response = $this->getJson('/api/teacher/deliverables-matrix')->assertOk();
@@ -349,6 +352,8 @@ class DeliverySubmissionServiceTest extends TestCase
         ]);
 
         $this->withoutMiddleware();
+        $this->seedEnrollmentListingContext();
+        app(\App\Support\CareerContext::class)->set(User::findOrFail('admin'), \App\Models\Career::findOrFail(1), 1);
         auth('api')->setUser(User::findOrFail('admin'));
         $this->postJson('/api/deliverables/1/calificar', [
             'project_id' => 20,
@@ -357,19 +362,6 @@ class DeliverySubmissionServiceTest extends TestCase
 
         $this->assertDatabaseHas('entregas', ['entregable_id' => 1, 'proyecto_id' => 20, 'calificacion' => 95]);
         $this->assertDatabaseHas('entregas', ['entregable_id' => 1, 'proyecto_id' => 10, 'calificacion' => null]);
-    }
-
-    public function test_evaluation_deliverable_creation_uses_courses_without_legacy_pivot(): void
-    {
-        $controller = app(DeliverableController::class);
-        $method = new \ReflectionMethod($controller, 'ensureEvaluationDeliverables');
-        $method->invoke($controller, Project::findOrFail(10));
-
-        $this->assertFalse(Schema::hasTable('entregables_proyecto'));
-        $this->assertDatabaseHas('entregables', [
-            'curso_id' => 100,
-            'nombre' => 'Diapositivas de evaluacion',
-        ]);
     }
 
     public function test_repository_replacement_creates_a_new_version_and_keeps_the_previous_file(): void
@@ -453,6 +445,25 @@ class DeliverySubmissionServiceTest extends TestCase
             $this->assertSame([], Storage::disk('legacy_public')->allFiles());
             $this->assertSame([], Storage::disk('local')->allFiles());
         }
+    }
+
+    private function seedEnrollmentListingContext(): void
+    {
+        Schema::create('carreras', function (Blueprint $t) { $t->id(); $t->string('nombre'); $t->boolean('activa')->default(true); });
+        Schema::create('periodos_academicos', function (Blueprint $t) { $t->id(); $t->string('nombre'); $t->date('fecha_inicio'); $t->date('fecha_fin'); });
+        Schema::create('carrera_periodos', function (Blueprint $t) { $t->id(); $t->integer('carrera_id'); $t->integer('periodo_id'); $t->string('estado'); });
+        Schema::create('matriculas_academicas', function (Blueprint $t) { $t->id(); $t->integer('carrera_id'); $t->integer('periodo_id'); $t->integer('grupo_id'); $t->string('estudiante_id'); $t->string('estado'); });
+        Schema::create('proyecto_periodos', function (Blueprint $t) { $t->id(); $t->integer('carrera_id'); $t->integer('periodo_id'); $t->integer('proyecto_id'); $t->integer('grupo_id'); });
+        Schema::create('curso_estudiantes', function (Blueprint $t) { $t->integer('curso_id'); $t->string('estudiante_id'); $t->boolean('activo'); });
+        Schema::create('usuario_carrera', function (Blueprint $t) { $t->id(); $t->string('usuario_id'); $t->integer('carrera_id'); $t->integer('perfil_id'); $t->boolean('activo'); });
+        DB::table('carreras')->insert(['id' => 1, 'nombre' => 'Pruebas']);
+        DB::table('periodos_academicos')->insert(['id' => 1, 'nombre' => 'Actual', 'fecha_inicio' => now()->subMonth(), 'fecha_fin' => now()->addMonth()]);
+        DB::table('carrera_periodos')->insert(['carrera_id' => 1, 'periodo_id' => 1, 'estado' => 'abierto']);
+        DB::table('grupos_academicos')->update(['periodo_id' => 1]);
+        DB::table('matriculas_academicas')->insert(['carrera_id' => 1, 'periodo_id' => 1, 'grupo_id' => 5, 'estudiante_id' => 'student', 'estado' => 'activa']);
+        DB::table('curso_estudiantes')->insert(['curso_id' => 100, 'estudiante_id' => 'student', 'activo' => true]);
+        foreach (DB::table('usuarios')->get() as $user) DB::table('usuario_carrera')->insert(['usuario_id' => $user->id, 'carrera_id' => 1, 'perfil_id' => $user->perfil_id, 'activo' => true]);
+        app(\App\Support\CareerContext::class)->set(User::findOrFail('student'), \App\Models\Career::findOrFail(1), 3);
     }
 
     private function submit(string $name): array

@@ -16,13 +16,13 @@ class EvaluationScore extends Model
     const UPDATED_AT = 'actualizado_en';
 
     protected array $legacyAliases = [
-        'evaluation_id' => 'dictamen_id',
+        'nivel' => 'valor',
         'rubric_criterion_id' => 'criterio_id',
         'created_at' => 'creado_en',
         'updated_at' => 'actualizado_en',
     ];
 
-    protected array $legacyVirtualColumns = ['teacher_id', 'criterio', 'nivel'];
+    protected array $legacyVirtualColumns = ['evaluation_id', 'teacher_id', 'criterio'];
 
     protected $appends = [
         'evaluation_id',
@@ -32,7 +32,7 @@ class EvaluationScore extends Model
     ];
 
     protected $fillable = [
-        'evaluation_id', 'teacher_id', 'criterio', 'nivel', 'puntaje', 'comentario',
+        'dictamen_id', 'criterio_id', 'valor', 'nivel', 'puntaje', 'comentario',
     ];
 
     protected $casts = [
@@ -53,7 +53,7 @@ class EvaluationScore extends Model
             'id',
             'dictamen_id',
             'docente_id'
-        )->where('usuarios.activo', true);
+        )->withoutGlobalScope('careerMembership');
     }
 
     public function attempt(): BelongsTo

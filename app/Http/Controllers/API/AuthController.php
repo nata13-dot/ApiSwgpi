@@ -306,6 +306,7 @@ class AuthController extends Controller
             'email' => $user->email,
             'perfil_id' => $user->globalProfileId(),
             'active_profile_id' => $activeProfileId,
+            'capabilities' => \App\Http\Middleware\CheckRole::grantsForProfile($activeProfileId),
             'is_general_admin' => $user->globalProfileId() === 4,
             'active_career' => $career ? $this->careerPayload($career, $activeProfileId) : null,
             'careers' => $this->availableCareers($user),

@@ -7,6 +7,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SemesterPresentationException extends Model
 {
+    protected static function booted(): void
+    {
+        static::addGlobalScope('career', function ($query) {
+            $query->whereHas('project');
+        });
+    }
+
     protected $table = 'autorizaciones_excepcionales';
     public $timestamps = false;
 

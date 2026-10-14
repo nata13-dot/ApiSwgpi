@@ -109,10 +109,26 @@ Artisan::command('sgpi:release-check {--allow-local}', function (ReleaseReadines
     return $report['ready'] ? self::SUCCESS : self::FAILURE;
 })->purpose('Valida seguridad, esquema, aislamiento y recuperación antes de desplegar');
 
-Schedule::call(fn () => app(SemesterManagementService::class)->syncCurrentPeriod())
-    ->dailyAt('00:10')
-    ->name('sync-current-academic-period')
-    ->withoutOverlapping();
+Artisan::command('sgpi:diagnose-academic {--baseline : Check only prerequisites before the additive migration}', function () {
+    $report = app(\App\Services\AcademicDiagnosticsService::class)->report();
+    $this->line(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    return $report['baseline_ready'] && ($this->option('baseline') || !$report['missing_consolidation']) ? self::SUCCESS : self::FAILURE;
+})->purpose('Diagnóstico de sólo lectura del esquema y conciliación académica');
+
+Artisan::command('sgpi:prepare-academic-periods', function () {
+    $id = DB::table('ejecuciones_academicas')->insertGetId(['tarea' => 'preparar_periodos', 'estado' => 'ejecutando', 'created_at' => now(), 'updated_at' => now()]);
+    try {
+        app(\App\Services\AcademicMaintenanceService::class)->run();
+        DB::table('ejecuciones_academicas')->where('id', $id)->update(['estado' => 'completada', 'updated_at' => now()]);
+        $this->info('Periodos preparados. No se activaron ni promovieron alumnos.');
+    } catch (\Throwable $error) {
+        DB::table('ejecuciones_academicas')->where('id', $id)->update(['estado' => 'fallida', 'detalle' => get_class($error), 'updated_at' => now()]);
+        throw $error;
+    }
+});
+
+Schedule::command('sgpi:prepare-academic-periods')->hourlyAt(10)->timezone('America/Mexico_City')
+    ->name('prepare-academic-periods')->withoutOverlapping();
 
 Schedule::command('sgpi:check-multicareer --store --source=programado')
     ->dailyAt('00:20')

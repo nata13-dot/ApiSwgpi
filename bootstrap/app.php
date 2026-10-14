@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(\App\Http\Middleware\EnsureCorsHeaders::class);
         $middleware->prepend(\App\Http\Middleware\SecurityHeaders::class);
+        $middleware->prependToPriorityList(\Illuminate\Routing\Middleware\SubstituteBindings::class, \App\Http\Middleware\ResolveCareerContext::class);
         $middleware->redirectGuestsTo(fn () => null);
         $middleware->api(prepend: [
             \App\Http\Middleware\SanitizeApiInput::class,
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'active' => \App\Http\Middleware\EnsureUserIsActive::class,
             'career' => \App\Http\Middleware\ResolveCareerContext::class,
             'career.module' => \App\Http\Middleware\EnsureCareerModuleEnabled::class,
+            'academic.open' => \App\Http\Middleware\EnsureAcademicPeriodOpen::class,
             'audit' => \App\Http\Middleware\AuditCareerMutation::class,
         ]);
     })

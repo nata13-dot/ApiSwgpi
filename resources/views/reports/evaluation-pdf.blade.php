@@ -41,7 +41,7 @@
             <tr><td>Promedio global</td><td>{{ $globalAverage }}%</td></tr>
             @if ($titulationAptSummary['applies'])
                 <tr>
-                    <td>Apto para titulacion</td>
+                    <td>Recomendación del proyecto (sin efecto de egreso)</td>
                     <td>{{ $titulationAptSummary['label'] }}</td>
                 </tr>
             @endif
@@ -91,7 +91,7 @@
             <strong>{{ $comment['teacher_name'] }}</strong>
             @if ($titulationAptSummary['applies'])
                 <div class="muted">
-                    Apto para titulacion:
+                    Recomendación del proyecto (sin efecto de egreso):
                     @if ($comment['apto_titulacion'] === null)
                         Sin respuesta
                     @else

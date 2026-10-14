@@ -209,6 +209,19 @@ class LegacyAliasBuilder extends Builder
             }
         }
 
+        if ($this->model instanceof \App\Models\User && in_array($name, ['semestre', 'grupo'], true)
+            && \Illuminate\Support\Facades\Schema::hasTable('matriculas_academicas')) {
+            $career = (int) app(\App\Support\CareerContext::class)->careerId();
+            $field = $name === 'semestre' ? 'semestre' : 'clave_grupo';
+            return new Expression("(SELECT g.{$field} FROM matriculas_academicas m JOIN grupos_academicos g ON g.id=m.grupo_id JOIN carrera_periodos cp ON cp.carrera_id=m.carrera_id AND cp.periodo_id=m.periodo_id WHERE m.estudiante_id=usuarios.id AND m.carrera_id={$career} AND m.estado='activa' AND cp.estado IN ('abierto','en_cierre') LIMIT 1)");
+        }
+
+        if ($this->model instanceof \App\Models\RepositoryDocument && $name === 'document_category' && \Illuminate\Support\Facades\Schema::hasColumn('documentos', 'categoria_detalle')) return new Expression('COALESCE(documentos.categoria_detalle, documentos.categoria)');
+
+        if ($this->model instanceof \App\Models\Project && $name === 'semestre' && \Illuminate\Support\Facades\Schema::hasTable('proyecto_periodos')) {
+            return new Expression("(SELECT g.semestre FROM grupos_academicos g WHERE g.id = COALESCE((SELECT pp.grupo_id FROM proyecto_periodos pp JOIN carrera_periodos cp ON cp.carrera_id=pp.carrera_id AND cp.periodo_id=pp.periodo_id WHERE pp.proyecto_id=proyectos.id AND pp.carrera_id=proyectos.carrera_id AND cp.estado IN ('abierto','en_cierre') LIMIT 1), proyectos.grupo_id) LIMIT 1)");
+        }
+
         $aliases = method_exists($this->model, 'getLegacyAliases') ? $this->model->getLegacyAliases() : [];
         $mapped = $aliases[$name] ?? $name;
 

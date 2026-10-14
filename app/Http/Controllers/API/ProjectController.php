@@ -51,7 +51,7 @@ class ProjectController extends Controller
                 $query->whereHas('students', fn ($q) => $q->where('usuarios.id', $user->id));
             }
             if ($request->filled('semestre')) {
-                $query->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->where('semestre', $request->semestre));
+                $query->where('semestre', $request->semestre);
             }
             $this->applyProjectCategoryFilters($query, $request);
 
@@ -100,7 +100,7 @@ class ProjectController extends Controller
         }
 
         if ($request->filled('semestre')) {
-            $query->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->where('semestre', $request->semestre));
+            $query->where('semestre', $request->semestre);
         }
 
         $this->applyProjectCategoryFilters($query, $request);
@@ -231,6 +231,8 @@ class ProjectController extends Controller
                 $validated['year'] = $validated['year'] ?? now()->year;
             }
 
+            $group = SubjectGroup::findOrFail($validated['subject_group_id']);
+            app(\App\Services\AcademicWorkflowService::class)->requireOpen((int) $group->periodo_id);
             $project = DB::transaction(function () use ($validated, $user, $isStudentProposal) {
                 $company = $this->resolveCompany($validated, $user);
 
@@ -301,6 +303,7 @@ class ProjectController extends Controller
             }
 
             $previousGroupId = $project->subject_group_id;
+            abort_if(isset($validated['subject_group_id']) && (int) $validated['subject_group_id'] !== (int) $previousGroupId, 409, 'Registra la continuidad por periodo; el grupo original conserva las evidencias históricas.');
             $this->updateCompany($project, $validated);
             $projectData = collect($validated)->except([
                 'student_ids',
@@ -353,7 +356,8 @@ class ProjectController extends Controller
         if (!auth('api')->user()->canManageProjects()) {
             return response()->json(['error' => 'Solo administradores pueden eliminar proyectos'], 403);
         }
-        $project->delete();
+        abort_if(DB::table('residencias')->where('proyecto_id', $project->id)->where('estado', 'abierta')->exists(), 409, 'Cierra o resuelve las residencias vinculadas antes de desactivar el proyecto.');
+        $project->update(['activo' => false]);
         return response()->json(['message' => 'Proyecto eliminado']);
     }
 
@@ -366,7 +370,7 @@ class ProjectController extends Controller
             }
 
             $validated = $request->validate([
-                'user_id' => ['required', 'string', Rule::exists('usuarios', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2])],
+                'user_id' => ['required', 'string', Rule::exists('usuarios', 'id')->where('activo', true)],
                 'rol_asesor' => 'required|in:primario,secundario,asesor,revisor_1,revisor_2',
             ]);
 
@@ -374,7 +378,7 @@ class ProjectController extends Controller
             if ($guard) return $guard;
 
             $advisor = User::where('id', $validated['user_id'])
-                ->whereIn('perfil_id', [1, 2])
+                ->withCareerProfiles([1, 2, 5, 6, 7])
                 ->where('activo', true)
                 ->first();
             if (!$advisor) {
@@ -389,6 +393,10 @@ class ProjectController extends Controller
             }
 
             DB::transaction(function () use ($project, $validated, $roleGroup) {
+                $before = $project->advisors()->get()->map(fn ($u) => ['id' => $u->id, 'rol' => $u->pivot->rol]);
+                app(\App\Services\AcademicWorkflowService::class)->audit('proyecto.asesor', 'proyecto', $project->id, $before, $validated);
+                $replaced = DB::table('proyecto_integrantes')->where('proyecto_id', $project->id)->where('rol', $validated['rol_asesor'])->where('usuario_id', '!=', $validated['user_id'])->pluck('usuario_id');
+                abort_if(DB::table('residencias')->where('proyecto_id', $project->id)->where('estado', 'abierta')->whereIn('asesor_id', $replaced)->exists(), 409, 'Reasigna primero los expedientes de residencia.');
                 DB::table('proyecto_integrantes')
                     ->where('proyecto_id', $project->id)
                     ->where('rol', $validated['rol_asesor'])
@@ -426,6 +434,8 @@ class ProjectController extends Controller
         $guard = $this->guardAdvisorModification(request());
         if ($guard) return $guard;
 
+        abort_if(DB::table('residencias')->where('proyecto_id', $project->id)->where('asesor_id', $userId)->where('estado', 'abierta')->exists(), 409, 'Reasigna primero los expedientes de residencia abiertos.');
+        app(\App\Services\AcademicWorkflowService::class)->audit('proyecto.asesor_retirado', 'proyecto', $project->id, ['asesor_id' => $userId], null);
         $project->advisors()->detach($userId);
         return response()->json([
             'message' => 'Asesor removido',
@@ -452,7 +462,7 @@ class ProjectController extends Controller
             'assignments.*' => [
                 'nullable',
                 'string',
-                Rule::exists('usuarios', 'id')->where('activo', true)->whereIn('perfil_id', [1, 2]),
+                Rule::exists('usuarios', 'id')->where('activo', true),
             ],
         ]);
 
@@ -466,6 +476,7 @@ class ProjectController extends Controller
         $assignments = collect($allowedRoles)
             ->mapWithKeys(fn ($role) => [$role => $validated['assignments'][$role] ?? null]);
         $selectedUsers = $assignments->filter()->values();
+        foreach ($selectedUsers as $advisorId) app(\App\Services\AcademicWorkflowService::class)->teacher($advisorId);
         if ($selectedUsers->duplicates()->isNotEmpty()) {
             throw ValidationException::withMessages([
                 'assignments' => ['Una persona no puede ocupar dos puestos en el mismo proyecto.'],
@@ -473,6 +484,9 @@ class ProjectController extends Controller
         }
 
         DB::transaction(function () use ($project, $allowedRoles, $assignments) {
+            $before = $project->advisors()->get()->map(fn ($u) => ['id' => $u->id, 'rol' => $u->pivot->rol]);
+            app(\App\Services\AcademicWorkflowService::class)->audit('proyecto.asesores', 'proyecto', $project->id, $before, $assignments);
+            abort_if(DB::table('residencias')->where('proyecto_id', $project->id)->where('estado', 'abierta')->whereNotIn('asesor_id', $assignments->filter()->values())->exists(), 409, 'Reasigna primero el asesor de los expedientes abiertos.');
             DB::table('proyecto_integrantes')
                 ->where('proyecto_id', $project->id)
                 ->whereIn('rol', $allowedRoles)
@@ -577,7 +591,7 @@ class ProjectController extends Controller
                         'semestre' => 'nullable|integer|in:5,6,7,8',
                         'year' => 'nullable|integer|min:2000|max:2100',
                         'student_ids' => 'required|array|min:1',
-                        'student_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
+                        'student_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)],
                     ],
                     $this->importValidationMessages(),
                     $this->importValidationAttributes()
@@ -655,7 +669,7 @@ class ProjectController extends Controller
             'is_thesis' => 'nullable|boolean',
             'modalidad' => [$creating ? 'required' : 'nullable', Rule::in(['dual', 'proyecto_integrador', 'caso_integrador'])],
             'student_ids' => [($creating && !$studentCreating) ? 'required' : 'nullable', 'array'],
-            'student_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
+            'student_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)],
             'company_name' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
             'company_id' => ['nullable', 'integer', Rule::exists('empresas', 'id')->where('estado_validacion', 'aprobada')],
             'company_rfc' => [$creating ? 'required_without:company_id' : 'nullable', 'string', 'max:13', 'regex:/^[A-Z&Ñ]{3,4}\d{6}[A-Z0-9]{3}$/i'],
@@ -675,31 +689,14 @@ class ProjectController extends Controller
 
         $group = SubjectGroup::find($subjectGroupId);
         $defaultSubject = Asignatura::where('nombre', 'Fundamentos de Ingeniería de Software')->firstOrFail();
-        $exception = ProposalReviewException::where('student_id', $student->id)
-            ->where('subject_group_id', $subjectGroupId)
-            ->where('asignatura_id', $defaultSubject->id)
-            ->where('activo', true)
-            ->exists();
-        $regularStudent = (int) $student->semestre === 5
-            && $group
-            && (int) $group->semestre === 5
-            && strtoupper((string) $group->grupo) === strtoupper((string) $student->grupo);
-
-        if (!$group || (!$regularStudent && !$exception)) {
-            throw ValidationException::withMessages(['subject_group_id' => ['Solo alumnos de quinto semestre o alumnos con una excepcion activa pueden registrar propuestas.']]);
-        }
-        if (!$group->asignaturas()->where('asignaturas.id', $defaultSubject->id)->exists()) {
-            throw ValidationException::withMessages(['subject_group_id' => ['La carga no incluye Fundamentos de Ingeniería de Software.']]);
-        }
-
-        $window = ProjectRegistrationWindow::where('subject_group_id', $subjectGroupId)
-            ->where('activo', true)
-            ->where('starts_at', '<=', now())
-            ->where('ends_at', '>=', now())
-            ->exists();
-        if (!$window) {
-            throw ValidationException::withMessages(['window' => ['El registro de proyectos no esta habilitado para tu grupo en este momento.']]);
-        }
+        abort_unless($group && $group->activo, 422, 'Selecciona un grupo vigente.');
+        $workflow = app(\App\Services\AcademicWorkflowService::class);
+        $workflow->requireOpen((int) $group->periodo_id);
+        $course = \App\Models\Course::where('grupo_id', $group->id)->where('asignatura_id', $defaultSubject->id)->where('activo', true)->first();
+        abort_unless($workflow->enrollment($student->id, (int) $group->periodo_id) && $course
+            && app(\App\Services\CourseAdmissionService::class)->enrolled($course->id, $student->id), 422, 'Inscríbete a la materia antes de registrar la propuesta.');
+        abort_unless($group->registro_proyectos_desde && $group->registro_proyectos_hasta
+            && now()->betweenIncluded($group->registro_proyectos_desde, $group->registro_proyectos_hasta), 422, 'El registro de propuestas está fuera de ventana.');
 
         $already = Project::whereHas('students', fn ($q) => $q->where('usuarios.id', $student->id))->exists();
         if ($already) {
@@ -736,7 +733,7 @@ class ProjectController extends Controller
             throw ValidationException::withMessages(['student_ids' => ["El proyecto puede tener como maximo {$maxMembers} integrantes."]]);
         }
 
-        $students = User::whereIn('id', $studentIds)->where('perfil_id', 3)->where('activo', true)->get(['id', 'nombres', 'apa', 'ama']);
+        $students = User::whereIn('id', $studentIds)->students()->where('activo', true)->get(['id', 'nombres', 'apa', 'ama']);
         if (count($studentIds) !== $students->count()) {
             throw ValidationException::withMessages(['student_ids' => ['Solo se pueden agregar estudiantes activos como integrantes.']]);
         }
@@ -744,17 +741,23 @@ class ProjectController extends Controller
         $assignedElsewhere = DB::table('proyecto_integrantes')
             ->join('proyectos', 'proyectos.id', '=', 'proyecto_integrantes.proyecto_id')
             ->whereIn('proyecto_integrantes.usuario_id', $studentIds)
-            ->where('proyecto_integrantes.rol', 'integrante')
+            ->whereIn('proyecto_integrantes.rol', ['lider', 'integrante'])
+            ->where('proyectos.carrera_id', $project->carrera_id)
+            ->where('proyectos.activo', true)
             ->where('proyecto_integrantes.proyecto_id', '!=', $project->id)
             ->select('proyecto_integrantes.usuario_id as user_id', 'proyectos.titulo as title')
             ->get();
 
-        if ($assignedElsewhere->isNotEmpty()) {
+        if ((int) $project->subjectGroup?->semestre !== 9 && $assignedElsewhere->isNotEmpty()) {
             $details = $assignedElsewhere->map(fn ($row) => "{$row->user_id} ya pertenece a {$row->title}")->implode(', ');
             throw ValidationException::withMessages(['student_ids' => ["Cada estudiante solo puede ser integrante de un proyecto. {$details}"]]);
         }
 
-        DB::table('proyecto_integrantes')->where('proyecto_id', $project->id)->where('rol', 'integrante')->delete();
+        $before = $project->students()->pluck('usuarios.id')->sort()->values()->all();
+        $after = collect($studentIds)->sort()->values()->all();
+        abort_if($before !== $after && ($project->evaluations()->exists() || $project->deliveries()->exists()), 409, 'Un proyecto con evidencias conserva sus integrantes; registra un proyecto nuevo para cambiar el equipo.');
+        app(\App\Services\AcademicWorkflowService::class)->audit('proyecto.integrantes', 'proyecto', $project->id, $before, $after);
+        DB::table('proyecto_integrantes')->where('proyecto_id', $project->id)->whereIn('rol', ['lider', 'integrante'])->delete();
         foreach ($students as $student) {
             DB::table('proyecto_integrantes')->insert([
                 'proyecto_id' => $project->id,
@@ -769,7 +772,7 @@ class ProjectController extends Controller
     private function inferSubjectGroupForImport(array $studentIds, ?int $declaredSemester): ?SubjectGroup
     {
         $students = User::whereIn('id', $studentIds)
-            ->where('perfil_id', 3)
+            ->students()
             ->where('activo', true)
             ->get(['id', 'semestre', 'grupo']);
 
@@ -796,6 +799,7 @@ class ProjectController extends Controller
         }
 
         $subjectGroup = SubjectGroup::where('activo', true)
+            ->where('periodo_id', app(\App\Services\AcademicWorkflowService::class)->period()?->id ?? 0)
             ->where('semestre', $semester)
             ->where('grupo', $groupCode)
             ->first();

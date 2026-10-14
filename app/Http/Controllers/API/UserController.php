@@ -93,28 +93,12 @@ class UserController extends Controller
         }
 
         if ($request->filled('semestre')) {
-            $query->whereExists(function ($subquery) use ($request, $careerId) {
-                $subquery->selectRaw('1')
-                    ->from('grupo_estudiantes')
-                    ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
-                    ->whereColumn('grupo_estudiantes.estudiante_id', 'usuarios.id')
-                    ->where('grupo_estudiantes.activo', true)
-                    ->where('grupos_academicos.carrera_id', $careerId)
-                    ->where('grupos_academicos.semestre', $request->semestre);
-            });
+            $query->where('semestre', $request->semestre);
         }
 
         if ($request->filled('grupo')) {
             $group = strtoupper($request->grupo);
-            $query->whereExists(function ($subquery) use ($group, $careerId) {
-                $subquery->selectRaw('1')
-                    ->from('grupo_estudiantes')
-                    ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
-                    ->whereColumn('grupo_estudiantes.estudiante_id', 'usuarios.id')
-                    ->where('grupo_estudiantes.activo', true)
-                    ->where('grupos_academicos.carrera_id', $careerId)
-                    ->where('grupos_academicos.clave_grupo', $group);
-            });
+            $query->where('grupo', $group);
         }
 
         if ($request->filled('q')) {
@@ -736,42 +720,11 @@ class UserController extends Controller
             return;
         }
 
-        $targetGroup = null;
-        if ((int) $assignment['profile_id'] === 3
-            && $assignment['semester'] !== null
-            && $assignment['group'] !== null) {
-            $targetGroup = SubjectGroup::where('activo', true)
-                ->where('semestre', $assignment['semester'])
-                ->where('grupo', $assignment['group'])
-                ->first();
-
-            if (!$targetGroup) {
-                throw ValidationException::withMessages([
-                    'grupo' => ["No existe un grupo activo {$assignment['semester']} {$assignment['group']}."],
-                ]);
-            }
-        }
-
-        DB::table('grupo_estudiantes')
-            ->where('estudiante_id', $user->id)
-            ->whereIn('grupo_id', SubjectGroup::query()->pluck('id'))
-            ->where('activo', true)
-            ->update(['activo' => false]);
-
-        if (!$targetGroup) {
-            return;
-        }
-
-        DB::table('grupo_estudiantes')->updateOrInsert(
-            [
-                'grupo_id' => $targetGroup->id,
-                'estudiante_id' => $user->id,
-            ],
-            [
-                'inscrito_en' => now(),
-                'activo' => true,
-            ]
-        );
+        if ((int) $assignment['profile_id'] !== 3 || $assignment['semester'] === null || $assignment['group'] === null) return;
+        $workflow = app(\App\Services\AcademicWorkflowService::class);
+        $targetGroup = SubjectGroup::where('activo', true)->where('periodo_id', $workflow->period()?->id)
+            ->where('semestre', $assignment['semester'])->where('grupo', $assignment['group'])->firstOrFail();
+        $workflow->assign($user->id, $targetGroup);
     }
 
     private function preparePhoneData(array &$data): void
@@ -810,26 +763,12 @@ class UserController extends Controller
             }
 
             if ($request->filled('semestre')) {
-                $query->whereExists(function ($subquery) use ($request) {
-                    $subquery->selectRaw('1')
-                        ->from('grupo_estudiantes')
-                        ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
-                        ->whereColumn('grupo_estudiantes.estudiante_id', 'usuarios.id')
-                        ->where('grupo_estudiantes.activo', true)
-                        ->where('grupos_academicos.semestre', $request->input('semestre'));
-                });
+                $query->where('semestre', $request->input('semestre'));
             }
 
             if ($request->filled('grupo')) {
                 $group = strtoupper(trim((string) $request->input('grupo')));
-                $query->whereExists(function ($subquery) use ($group) {
-                    $subquery->selectRaw('1')
-                        ->from('grupo_estudiantes')
-                        ->join('grupos_academicos', 'grupos_academicos.id', '=', 'grupo_estudiantes.grupo_id')
-                        ->whereColumn('grupo_estudiantes.estudiante_id', 'usuarios.id')
-                        ->where('grupo_estudiantes.activo', true)
-                        ->where('grupos_academicos.clave_grupo', $group);
-                });
+                $query->where('grupo', $group);
             }
 
             if ($request->filled('q')) {

@@ -288,7 +288,9 @@ class RepositoryController extends Controller
                 $request->file('archivo'),
                 $user,
                 function () use ($category, $defaultName, $project, $user, $validated) {
+                    $period = app(\App\Services\AcademicWorkflowService::class)->period();
                     $document = RepositoryDocument::query()
+                        ->whereBetween('creado_en', [$period->fecha_inicio, $period->fecha_fin->endOfDay()])
                         ->where('project_id', $project->id)
                         ->where('document_category', $category)
                         ->where('activo', true)
@@ -424,6 +426,7 @@ class RepositoryController extends Controller
 
     public function storeThesisDocument(Request $request)
     {
+        if ($request->input('tipo') === 'residencias') return response()->json(['message' => 'Registra los avances desde el expediente individual de Residencias. Los documentos anteriores siguen disponibles para consulta.'], 409);
         try {
             if (! $this->repositoryVisibilityEnabled()) {
                 return response()->json(['error' => 'El apartado de tesis y residencias requiere ejecutar las migraciones pendientes en la API.'], 503);
@@ -566,6 +569,7 @@ class RepositoryController extends Controller
     {
         try {
             $document = RepositoryDocument::find($id);
+        abort_if($document && $document->document_category !== RepositoryDocument::CATEGORY_REPOSITORY, 409, 'La evidencia académica se gestiona desde su entrega o expediente; conserva su historial.');
             if (! $document || ! $document->activo) {
                 return response()->json(['error' => 'Documento no encontrado'], 404);
             }
@@ -627,6 +631,7 @@ class RepositoryController extends Controller
     public function destroy($id)
     {
         $document = RepositoryDocument::find($id);
+        abort_if($document && $document->document_category !== RepositoryDocument::CATEGORY_REPOSITORY, 409, 'La evidencia académica se gestiona desde su entrega o expediente; conserva su historial.');
         if (! $document || ! $document->activo) {
             return response()->json(['error' => 'Documento no encontrado'], 404);
         }

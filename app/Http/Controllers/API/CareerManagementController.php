@@ -179,6 +179,8 @@ class CareerManagementController extends Controller
                 UserCareer::where('usuario_id', $validated['usuario_id'])->update(['es_principal' => false]);
             }
 
+            $existing = UserCareer::where('usuario_id', $validated['usuario_id'])->where('carrera_id', $validated['carrera_id'])->first();
+            if ($existing && ((int) $existing->perfil_id !== (int) $validated['perfil_id'] || !($validated['activo'] ?? true))) app(\App\Services\AcademicMembershipService::class)->ensureReleased($existing);
             return UserCareer::updateOrCreate(
                 [
                     'usuario_id' => $validated['usuario_id'],
@@ -212,7 +214,13 @@ class CareerManagementController extends Controller
                     ->whereKeyNot($membership->id)
                     ->update(['es_principal' => false]);
             }
+            $membership->refresh();
+            if ((isset($validated['perfil_id']) && (int) $validated['perfil_id'] !== (int) $membership->perfil_id) || (array_key_exists('activo', $validated) && !$validated['activo'])) {
+                app(\App\Services\AcademicMembershipService::class)->ensureReleased($membership);
+            }
+            $before = $membership->toArray();
             $membership->update($validated);
+            app(\App\Services\AcademicWorkflowService::class)->audit('membresia.actualizada', 'membresia', $membership->id, $before, $membership->toArray());
         });
 
         return response()->json([
@@ -225,7 +233,10 @@ class CareerManagementController extends Controller
 
     public function destroyMembership(UserCareer $membership)
     {
-        $membership->delete();
+        app(\App\Services\AcademicMembershipService::class)->ensureReleased($membership);
+        $before = $membership->toArray();
+        $membership->update(['activo' => false]);
+        app(\App\Services\AcademicWorkflowService::class)->audit('membresia.baja', 'membresia', $membership->id, $before, $membership->toArray());
 
         return response()->json(['message' => 'Membresía eliminada correctamente.']);
     }

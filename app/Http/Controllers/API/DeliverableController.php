@@ -30,7 +30,7 @@ class DeliverableController extends Controller
     public function teacherMatrix(Request $request)
     {
         $user = auth('api')->user();
-        if ((int) $user->perfil_id !== 2) {
+        if (!in_array((int) $user->perfil_id, [1, 2, 5, 6, 7], true)) {
             return response()->json(['error' => 'Solo docentes pueden consultar esta vista'], 403);
         }
 
@@ -127,8 +127,8 @@ class DeliverableController extends Controller
             ->join('cursos', 'cursos.id', '=', 'entregables.curso_id')
             ->leftJoin('asignaturas', 'asignaturas.id', '=', 'cursos.asignatura_id')
             ->join('proyectos', function ($join) {
-                $join->on('proyectos.grupo_id', '=', 'cursos.grupo_id')
-                    ->where('proyectos.activo', true);
+                $join->on('proyectos.carrera_id', '=', 'cursos.carrera_id')->where('proyectos.activo', true)
+                    ->whereRaw("(EXISTS (SELECT 1 FROM curso_estudiantes ce JOIN proyecto_integrantes pi ON pi.usuario_id=ce.estudiante_id WHERE ce.curso_id=cursos.id AND ce.activo=1 AND pi.proyecto_id=proyectos.id AND pi.rol IN ('lider','integrante')) OR EXISTS (SELECT 1 FROM entregas e WHERE e.entregable_id=entregables.id AND e.proyecto_id=proyectos.id))");
             })
             ->leftJoin('entregas', function ($join) {
                 $join->on('entregas.entregable_id', '=', 'entregables.id')
@@ -184,11 +184,14 @@ class DeliverableController extends Controller
                 $subquery->selectRaw('1')
                     ->from('proyecto_integrantes')
                     ->join('proyectos as pi_proyectos', 'pi_proyectos.id', '=', 'proyecto_integrantes.proyecto_id')
-                    ->whereColumn('pi_proyectos.grupo_id', 'cursos.grupo_id')
+                    ->whereColumn('pi_proyectos.id', 'proyectos.id')
                     ->where('proyecto_integrantes.usuario_id', $user->id)
                     ->whereIn('proyecto_integrantes.rol', ['lider', 'integrante']);
             });
         }
+
+        $query->where('entregables.carrera_id', app(\App\Support\CareerContext::class)->careerId());
+        if ($user->isStudent()) $query->whereIn('entregables.curso_id', DB::table('curso_estudiantes')->where('estudiante_id', $user->id)->where('activo', true)->select('curso_id'));
 
         if ($request->filled('project_id')) {
             $query->where('proyectos.id', $request->project_id);
@@ -231,14 +234,18 @@ class DeliverableController extends Controller
             ->where('activo', true)
             ->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id))
             ->get();
-        $items = $projects->flatMap(function (Project $project) {
-            return $this->deliverablesForProject($project)
-                ->map(fn (Deliverable $deliverable) => $this->shapeStudentDeliverable(
-                    $deliverable,
-                    $project,
-                    $deliverable->deliveries->first()
-                ));
-        })->sortByDesc('created_at')->values();
+        $period = app(\App\Services\AcademicWorkflowService::class)->period();
+        $courses = DB::table('curso_estudiantes')->where('estudiante_id', $user->id)->where('activo', true)->pluck('curso_id');
+        $deliverables = Deliverable::with('course.subject')->where('activo', true)->whereIn('curso_id', $courses)
+            ->whereHas('course.group', fn ($q) => $q->where('periodo_id', $period?->id ?? 0))->get();
+        $items = $deliverables->flatMap(function ($deliverable) use ($projects, $period) {
+            $eligible = $projects->filter(fn ($project) => app(\App\Services\AcademicWorkflowService::class)->projectSemester($project, $period->id) !== null);
+            if ($eligible->isEmpty()) return [$this->shapeStudentDeliverable($deliverable, null, null)];
+            return $eligible->map(function ($project) use ($deliverable) {
+                $delivery = $deliverable->deliveries()->where('proyecto_id', $project->id)->with('document.latestVersion')->first();
+                return $this->shapeStudentDeliverable($deliverable, $project, $delivery);
+            });
+        })->values();
 
         return response()->json([
             'data' => $items,
@@ -286,7 +293,6 @@ class DeliverableController extends Controller
         $projects = $projectsQuery->orderBy('title')->get();
 
         $data = $projects->map(function (Project $project) use ($user) {
-            $this->ensureEvaluationDeliverables($project);
             $deliverables = $this->deliverablesForProject($project)
                 ->filter(fn (Deliverable $deliverable) => in_array($this->deliverableCategory($deliverable), [
                     self::CATEGORY_RESEARCH_DOCUMENT,
@@ -354,8 +360,10 @@ class DeliverableController extends Controller
                 'estado' => 'nullable|string',
             ]);
 
+            $courseId = $this->courseIdForDeliverable((int) ($validated['asignatura_id'] ?? $validated['competencia_id']), $validated['project_id'] ?? null);
+            app(\App\Services\CourseAdmissionService::class)->manage(Course::findOrFail($courseId), auth('api')->user());
             $deliverable = Deliverable::create([
-                'curso_id' => $this->courseIdForDeliverable((int) ($validated['asignatura_id'] ?? $validated['competencia_id']), $validated['project_id'] ?? null),
+                'curso_id' => $courseId,
                 'nombre' => $validated['nombre'],
                 'descripcion' => $validated['descripcion'] ?? null,
                 'tipo_documento' => $validated['tipo_documento'] ?? 'documento',
@@ -383,11 +391,19 @@ class DeliverableController extends Controller
             return response()->json(['error' => 'Entregable no encontrado'], 404);
         }
 
+        $user = auth('api')->user();
+        if ($user->isStudent()) {
+            abort_unless(app(\App\Services\CourseAdmissionService::class)->enrolled($deliverable->curso_id, $user->id), 403);
+            $deliverable->setRelation('deliveries', $deliverable->deliveries->filter(fn ($d) => $d->project?->students()->where('usuarios.id', $user->id)->exists())->values());
+        } else app(\App\Services\CourseAdmissionService::class)->manage($deliverable->course, $user);
         return response()->json($deliverable);
     }
 
     public function update(Request $request, $id)
     {
+        $target = Deliverable::findOrFail($id);
+        app(\App\Services\CourseAdmissionService::class)->manage($target->course, auth('api')->user());
+
         try {
             $deliverable = Deliverable::find($id);
             if (! $deliverable) {
@@ -418,6 +434,10 @@ class DeliverableController extends Controller
                 );
             }
 
+            if (isset($payload['curso_id']) && (int) $payload['curso_id'] !== (int) $deliverable->curso_id) {
+                abort_if($deliverable->deliveries()->exists(), 409, 'No se puede cambiar de curso una actividad con entregas.');
+                app(\App\Services\CourseAdmissionService::class)->manage(Course::findOrFail($payload['curso_id']), auth('api')->user());
+            }
             $deliverable->update($payload);
 
             return response()->json(['message' => 'Entregable actualizado', 'deliverable' => $deliverable]);
@@ -428,6 +448,9 @@ class DeliverableController extends Controller
 
     public function destroy($id)
     {
+        $target = Deliverable::findOrFail($id);
+        app(\App\Services\CourseAdmissionService::class)->manage($target->course, auth('api')->user());
+
         $deliverable = Deliverable::find($id);
         if (! $deliverable) {
             return response()->json(['error' => 'Entregable no encontrado'], 404);
@@ -456,10 +479,11 @@ class DeliverableController extends Controller
 
             // Validar que el usuario sea docente o admin
             $user = auth('api')->user();
-            if (! in_array($user->perfil_id, [1, 2])) {
+            if (! in_array($user->perfil_id, [1, 2, 5, 6, 7])) {
                 return response()->json(['error' => 'Solo docentes y admin pueden calificar'], 403);
             }
 
+            app(\App\Services\CourseAdmissionService::class)->manage($deliverable->course, $user);
             $validated = $request->validate([
                 'project_id' => 'required|integer|exists:proyectos,id',
                 'calificacion' => 'required|numeric|min:0|max:100',
@@ -494,6 +518,8 @@ class DeliverableController extends Controller
             return response()->json(['errors' => $e->errors()], 422);
         } catch (AuthorizationException $e) {
             return response()->json(['error' => $e->getMessage()], 403);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
@@ -519,7 +545,15 @@ class DeliverableController extends Controller
                 $deliveryQuery->where('proyecto_id', $request->integer('project_id'));
             }
             $accessibleDeliveries = $deliveryQuery->get()
-                ->filter(fn (Delivery $candidate) => $candidate->project && $this->canAccessProject($user, $candidate->project))
+                ->filter(function (Delivery $candidate) use ($user, $deliverable) {
+                    if (!$candidate->project || !$this->canAccessProject($user, $candidate->project)) return false;
+                    if (!$user->isStudent()) return true;
+                    return DB::table('curso_estudiantes')->where('curso_id', $deliverable->curso_id)
+                        ->where('estudiante_id', $user->id)->where('activo', true)->exists()
+                        || DB::table('entrega_participantes')->where('entrega_id', $candidate->id)
+                            ->where('estudiante_id', $user->id)->exists()
+                        || (string) $candidate->enviado_por === (string) $user->id;
+                })
                 ->values();
             if ($accessibleDeliveries->isEmpty()) {
                 return response()->json(['error' => 'No tienes acceso a este entregable'], 403);
@@ -539,6 +573,8 @@ class DeliverableController extends Controller
 
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
@@ -590,6 +626,8 @@ class DeliverableController extends Controller
             return response()->json(['errors' => $e->errors()], 422);
         } catch (AuthorizationException $e) {
             return response()->json(['error' => $e->getMessage()], 403);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
@@ -797,14 +835,15 @@ class DeliverableController extends Controller
         ];
     }
 
-    private function shapeStudentDeliverable(Deliverable $deliverable, Project $project, ?Delivery $delivery): array
+    private function shapeStudentDeliverable(Deliverable $deliverable, ?Project $project, ?Delivery $delivery): array
     {
         $version = $delivery?->document?->latestVersion;
         $subject = $deliverable->course?->subject;
 
         return [
             'id' => $deliverable->id,
-            'project_id' => $project->id,
+            'puede_subir' => $project !== null,
+            'project_id' => $project?->id,
             'delivery_id' => $delivery?->id,
             'document_id' => $delivery?->documento_id,
             'competencia_id' => null,
@@ -820,9 +859,9 @@ class DeliverableController extends Controller
             'fecha_calificacion' => optional($delivery?->entregado_en)->toDateTimeString(),
             'created_at' => optional($deliverable->created_at)->toDateTimeString(),
             'project' => [
-                'id' => $project->id,
-                'title' => $project->title,
-                'subject_group_id' => $project->subject_group_id,
+                'id' => $project?->id,
+                'title' => $project?->title,
+                'subject_group_id' => $project?->subject_group_id,
             ],
             // Alias legado: es la asignatura del curso, no una competencia persistida.
             'competencia' => $subject ? [
@@ -836,47 +875,6 @@ class DeliverableController extends Controller
             'calificado_por' => null,
             'calificadoPor' => null,
         ];
-    }
-
-    private function ensureEvaluationDeliverables(Project $project): void
-    {
-        $courses = Course::with('subject')
-            ->where('carrera_id', $project->carrera_id)
-            ->where('grupo_id', $project->grupo_id)
-            ->where('activo', true)
-            ->orderByDesc('es_seguimiento_proyecto')
-            ->orderBy('id')
-            ->get();
-        $presentationCourse = $courses->first();
-        if ($presentationCourse) {
-            Deliverable::firstOrCreate(
-                ['curso_id' => $presentationCourse->id, 'nombre' => 'Diapositivas de evaluacion'],
-                [
-                    'carrera_id' => $project->carrera_id,
-                    'descripcion' => 'Archivo de apoyo para la presentacion del proyecto en evaluaciones.',
-                    'tipo_documento' => 'presentacion',
-                    'estado' => 'publicado',
-                    'activo' => true,
-                ]
-            );
-        }
-
-        $researchCourse = $courses->first(fn (Course $course) => $course->subject && $this->isResearchSubject(
-            (string) $course->subject->nombre,
-            (string) $course->subject->clave
-        ));
-        if ($researchCourse) {
-            Deliverable::firstOrCreate(
-                ['curso_id' => $researchCourse->id, 'nombre' => 'Documento de investigacion'],
-                [
-                    'carrera_id' => $project->carrera_id,
-                    'descripcion' => 'Documento adicional requerido para proyectos con Taller de Investigacion I o II.',
-                    'tipo_documento' => 'documento',
-                    'estado' => 'publicado',
-                    'activo' => true,
-                ]
-            );
-        }
     }
 
     private function requiresResearchDocument(Project $project): bool
@@ -950,7 +948,9 @@ class DeliverableController extends Controller
         ])
             ->where('activo', true)
             ->whereHas('course', function ($course) use ($project, $subjectId) {
-                $course->where('grupo_id', $project->grupo_id)->where('activo', true);
+                 $course->where('activo', true)->whereIn('id', DB::table('curso_estudiantes')->where('activo', true)
+                    ->whereIn('estudiante_id', $project->students()->pluck('usuarios.id'))->select('curso_id'));
+                if (auth('api')->user()?->isStudent()) $course->whereIn('id', DB::table('curso_estudiantes')->where('activo', true)->where('estudiante_id', auth('api')->id())->select('curso_id'));
                 if ($subjectId) {
                     $course->where('asignatura_id', $subjectId);
                 }

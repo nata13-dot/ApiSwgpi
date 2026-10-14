@@ -22,28 +22,23 @@ class SemesterManagementController extends Controller
 
     public function summary()
     {
-        $activePeriod = $this->semesterService->syncCurrentPeriod();
+        $activePeriod = $this->semesterService->activePeriod();
         $periods = AcademicPeriod::query()
             ->withCount('subjectGroups')
             ->orderByDesc('fecha_inicio')
             ->orderByDesc('id')
             ->get();
 
-        $exceptions = SemesterPresentationException::query()
-            ->with([
-                'period:id,nombre',
-                'project:id,titulo,grupo_id',
-                'project.subjectGroup:id,semestre,grupo',
-                'student:id,nombres,apellido_paterno,apellido_materno,semestre,grupo',
-            ])
-            ->where('tipo', 'presentacion_semestre')
-            ->where('activa', true)
-            ->orderByDesc('id')
-            ->get()
-            ->filter(fn ($exception) => $exception->periodo_id !== null)
-            ->values();
+        $exceptions = DB::table('autorizaciones_academicas')
+            ->where('carrera_id', app(\App\Services\AcademicWorkflowService::class)->careerId())
+            ->orderByDesc('id')->get();
+        $states = DB::table('carrera_periodos')->where('carrera_id', app(\App\Services\AcademicWorkflowService::class)->careerId())->get()->keyBy('periodo_id');
+        $periods->each(function ($period) use ($states) {
+            $period->operacion = $states->get($period->id);
+        });
 
         return response()->json([
+            'scheduler' => DB::table('ejecuciones_academicas')->orderByDesc('id')->first(),
             'active_period_id' => $activePeriod?->id,
             'periods' => $periods,
             'exceptions' => $exceptions,
@@ -58,6 +53,7 @@ class SemesterManagementController extends Controller
 
     public function storePeriod(Request $request)
     {
+        abort_unless(auth('api')->user()->isGeneralAdmin(), 403, 'El calendario es institucional.');
         $validated = $this->validatePeriod($request);
         $period = AcademicPeriod::create($validated + ['activo' => false]);
 
@@ -66,6 +62,7 @@ class SemesterManagementController extends Controller
 
     public function updatePeriod(Request $request, AcademicPeriod $period)
     {
+        abort_unless(auth('api')->user()->isGeneralAdmin(), 403, 'El calendario es institucional.');
         $validated = $this->validatePeriod($request, $period->id);
         $period->update($validated);
 
@@ -81,39 +78,25 @@ class SemesterManagementController extends Controller
 
     public function promotionPreview(AcademicPeriod $period)
     {
-        $destinationSemesters = $this->semesterService->semestersForPeriod($period);
-        $students = User::query()
-            ->students()
-            ->where('activo', true)
-            ->whereBetween('semestre', [5, 9])
-            ->get(['id', 'semestre', 'grupo']);
-
-        return response()->json([
-            'period' => $period,
-            'destination_semesters' => $destinationSemesters,
-            'movements' => $students
-                ->map(fn ($student) => [
-                    'from' => (int) $student->semestre,
-                    'to' => (int) $student->semestre + 1,
-                    'eligible' => in_array((int) $student->semestre + 1, $destinationSemesters, true),
-                ])
-                ->filter('eligible')
-                ->groupBy(fn ($movement) => "{$movement['from']}-{$movement['to']}")
-                ->map(fn ($items) => [
-                    'from' => $items->first()['from'],
-                    'to' => $items->first()['to'],
-                    'students' => $items->count(),
-                ])
-                ->values(),
-        ]);
+        return response()->json(app(\App\Services\AcademicPromotionService::class)->preview($period));
     }
 
-    public function applyPromotion(AcademicPeriod $period)
+    public function applyPromotion(Request $request, AcademicPeriod $period)
     {
-        $summary = $this->semesterService->promoteStudents($period);
-        $period->update(['promocion_aplicada_en' => now()]);
+        $data = $request->validate([
+            'operation_id' => 'required|uuid', 'snapshot' => 'required|string|size:64',
+            'movements' => 'present|array', 'movements.*.student_id' => 'required|string|distinct',
+            'movements.*.action' => 'required|in:avance,permanencia,salida',
+            'movements.*.group_id' => 'nullable|integer', 'movements.*.reason' => 'required|string|max:500',
+        ]);
+        return response()->json(['message' => 'Lote aplicado', 'summary' => app(\App\Services\AcademicPromotionService::class)->confirm($period, $data)]);
+    }
 
-        return response()->json(['message' => 'Promocion aplicada', 'summary' => $summary]);
+    public function transition(Request $request, AcademicPeriod $period)
+    {
+        $data = $request->validate(['state' => 'required|in:abierto,en_cierre,cerrado']);
+        app(\App\Services\AcademicPeriodLifecycleService::class)->transition($period, $data['state']);
+        return response()->json(['message' => 'Estado actualizado']);
     }
 
     public function search(Request $request)
@@ -147,67 +130,31 @@ class SemesterManagementController extends Controller
 
     public function storeException(Request $request)
     {
-        $validated = $request->validate([
-            'period_id' => ['required', 'integer', Rule::exists('periodos_academicos', 'id')],
-            'project_id' => ['nullable', 'integer', Rule::exists('proyectos', 'id')->where('activo', true)],
-            'student_id' => ['nullable', 'string', Rule::exists('usuarios', 'id')->where('activo', true)->where('perfil_id', 3)],
-            'presentation_semester' => 'required|integer|in:5,6,7,8,9',
-            'reason' => 'nullable|string|max:500',
+        $request->merge(['type' => $request->input('type', 'presentacion_semestre')]);
+        $data = $request->validate([
+            'period_id' => 'required|integer|exists:periodos_academicos,id',
+            'project_id' => 'nullable|integer', 'student_id' => 'nullable|string',
+            'course_id' => 'nullable|integer', 'evaluation_id' => 'nullable|integer',
+            'type' => 'required|in:presentacion_semestre,reprogramacion,reintento,inscripcion_semestre',
+            'presentation_semester' => 'nullable|required_if:type,presentacion_semestre|integer|in:5,6,7,8',
+            'reason' => 'required|string|max:1000', 'expires_at' => 'required|date|after:now',
         ]);
-
-        if (empty($validated['project_id']) === empty($validated['student_id'])) {
-            throw ValidationException::withMessages([
-                'target' => ['Selecciona un proyecto o un alumno, pero no ambos.'],
-            ]);
-        }
-
-        $projectId = $validated['project_id'] ?? null;
-        if (!$projectId && !empty($validated['student_id'])) {
-            $projectId = DB::table('proyecto_integrantes')
-                ->join('proyectos', 'proyectos.id', '=', 'proyecto_integrantes.proyecto_id')
-                ->where('proyecto_integrantes.usuario_id', $validated['student_id'])
-                ->whereIn('proyecto_integrantes.rol', ['lider', 'integrante'])
-                ->where('proyectos.activo', true)
-                ->orderByDesc('proyectos.creado_en')
-                ->value('proyectos.id');
-
-            if (!$projectId) {
-                throw ValidationException::withMessages([
-                    'student_id' => ['El alumno debe pertenecer a un proyecto activo para autorizar una presentación especial.'],
-                ]);
-            }
-        }
-
-        $keys = [
-            'proyecto_id' => $projectId,
-            'usuario_id' => $validated['student_id'] ?? null,
-            'tipo' => 'presentacion_semestre',
-        ];
-        $exception = SemesterPresentationException::updateOrCreate($keys, [
-            'valor' => SemesterPresentationException::encodedValue(
-                (int) $validated['period_id'],
-                (int) $validated['presentation_semester']
-            ),
-            'motivo' => trim((string) ($validated['reason'] ?? '')) ?: 'Presentacion autorizada en semestre excepcional',
-            'autorizada_por' => auth('api')->id(),
-            'activa' => true,
-        ]);
-
-        return response()->json([
-            'message' => 'Excepcion de presentacion guardada',
-            'exception' => $exception->load(['period', 'project.subjectGroup', 'student']),
-        ]);
+        return response()->json(['message' => 'Solicitud registrada; requiere resolución',
+            'exception' => app(\App\Services\AcademicAuthorizationService::class)->request($data)], 201);
     }
 
-    public function destroyException(SemesterPresentationException $exception)
+    public function decideException(Request $request, int $exception)
     {
-        if ($exception->tipo !== 'presentacion_semestre') {
-            return response()->json(['error' => 'Excepcion no encontrada'], 404);
-        }
+        $data = $request->validate(['version' => 'required|integer|min:1', 'status' => 'required|in:aprobada,rechazada,revocada',
+            'reason' => 'required|string|max:1000', 'project_scope' => 'sometimes|boolean']);
+        return response()->json(['message' => 'Resolución registrada',
+            'exception' => app(\App\Services\AcademicAuthorizationService::class)->decide($exception, $data)]);
+    }
 
-        $exception->update(['activa' => false]);
-
-        return response()->json(['message' => 'Excepcion eliminada']);
+    public function destroyException(Request $request, int $exception)
+    {
+        $request->merge(['status' => 'revocada']);
+        return $this->decideException($request, $exception);
     }
 
     private function validatePeriod(Request $request, ?int $ignoreId = null): array
@@ -237,7 +184,6 @@ class SemesterManagementController extends Controller
             'nombre' => trim($validated['name']),
             'fecha_inicio' => $validated['starts_at'],
             'fecha_fin' => $validated['ends_at'],
-            'promocion_automatica' => $validated['automatic_promotion'],
         ];
     }
 }

@@ -70,16 +70,14 @@ class ProfileController extends Controller
         };
 
         $request->merge([
-            'semestre' => $nullableInput($request->input('semestre')),
-            'grupo' => $nullableInput($request->input('grupo')),
             'direccion' => $request->filled('direccion') ? $this->normalizeAddress($request->input('direccion')) : null,
         ]);
 
         $validated = $request->validate([
             'telefonos' => 'nullable|string|max:200',
             'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
-            'semestre' => ['nullable', Rule::prohibitedIf((int) $user->perfil_id !== 3), 'integer', Rule::in([5, 6, 7, 8, 9])],
-            'grupo' => ['nullable', Rule::prohibitedIf((int) $user->perfil_id !== 3), 'string', 'max:20'],
+            'semestre' => 'prohibited',
+            'grupo' => 'prohibited',
             'photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
             'current_password' => 'nullable|string|max:72',
             'password' => 'nullable|string|min:6|max:72|confirmed',
@@ -148,31 +146,11 @@ class ProfileController extends Controller
             return;
         }
 
-        $targetGroup = null;
-        if ($assignment['semester'] !== null && $assignment['group'] !== null) {
-            $targetGroup = SubjectGroup::where('activo', true)
-                ->where('semestre', $assignment['semester'])
-                ->where('grupo', $assignment['group'])
-                ->first();
-
-            if (!$targetGroup) {
-                throw ValidationException::withMessages([
-                    'grupo' => ["No existe un grupo activo {$assignment['semester']} {$assignment['group']}."],
-                ]);
-            }
-        }
-
-        DB::table('grupo_estudiantes')
-            ->where('estudiante_id', $user->id)
-            ->where('activo', true)
-            ->update(['activo' => false]);
-
-        if ($targetGroup) {
-            DB::table('grupo_estudiantes')->updateOrInsert(
-                ['grupo_id' => $targetGroup->id, 'estudiante_id' => $user->id],
-                ['inscrito_en' => now(), 'activo' => true]
-            );
-        }
+        $workflow = app(\App\Services\AcademicWorkflowService::class);
+        abort_if($workflow->enrollment($user->id), 409, 'La matrícula ya existe; solicita el cambio a gestión académica.');
+        $targetGroup = SubjectGroup::where('activo', true)->where('periodo_id', $workflow->period()?->id)
+            ->where('semestre', $assignment['semester'])->where('grupo', $assignment['group'])->firstOrFail();
+        $workflow->assign($user->id, $targetGroup);
     }
 
     private function primaryPhone(?string $phones): ?string

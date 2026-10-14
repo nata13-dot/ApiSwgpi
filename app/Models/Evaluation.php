@@ -34,7 +34,7 @@ class Evaluation extends Model
 
     protected array $legacyVirtualColumns = ['sala', 'semestre', 'etapa', 'sequence_status'];
 
-    protected $fillable = [
+    protected $fillable = ['criterios_snapshot', 'modo_puntaje', 'autorizacion_id', 'presentacion_autorizacion_id',
         'carrera_id', 'project_id', 'evaluation_room_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
         'presentation_order', 'sequence_status', 'estado', 'resultado', 'room_feedback',
         'feedback_by', 'feedback_at', 'finalized_at', 'archived_at', 'archived_by',
@@ -42,6 +42,7 @@ class Evaluation extends Model
     ];
 
     protected $casts = [
+        'criterios_snapshot' => 'array',
         'semestre' => 'integer',
         'fecha_exposicion' => 'datetime',
         'retroalimentado_en' => 'datetime',

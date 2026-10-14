@@ -48,7 +48,7 @@ class EvaluationRoom extends Model
     protected array $legacyVirtualColumns = ['semestre', 'etapa'];
 
     protected $fillable = [
-        'carrera_id', 'rubrica_id', 'nombre', 'salon', 'semestre', 'etapa', 'responsible_teacher_id', 'fecha_evaluacion', 'fecha_fin_evaluacion',
+        'periodo_id', 'salon_id', 'carrera_id', 'rubrica_id', 'nombre', 'salon', 'semestre', 'etapa', 'responsible_teacher_id', 'fecha_evaluacion', 'fecha_fin_evaluacion',
         'teacher_evaluation_minutes', 'project_presentation_minutes',
         'max_attempts', 'estado', 'sequence_locked', 'current_order', 'sequence_version', 'completed_at',
         'timer_status', 'timer_order', 'timer_duration_seconds', 'timer_started_at', 'timer_ends_at',
@@ -99,7 +99,7 @@ class EvaluationRoom extends Model
     public function teachers(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'sala_docentes', 'sala_id', 'docente_id')
-            ->where('usuarios.activo', true)
+            ->withoutGlobalScope('careerMembership')
             ->withPivot('rol');
     }
 
@@ -143,6 +143,6 @@ class EvaluationRoom extends Model
 
     public function responsibleTeacher()
     {
-        return $this->belongsTo(User::class, 'responsable_id', 'id')->where('activo', true);
+        return $this->belongsTo(User::class, 'responsable_id', 'id')->withoutGlobalScope('careerMembership');
     }
 }

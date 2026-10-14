@@ -61,7 +61,7 @@
                 <th>Equipo</th>
                 <th>Docentes</th>
                 <th>Promedio</th>
-                <th>Apto titulacion</th>
+                <th>Recomendación del proyecto</th>
                 <th>Estado</th>
             </tr>
         </thead>
@@ -93,7 +93,7 @@
             <h3>{{ $report['project']?->title ?? 'Proyecto sin titulo' }} · {{ $report['globalAverage'] }}%</h3>
             @if ($report['titulationAptSummary']['applies'])
                 <p class="muted">
-                    Apto para titulacion: <strong>{{ $report['titulationAptSummary']['label'] }}</strong>
+                    Recomendación del proyecto (sin efecto de egreso): <strong>{{ $report['titulationAptSummary']['label'] }}</strong>
                 </p>
             @endif
             <table class="matrix-table">
@@ -132,7 +132,7 @@
                     <strong>{{ $comment['teacher_name'] }}</strong>
                     @if ($report['titulationAptSummary']['applies'])
                         <div class="muted">
-                            Apto para titulacion:
+                            Recomendación del proyecto (sin efecto de egreso):
                             @if ($comment['apto_titulacion'] === null)
                                 Sin respuesta
                             @else

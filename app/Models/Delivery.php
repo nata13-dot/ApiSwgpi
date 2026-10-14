@@ -43,6 +43,6 @@ class Delivery extends Model
 
     public function submittedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'enviado_por', 'id');
+        return $this->belongsTo(User::class, 'enviado_por', 'id')->withoutGlobalScope('careerMembership');
     }
 }

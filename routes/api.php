@@ -51,7 +51,7 @@ Route::prefix('repositorio')->group(function () {
     Route::get('/buscar', [RepositoryController::class, 'search']);
     Route::get('/proyecto/{projectId}', [RepositoryController::class, 'byProject']);
     Route::get('/etiqueta/{tagId}', [RepositoryController::class, 'byTag']);
-    Route::middleware(['auth:api', 'active', 'career'])->group(function () {
+    Route::middleware(['auth:api', 'active', 'career', 'academic.open'])->group(function () {
         Route::get('/evaluation-documents', [RepositoryController::class, 'evaluationDocuments']);
         Route::post('/evaluation-documents', [RepositoryController::class, 'storeEvaluationDocument']);
         Route::put('/evaluation-documents/{id}/release-status', [RepositoryController::class, 'reviewEvaluationRelease']);
@@ -73,7 +73,29 @@ Route::middleware(['auth:api', 'active'])->group(function () {
 // ========================
 // RUTAS PROTEGIDAS (con JWT)
 // ========================
-Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit'])->group(function () {
+Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'academic.open'])->group(function () {
+    Route::get('/residencies', [\App\Http\Controllers\API\ResidencyController::class, 'index']);
+    Route::post('/residencies', [\App\Http\Controllers\API\ResidencyController::class, 'store']);
+    Route::post('/residencies/{residency}/requirements', [\App\Http\Controllers\API\ResidencyController::class, 'requirement']);
+    Route::post('/residencies/{residency}/requirements/{requirement}/versions', [\App\Http\Controllers\API\ResidencyController::class, 'upload']);
+    Route::put('/residencies/{residency}/versions/{version}/review', [\App\Http\Controllers\API\ResidencyController::class, 'review']);
+    Route::get('/residencies/{residency}/versions/{version}/download', [\App\Http\Controllers\API\ResidencyController::class, 'download']);
+    Route::put('/residencies/{residency}/advisor', [\App\Http\Controllers\API\ResidencyController::class, 'advisor']);
+    Route::post('/residencies/{residency}/close', [\App\Http\Controllers\API\ResidencyController::class, 'close']);
+    Route::match(['GET', 'POST'], '/academic-operations/periods/{period}/reconciliation', [\App\Http\Controllers\API\AcademicOperationsController::class, 'reconciliation']);
+    Route::get('/academic-operations/catalog', [\App\Http\Controllers\API\AcademicOperationsController::class, 'catalog']);
+    Route::get('/academic-operations/enrollments', [\App\Http\Controllers\API\AcademicOperationsController::class, 'enrollments']);
+    Route::post('/academic-operations/enrollments', [\App\Http\Controllers\API\AcademicOperationsController::class, 'assign']);
+    Route::post('/academic-operations/project-period', [\App\Http\Controllers\API\AcademicOperationsController::class, 'projectPeriod']);
+    Route::put('/academic-operations/memberships/{membership}', [\App\Http\Controllers\API\AcademicOperationsController::class, 'membership']);
+    Route::get('/academic-operations/memberships/{membership}/commitments', [\App\Http\Controllers\API\AcademicOperationsController::class, 'commitments']);
+    Route::post('/academic-operations/classrooms', [\App\Http\Controllers\API\AcademicOperationsController::class, 'classroom']);
+    Route::get('/courses/{course}/students', [CourseEnrollmentController::class, 'students']);
+    Route::delete('/course-enrollments/{course}', [CourseEnrollmentController::class, 'leave']);
+    Route::post('/semester-management/periods/{period}/transition', [SemesterManagementController::class, 'transition'])->middleware('role:academic_manager');
+    Route::put('/semester-management/exceptions/{exception}/decision', [SemesterManagementController::class, 'decideException'])->middleware('role:admin');
+    Route::get('/academic-operations/authorizations', [\App\Http\Controllers\API\AcademicOperationsController::class, 'authorizations']);
+    Route::post('/academic-operations/authorizations', [SemesterManagementController::class, 'storeException'])->middleware('role:teacher');
     Route::get('/career/modules', [CareerModuleController::class, 'index']);
     Route::get('/career/module-records', [CareerModuleController::class, 'records']);
     Route::middleware('role:admin')->group(function () {
@@ -166,7 +188,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit'])->g
 
     Route::get('/course-enrollments', [CourseEnrollmentController::class, 'index']);
     Route::middleware('role:student')->group(function () {
-        Route::post('/course-enrollments/{course}', [CourseEnrollmentController::class, 'enroll']);
+        Route::post('/course-enrollments/{course}', [CourseEnrollmentController::class, 'enroll'])->middleware('throttle:10,1');
     });
     Route::middleware('role:teacher')->put('/courses/{course}/self-enrollment', [CourseEnrollmentController::class, 'updateAccess']);
 

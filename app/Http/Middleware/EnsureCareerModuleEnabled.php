@@ -34,7 +34,7 @@ class EnsureCareerModuleEnabled
             'usuarios' => ['users', 'users-inactive'],
             'entregables' => ['deliverables', 'my-deliverables', 'teacher/deliverables-matrix'],
             'evaluaciones' => ['evaluations', 'evaluation-managers', 'evaluation-documents', 'student/evaluation-schedule'],
-            'academico' => ['asignaturas', 'competencias', 'subject-groups', 'semester-management', 'career/setup'],
+            'academico' => ['asignaturas', 'competencias', 'subject-groups', 'semester-management', 'career/setup', 'academic-operations', 'course-enrollments', 'residencies'],
             'repositorio' => ['repositorio', 'document-tags'],
             'configuracion' => ['settings', 'notices'],
             'reportes' => ['career/export'],

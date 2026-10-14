@@ -5,7 +5,6 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\SystemSetting;
 use App\Models\CareerSetting;
-use App\Support\AcademicPeriod;
 use App\Services\SemesterManagementService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -20,10 +19,9 @@ class SystemSettingController extends Controller
 
     public function public()
     {
-        $this->semesterService->syncCurrentPeriod();
-        $this->purgeExpiredNotices();
         $settings = SystemSetting::allWithDefaults();
-        $periodInfo = AcademicPeriod::information($settings['active_academic_period']);
+        $calendar = $this->calendar();
+        $periodInfo = $calendar['info'];
         $today = now()->toDateString();
 
         return response()->json([
@@ -32,9 +30,9 @@ class SystemSettingController extends Controller
             'global_notice' => $settings['global_notice'],
             'font_scale' => $settings['font_scale'],
             'proposal_registration_enabled' => $settings['proposal_registration_enabled'],
-            'active_academic_period' => $settings['active_academic_period'],
+            'active_academic_period' => $periodInfo['code'] ?? null,
             'academic_period_info' => $periodInfo,
-            'academic_period_options' => AcademicPeriod::options($periodInfo['year']),
+            'academic_period_options' => $calendar['options'],
             'max_file_size_mb' => $settings['max_file_size_mb'],
             'allowed_file_types' => $settings['allowed_file_types'],
             'grayscale_mode' => $settings['grayscale_mode'],
@@ -47,17 +45,19 @@ class SystemSettingController extends Controller
     public function index()
     {
         $settings = array_replace(SystemSetting::allWithDefaults(), CareerSetting::all());
-        $settings['academic_period_info'] = AcademicPeriod::information($settings['active_academic_period']);
-        $settings['academic_period_options'] = AcademicPeriod::options($settings['academic_period_info']['year']);
+        $calendar = $this->calendar();
+        $settings['academic_period_info'] = $calendar['info'];
+        $settings['active_academic_period'] = $calendar['info']['code'] ?? null;
+        $settings['academic_period_options'] = $calendar['options'];
 
         return response()->json($settings);
     }
 
     public function current()
     {
-        $this->purgeExpiredNotices();
         $settings = array_replace(SystemSetting::allWithDefaults(), CareerSetting::all());
-        $periodInfo = AcademicPeriod::information($settings['active_academic_period']);
+        $calendar = $this->calendar();
+        $periodInfo = $calendar['info'];
         $today = now()->toDateString();
 
         return response()->json([
@@ -66,9 +66,9 @@ class SystemSettingController extends Controller
             'global_notice' => $settings['global_notice'],
             'font_scale' => $settings['font_scale'],
             'proposal_registration_enabled' => $settings['proposal_registration_enabled'],
-            'active_academic_period' => $settings['active_academic_period'],
+            'active_academic_period' => $periodInfo['code'] ?? null,
             'academic_period_info' => $periodInfo,
-            'academic_period_options' => AcademicPeriod::options($periodInfo['year']),
+            'academic_period_options' => $calendar['options'],
             'max_file_size_mb' => $settings['max_file_size_mb'],
             'allowed_file_types' => $settings['allowed_file_types'],
             'max_project_members' => $settings['max_project_members'],
@@ -107,15 +107,16 @@ class SystemSettingController extends Controller
         }
 
         $settings = array_replace(SystemSetting::allWithDefaults(), CareerSetting::all());
-        $settings['academic_period_info'] = AcademicPeriod::information($settings['active_academic_period']);
-        $settings['academic_period_options'] = AcademicPeriod::options($settings['academic_period_info']['year']);
+        $calendar = $this->calendar();
+        $settings['academic_period_info'] = $calendar['info'];
+        $settings['active_academic_period'] = $calendar['info']['code'] ?? null;
+        $settings['academic_period_options'] = $calendar['options'];
 
         return response()->json(['message' => 'Ajustes guardados', 'settings' => $settings]);
     }
 
     public function notices()
     {
-        $this->purgeExpiredNotices();
         return response()->json(['data' => CareerSetting::valueFor('system_notices', [])]);
     }
 
@@ -166,18 +167,16 @@ class SystemSettingController extends Controller
         ]);
     }
 
-    private function purgeExpiredNotices(): void
+    private function calendar(): array
     {
-        $today = now()->toDateString();
-        $notices = CareerSetting::valueFor('system_notices', []);
-        $active = collect($notices)
-            ->filter(fn ($notice) => !$this->noticeExpired($notice, $today))
-            ->values()
-            ->all();
-
-        if (count($active) !== count($notices)) {
-            CareerSetting::setValue('system_notices', $active, 'array');
-        }
+        $options = \App\Models\AcademicPeriod::orderBy('fecha_inicio')->get()->map(fn ($p) => [
+            'id' => $p->id, 'code' => $p->nombre, 'label' => $p->nombre,
+            'year' => $p->fecha_inicio ? (int) $p->fecha_inicio->format('Y') : null,
+            'semesters' => [5, 6, 7, 8, 9], 'starts_at' => $p->fecha_inicio, 'ends_at' => $p->fecha_fin,
+        ]);
+        $career = app(\App\Support\CareerContext::class)->careerId();
+        $current = $career ? $this->semesterService->activePeriod() : null;
+        return ['options' => $options, 'info' => $current ? $options->firstWhere('id', $current->id) : null];
     }
 
     private function noticeExpired(array $notice, string $today): bool
