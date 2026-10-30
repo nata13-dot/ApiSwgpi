@@ -32,9 +32,9 @@ class Evaluation extends Model
         'updated_at' => 'actualizada_en',
     ];
 
-    protected array $legacyVirtualColumns = ['sala', 'semestre', 'etapa', 'sequence_status'];
+    protected array $legacyVirtualColumns = ['sala', 'semestre', 'etapa', 'sequence_status', 'fecha_exposicion', 'resultado'];
 
-    protected $fillable = ['criterios_snapshot', 'modo_puntaje', 'autorizacion_id', 'presentacion_autorizacion_id',
+    protected $fillable = ['criterios_snapshot', 'modo_puntaje',
         'carrera_id', 'project_id', 'evaluation_room_id', 'semestre', 'etapa', 'sala', 'fecha_exposicion',
         'presentation_order', 'sequence_status', 'estado', 'resultado', 'room_feedback',
         'feedback_by', 'feedback_at', 'finalized_at', 'archived_at', 'archived_by',
@@ -44,7 +44,6 @@ class Evaluation extends Model
     protected $casts = [
         'criterios_snapshot' => 'array',
         'semestre' => 'integer',
-        'fecha_exposicion' => 'datetime',
         'retroalimentado_en' => 'datetime',
         'finalizada_en' => 'datetime',
         'archivada_en' => 'datetime',
@@ -98,6 +97,39 @@ class Evaluation extends Model
     public function setSalaAttribute(?string $value): void
     {
         // The normalized schema derives the room name through sala_id.
+    }
+
+    // La fecha de exposición es el inicio de la sala; withSchedule() la trae con un JOIN.
+    public function getFechaExposicionAttribute($value): ?\Illuminate\Support\Carbon
+    {
+        $value ??= $this->room?->getRawOriginal('inicia_en');
+
+        return $value ? \Illuminate\Support\Carbon::parse($value) : null;
+    }
+
+    public function setFechaExposicionAttribute($value): void
+    {
+        // Se deriva de salas_evaluacion.inicia_en.
+    }
+
+    public function getResultadoAttribute(): string
+    {
+        return match ($this->apto_titulacion) {
+            true => 'viable',
+            false => 'no_viable',
+            default => 'pendiente',
+        };
+    }
+
+    public function setResultadoAttribute($value): void
+    {
+        // Se deriva de apto_titulacion.
+    }
+
+    public function scopeWithSchedule($query)
+    {
+        return $query->join('salas_evaluacion as sala_horario', 'sala_horario.id', '=', 'evaluaciones.sala_id')
+            ->select('evaluaciones.*', 'sala_horario.inicia_en as fecha_exposicion');
     }
 
     public function creator(): BelongsTo

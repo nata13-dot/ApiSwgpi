@@ -15,6 +15,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Una instancia por petición: guarda en memoria el estado de requisitos de cada proyecto.
+        $this->app->scoped(\App\Services\EvaluationRequirementsService::class);
         $this->app->scoped(CareerContext::class, fn () => new CareerContext());
     }
 
@@ -23,6 +25,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Micro API de correo (Mailer_Swgpi): MAIL_MAILER=swgpi, SWGPI_MAILER_URL y SWGPI_MAILER_KEY.
+        \Illuminate\Support\Facades\Mail::extend('swgpi', fn (array $config) => new \App\Mail\Transport\SwgpiMailerTransport(
+            (string) ($config['endpoint'] ?? ''), (string) ($config['key'] ?? '')
+        ));
+
         RateLimiter::for('login', function (Request $request) {
             $identity = mb_strtolower((string) ($request->input('id') ?? $request->input('email') ?? 'unknown'));
             return Limit::perMinute(5)->by($request->ip().'|'.$identity);

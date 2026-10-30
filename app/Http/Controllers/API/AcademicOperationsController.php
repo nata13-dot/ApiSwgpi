@@ -20,12 +20,12 @@ class AcademicOperationsController extends Controller
         $user = auth('api')->user();
         return response()->json([
             'courses' => $user->isStudent() ? [] : \App\Models\Course::with(['subject', 'group'])->where('activo', true)->get(),
-            'evaluations' => $user->isStudent() ? [] : \App\Models\Evaluation::with('project')->when(!$user->canManageProjects(), fn ($q) => $q->whereHas('room.teachers', fn ($t) => $t->where('usuarios.id', $user->id)))->get(),
+            'evaluations' => $user->isStudent() ? [] : \App\Models\Evaluation::with('project')->when(!$user->canManageProjects(), fn ($q) => $q->whereHas('room.teachers', fn ($t) => $t->where('usuarios.id', $user->id)))->orderBy('id')->get()->withRelationshipAutoloading(),
             'advisors' => $user->isStudent() ? \App\Models\User::whereIn('id', DB::table('proyecto_integrantes')->whereIn('proyecto_id', \App\Models\Project::whereHas('students', fn ($q) => $q->where('usuarios.id', $user->id))->select('id'))->whereNotIn('rol', ['lider', 'integrante'])->select('usuario_id'))->get(['id', 'nombres', 'apellido_paterno']) : [],
             'periods' => \App\Models\AcademicPeriod::orderByDesc('fecha_inicio')->get(),
             'groups' => SubjectGroup::where('activo', true)->get(),
             'rooms' => DB::table('salones_institucionales')->where('activo', true)->orderBy('nombre')->get(),
-            'projects' => \App\Models\Project::where('activo', true)->when($user->isStudent(), fn ($q) => $q->whereHas('students', fn ($s) => $s->where('usuarios.id', $user->id)))->get(['id', 'titulo', 'empresa_id']),
+            'projects' => \App\Models\Project::where('activo', true)->when($user->isStudent(), fn ($q) => $q->whereHas('students', fn ($s) => $s->where('usuarios.id', $user->id)))->get(['id', 'titulo', 'empresa_id'])->withRelationshipAutoloading(),
             'members' => $user->isStudent() ? [] : DB::table('usuario_carrera as m')->join('usuarios as u', 'u.id', '=', 'm.usuario_id')
                 ->where('m.carrera_id', $career)->where('m.activo', true)->where('u.activo', true)
                 ->select('m.id', 'm.usuario_id', 'm.perfil_id', 'u.nombres', 'u.apellido_paterno')->orderBy('u.nombres')->get(),
@@ -36,7 +36,7 @@ class AcademicOperationsController extends Controller
     {
         abort_unless(auth('api')->user()->canManageAcademics(), 403);
         $period = $request->validate(['period_id' => 'required|integer|exists:periodos_academicos,id']);
-        return response()->json(['data' => DB::table('matriculas_academicas')->where('carrera_id', $this->workflow->careerId())->where('periodo_id', $period['period_id'])->get()]);
+        return response()->json(['data' => \App\Support\CareerScope::enrollments($this->workflow->careerId(), (int) $period['period_id'])->get()]);
     }
 
     public function assign(Request $request)
@@ -90,10 +90,14 @@ class AcademicOperationsController extends Controller
         $group = SubjectGroup::where('activo', true)->findOrFail($data['group_id']);
         $this->workflow->requireOpen((int) $group->periodo_id);
         DB::transaction(function () use ($project, $group) {
+            // El periodo de la participación es el de su grupo.
             $key = ['proyecto_id' => $project->id, 'periodo_id' => $group->periodo_id];
-            $before = DB::table('proyecto_periodos')->where($key)->first();
+            $before = DB::table('proyecto_periodos as pp')->join('grupos_academicos as g', 'g.id', '=', 'pp.grupo_id')
+                ->where('pp.proyecto_id', $project->id)->where('g.periodo_id', $group->periodo_id)->select('pp.*')->first();
             abort_if($before && (int) $before->grupo_id !== (int) $group->id, 409, 'La participación ya fue registrada; no se modifica el historial.');
-            DB::table('proyecto_periodos')->updateOrInsert($key, ['carrera_id' => $this->workflow->careerId(), 'grupo_id' => $group->id, 'created_at' => $before->created_at ?? now(), 'updated_at' => now()]);
+            $before
+                ? DB::table('proyecto_periodos')->where('id', $before->id)->update(['updated_at' => now()])
+                : DB::table('proyecto_periodos')->insert(['proyecto_id' => $project->id, 'grupo_id' => $group->id, 'created_at' => now(), 'updated_at' => now()]);
             $this->workflow->audit('proyecto.continuidad', 'proyecto', $project->id, $before, $key + ['grupo_id' => $group->id]);
         });
         return response()->json(['message' => 'Continuidad del proyecto registrada']);
@@ -116,7 +120,7 @@ class AcademicOperationsController extends Controller
     {
         $user = auth('api')->user();
         abort_if($user->isStudent(), 403);
-        return response()->json(['data' => DB::table('autorizaciones_academicas')->where('carrera_id', $this->workflow->careerId())
+        return response()->json(['data' => \App\Support\CareerScope::constrainOptional(DB::table('autorizaciones_academicas'), 'autorizaciones_academicas', $this->workflow->careerId())
             ->when(!$user->canManageProjects(), fn ($q) => $q->where('solicitada_por', $user->id))->orderByDesc('id')->get()]);
     }
 

@@ -19,6 +19,23 @@ class EnsureUserIsActive
             return response()->json(['error' => 'Cuenta desactivada'], 403);
         }
 
+        // "Ver como" del administrador general: el token sólo puede leer.
+        $readOnly = $user && $this->readOnlyToken();
+        if ($readOnly && !$request->isMethodSafe() && !$request->is('api/auth/heartbeat', 'api/auth/logout')) {
+            return response()->json([
+                'error' => 'Estás en modo "ver como" (sólo lectura). Vuelve a tu sesión de administrador general para hacer cambios.',
+                'read_only' => true,
+            ], 403);
+        }
+
+        // Con la contraseña temporal (matrícula) sólo se permite consultar la sesión y cambiarla.
+        if ($user && !$readOnly && $user->debe_cambiar_contrasena && !$this->allowedWithTemporaryPassword($request)) {
+            return response()->json([
+                'error' => 'Debes cambiar tu contraseña temporal antes de continuar.',
+                'requires_password_change' => true,
+            ], 428);
+        }
+
         if ($user) {
             try {
                 if (!$this->rememberedSession() && $this->sessionExpiredByInactivity()) {
@@ -50,6 +67,20 @@ class EnsureUserIsActive
         }
 
         return $next($request);
+    }
+
+    private function readOnlyToken(): bool
+    {
+        try {
+            return (bool) JWTAuth::parseToken()->getPayload()->get('read_only');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function allowedWithTemporaryPassword(Request $request): bool
+    {
+        return $request->is('api/auth/me', 'api/auth/heartbeat', 'api/auth/logout', 'api/auth/careers', 'api/auth/switch-career', 'api/auth/password/change-initial', 'api/settings/current');
     }
 
     private function sessionExpiredByInactivity(): bool

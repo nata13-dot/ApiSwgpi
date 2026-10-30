@@ -1,0 +1,1109 @@
+# RepositoryController
+
+Fuente: [app/Http/Controllers/API/RepositoryController.php](../../../app/Http/Controllers/API/RepositoryController.php). Corte: 19 de octubre de 2026.
+
+## Rutas vinculadas
+
+| Método | URI | Acción | Middleware declarado |
+|---|---|---|---|
+| GET\|HEAD | `/api/repositorio` | [index](#index) | api |
+| POST | `/api/repositorio` | [store](#store) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen |
+| GET\|HEAD | `/api/repositorio/admin/list` | [adminIndex](#adminindex) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin |
+| GET\|HEAD | `/api/repositorio/buscar` | [search](#search) | api |
+| GET\|HEAD | `/api/repositorio/etiqueta/{tagId}` | [byTag](#bytag) | api |
+| GET\|HEAD | `/api/repositorio/evaluation-documents` | [evaluationDocuments](#evaluationdocuments) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureAcademicPeriodOpen |
+| POST | `/api/repositorio/evaluation-documents` | [storeEvaluationDocument](#storeevaluationdocument) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureAcademicPeriodOpen |
+| PUT | `/api/repositorio/evaluation-documents/{id}/release-status` | [reviewEvaluationRelease](#reviewevaluationrelease) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureAcademicPeriodOpen |
+| GET\|HEAD | `/api/repositorio/proyecto/{projectId}` | [byProject](#byproject) | api |
+| GET\|HEAD | `/api/repositorio/student/list` | [studentIndex](#studentindex) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen |
+| GET\|HEAD | `/api/repositorio/thesis-documents` | [thesisDocuments](#thesisdocuments) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureAcademicPeriodOpen |
+| POST | `/api/repositorio/thesis-documents` | [storeThesisDocument](#storethesisdocument) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureAcademicPeriodOpen |
+| GET\|HEAD | `/api/repositorio/{id}` | [show](#show) | api |
+| POST | `/api/repositorio/{id}` | [update](#update) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin |
+| DELETE | `/api/repositorio/{id}` | [destroy](#destroy) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin |
+| GET\|HEAD | `/api/repositorio/{id}/download` | [download](#download) | api |
+| POST | `/api/repositorio/{id}/publish` | [publish](#publish) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin |
+| GET\|HEAD | `/api/repositorio/{id}/view` | [view](#view) | api |
+
+## Declaraciones y propiedades
+
+Las propiedades, constantes, dependencias y comentarios se transcriben a continuación. Los métodos se separan después.
+
+```php
+<?php
+
+namespace App\Http\Controllers\API;
+
+use App\Http\Controllers\Controller;
+use App\Models\EvaluationDocumentRelease;
+use App\Models\Project;
+use App\Models\RepositoryDocument;
+use App\Models\SystemSetting;
+use App\Services\ProtectedDownloadService;
+use App\Services\RepositoryFileService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
+
+class RepositoryController extends Controller
+{
+    private const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'webp', 'epub'];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+```
+
+## __construct
+
+Visibilidad: `public`. Líneas originales 21–24.
+
+```php
+    public function __construct(
+        private readonly RepositoryFileService $files,
+        private readonly ProtectedDownloadService $downloads
+    ) {}
+```
+
+## index
+
+Visibilidad: `public`. Líneas originales 26–29.
+
+```php
+    public function index(Request $request)
+    {
+        return $this->repositoryIndex($request, true);
+    }
+```
+
+## adminIndex
+
+Visibilidad: `public`. Líneas originales 31–39.
+
+```php
+    public function adminIndex(Request $request)
+    {
+        $user = auth('api')->user();
+        if (! $user || ! $user->isAdmin()) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        return $this->repositoryIndex($request, false);
+    }
+```
+
+## studentIndex
+
+Visibilidad: `public`. Líneas originales 41–49.
+
+```php
+    public function studentIndex(Request $request)
+    {
+        $user = auth('api')->user();
+        if (! $user || (int) $user->perfil_id !== 3) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        return $this->repositoryIndex($request, false, $user);
+    }
+```
+
+## repositoryIndex
+
+Visibilidad: `private`. Líneas originales 51–112.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `buscar`, `categoria`, `ordenar`.
+
+```php
+    private function repositoryIndex(Request $request, bool $publicOnly, $studentUser = null)
+    {
+        $query = RepositoryDocument::with(['tags', 'uploader', 'latestVersion'])
+            ->where('activo', true);
+
+        if (! $this->repositoryDocumentsHas('visibility')) {
+            return response()->json([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => 12,
+                'total' => 0,
+            ]);
+        }
+
+        if ($publicOnly) {
+            $query->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
+                ->whereNotNull('published_at');
+        }
+
+        if ($studentUser) {
+            $query->where(function ($scope) use ($studentUser) {
+                $scope->where(fn ($public) => $public
+                    ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
+                    ->whereNotNull('published_at'))
+                    ->orWhere('uploaded_by', $studentUser->id)
+                    ->orWhereHas('project.students', fn ($studentQuery) => $studentQuery->where('usuarios.id', $studentUser->id));
+            });
+        }
+
+        if ($request->filled('categoria') && $this->repositoryDocumentsHas('document_category')) {
+            $categories = match ($request->query('categoria')) {
+                'tesis' => [RepositoryDocument::CATEGORY_THESIS_GENERAL],
+                'residencias' => [RepositoryDocument::CATEGORY_THESIS_RESIDENCY],
+                'desarrollo' => [RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT],
+                'general' => [RepositoryDocument::CATEGORY_REPOSITORY],
+                default => null,
+            };
+            if ($categories) {
+                $query->whereIn('document_category', $categories);
+            }
+        }
+
+        if ($request->filled('buscar')) {
+            $term = $request->buscar;
+            $query->where(function ($q) use ($term) {
+                $q->where('nombre', 'like', "%{$term}%")
+                    ->orWhere('descripcion', 'like', "%{$term}%")
+                    ->orWhereHas('authorRecords', fn ($authorQuery) => $authorQuery
+                        ->where('nombre_autor', 'like', "%{$term}%"));
+            });
+        }
+
+        match ($request->query('ordenar', 'reciente')) {
+            'antiguo' => $query->orderBy('created_at'),
+            'nombre_asc' => $query->orderBy('nombre'),
+            'nombre_desc' => $query->orderByDesc('nombre'),
+            default => $query->orderByDesc('created_at'),
+        };
+
+        return response()->json($query->paginate(12));
+    }
+```
+
+## search
+
+Visibilidad: `public`. Líneas originales 114–117.
+
+```php
+    public function search(Request $request)
+    {
+        return $this->index($request);
+    }
+```
+
+## byProject
+
+Visibilidad: `public`. Líneas originales 119–125.
+
+```php
+    public function byProject($projectId)
+    {
+        return response()->json([
+            'data' => [],
+            'message' => 'El repositorio es independiente de los proyectos.',
+        ]);
+    }
+```
+
+## byTag
+
+Visibilidad: `public`. Líneas originales 127–149.
+
+```php
+    public function byTag($tagId)
+    {
+        if (! $this->repositoryDocumentsHas('visibility')) {
+            return response()->json([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => 12,
+                'total' => 0,
+            ]);
+        }
+
+        $documents = RepositoryDocument::whereHas('tags', function ($q) use ($tagId) {
+            $q->where('etiquetas.id', $tagId);
+        })
+            ->where('activo', true)
+            ->with(['tags', 'uploader', 'latestVersion'])
+            ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)
+            ->whereNotNull('published_at')
+            ->paginate(12);
+
+        return response()->json($documents);
+    }
+```
+
+## show
+
+Visibilidad: `public`. Líneas originales 151–159.
+
+```php
+    public function show($id)
+    {
+        $document = RepositoryDocument::with(['tags', 'uploader', 'latestVersion'])->find($id);
+        if (! $document || ! $document->activo || ! $this->canAccessDocument($document)) {
+            return response()->json(['error' => 'Documento no encontrado'], 404);
+        }
+
+        return response()->json($document);
+    }
+```
+
+## evaluationDocuments
+
+Visibilidad: `public`. Líneas originales 161–241.
+
+```php
+    public function evaluationDocuments()
+    {
+        if (! $this->repositoryVisibilityEnabled() || ! $this->repositoryDocumentsHas('project_id')) {
+            return response()->json(['error' => 'El repositorio privado requiere ejecutar las migraciones pendientes en la API.'], 503);
+        }
+
+        $user = auth('api')->user();
+        $projectsQuery = Project::select(['id', 'title', 'description', 'semestre', 'year', 'authors', 'subject_group_id'])
+            ->with([
+                'students:id,nombres,apa,ama,semestre,grupo',
+                'advisors:id,nombres,apa,ama',
+                'asignaturas:id,nombre,clave',
+                'repositoryDocuments' => fn ($query) => $query
+                    ->where('activo', true)
+                    ->whereIn('document_category', [
+                        RepositoryDocument::CATEGORY_EVALUATION_RELEASE,
+                        RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION,
+                    ])
+                    ->with([
+                        'uploader:id,nombres,apa,ama',
+                        'publisher:id,nombres,apa,ama',
+                        'releaseStatuses',
+                    ])
+                    ->orderByDesc('created_at'),
+            ])
+            ->where('activo', true)
+            ->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
+
+        if ((int) $user->perfil_id === 3) {
+            $projectsQuery->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id));
+        } elseif (! in_array((int) $user->perfil_id, [1, 2], true)) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $projects = $projectsQuery->orderBy('title')->get();
+
+        return response()->json([
+            'data' => $projects->map(fn (Project $project) => [
+                'project' => [
+                    'id' => $project->id,
+                    'title' => $project->title,
+                    'description' => $project->description,
+                    'semestre' => $project->semestre,
+                    'year' => $project->year,
+                    'authors' => $project->authors,
+                ],
+                'integrantes' => $project->students->map(fn ($student) => [
+                    'id' => $student->id,
+                    'nombres' => $student->nombres,
+                    'apa' => $student->apa,
+                    'ama' => $student->ama,
+                    'semestre' => $student->semestre,
+                    'grupo' => $student->grupo,
+                ])->values(),
+                'asignaturas' => $project->asignaturas->map(fn ($subject) => [
+                    'id' => $subject->id,
+                    'nombre' => $subject->nombre,
+                    'clave' => $subject->clave,
+                ])->values(),
+                'puede_subir' => (int) $user->perfil_id === 3
+                    && $project->students->contains(fn ($student) => (string) $student->id === (string) $user->id),
+                'puede_revisar' => in_array((int) $user->perfil_id, [1, 2], true),
+                'release_sheet' => $this->shapeEvaluationDelivery(
+                    $project,
+                    $project->repositoryDocuments->firstWhere(
+                        'document_category',
+                        RepositoryDocument::CATEGORY_EVALUATION_RELEASE
+                    ),
+                    'release_sheet'
+                ),
+                'presentation' => $this->shapeEvaluationDelivery(
+                    $project,
+                    $project->repositoryDocuments->firstWhere(
+                        'document_category',
+                        RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION
+                    ),
+                    'presentation'
+                ),
+            ])->values(),
+        ]);
+    }
+```
+
+## storeEvaluationDocument
+
+Visibilidad: `public`. Líneas originales 243–345.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `archivo`, `document_type`.
+
+```php
+    public function storeEvaluationDocument(Request $request)
+    {
+        try {
+            if (! $this->repositoryVisibilityEnabled() || ! $this->repositoryDocumentsHas('project_id')) {
+                return response()->json(['error' => 'El repositorio privado requiere ejecutar las migraciones pendientes en la API.'], 503);
+            }
+
+            $user = auth('api')->user();
+            if ((int) $user->perfil_id !== 3) {
+                return response()->json(['error' => 'Solo estudiantes pueden subir documentos de evaluacion al repositorio.'], 403);
+            }
+
+            $validated = $request->validate([
+                'project_id' => 'required|integer|exists:proyectos,id',
+                'document_type' => 'required|in:release_sheet,presentation',
+                'nombre' => 'nullable|string|max:255',
+                'descripcion' => 'nullable|string|max:5000',
+                'autores' => 'nullable|string|max:1000',
+                'archivo' => $this->fileValidationRule(
+                    true,
+                    $request->input('document_type') === 'presentation'
+                        ? ['pdf', 'ppt', 'pptx']
+                        : ['pdf', 'doc', 'docx']
+                ),
+            ]);
+
+            $project = Project::with(['students:id,nombres,apa,ama', 'asignaturas:id,nombre,clave'])
+                ->where('activo', true)
+                ->find($validated['project_id']);
+
+            if (! $project || ! $project->students->contains(fn ($student) => (string) $student->id === (string) $user->id)) {
+                return response()->json(['error' => 'No puedes subir documentos para este proyecto.'], 403);
+            }
+
+            $category = $validated['document_type'] === 'release_sheet'
+                ? RepositoryDocument::CATEGORY_EVALUATION_RELEASE
+                : RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION;
+            $defaultName = $validated['document_type'] === 'release_sheet'
+                ? 'Hoja de liberacion'
+                : 'Presentacion';
+
+            $allowedExtensions = $validated['document_type'] === 'presentation'
+                ? ['pdf', 'ppt', 'pptx']
+                : ['pdf', 'doc', 'docx'];
+            $result = $this->files->persist(
+                $request->file('archivo'),
+                $user,
+                function () use ($category, $defaultName, $project, $user, $validated) {
+                    $period = app(\App\Services\AcademicWorkflowService::class)->period();
+                    $document = RepositoryDocument::query()
+                        ->whereBetween('creado_en', [$period->fecha_inicio, $period->fecha_fin->endOfDay()])
+                        ->where('project_id', $project->id)
+                        ->where('document_category', $category)
+                        ->where('activo', true)
+                        ->lockForUpdate()
+                        ->first();
+                    $attributes = [
+                        'project_id' => $project->id,
+                        'nombre' => trim((string) ($validated['nombre'] ?? '')) ?: $defaultName,
+                        'descripcion' => trim((string) ($validated['descripcion'] ?? '')),
+                        'autores' => trim((string) ($validated['autores'] ?? '')) ?: $this->projectAuthors($project),
+                        'document_category' => $category,
+                        'visibility' => RepositoryDocument::VISIBILITY_PRIVATE,
+                        'uploaded_by' => $user->id,
+                        'activo' => true,
+                    ];
+
+                    if ($document) {
+                        $document->update($attributes);
+
+                        return $document;
+                    }
+
+                    $document = RepositoryDocument::create($attributes);
+                    if ($category === RepositoryDocument::CATEGORY_EVALUATION_RELEASE) {
+                        $document->releaseStatuses()->createMany(
+                            $project->students->map(fn ($student) => [
+                                'alumno_id' => $student->id,
+                                'liberado' => false,
+                            ])->all()
+                        );
+                    }
+
+                    return $document;
+                },
+                $allowedExtensions,
+                (int) SystemSetting::valueFor('max_file_size_mb', 50),
+                "repository/career-{$project->carrera_id}/project-{$project->id}"
+            );
+            $document = $result['document'];
+
+            return response()->json([
+                'message' => 'Entrega guardada para revision.',
+                'document' => $this->shapeEvaluationDelivery(
+                    $project,
+                    $document->load(['uploader', 'publisher', 'releaseStatuses']),
+                    $validated['document_type']
+                ),
+            ], 201);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
+    }
+```
+
+## reviewEvaluationRelease
+
+Visibilidad: `public`. Líneas originales 347–399.
+
+```php
+    public function reviewEvaluationRelease(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        if (! in_array((int) $user->perfil_id, [1, 2], true)) {
+            return response()->json(['error' => 'Solo administradores y docentes pueden revisar la liberacion.'], 403);
+        }
+
+        $document = RepositoryDocument::with(['project.students', 'releaseStatuses'])
+            ->where('activo', true)
+            ->where('document_category', RepositoryDocument::CATEGORY_EVALUATION_RELEASE)
+            ->find($id);
+        if (! $document || ! $document->project) {
+            return response()->json(['error' => 'Hoja de liberacion no encontrada.'], 404);
+        }
+
+        $validated = $request->validate([
+            'students' => 'required|array',
+            'students.*.student_id' => 'required|string|distinct',
+            'students.*.released' => 'required|boolean',
+        ]);
+        $projectStudentIds = $document->project->students->pluck('id')->map(fn ($id) => (string) $id);
+        $submittedIds = collect($validated['students'])->pluck('student_id')->map(fn ($id) => (string) $id);
+        if ($submittedIds->diff($projectStudentIds)->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'students' => ['La revision contiene alumnos que no pertenecen al proyecto.'],
+            ]);
+        }
+
+        DB::transaction(function () use ($document, $validated, $user) {
+            foreach ($validated['students'] as $student) {
+                EvaluationDocumentRelease::updateOrCreate(
+                    [
+                        'documento_repositorio_id' => $document->id,
+                        'alumno_id' => $student['student_id'],
+                    ],
+                    [
+                        'liberado' => $student['released'],
+                        'revisado_por' => $user->id,
+                        'revisado_en' => now(),
+                    ]
+                );
+            }
+        });
+
+        return response()->json([
+            'message' => 'Liberacion actualizada.',
+            'document' => $this->shapeEvaluationDelivery(
+                $document->project,
+                $document->fresh(['uploader', 'publisher', 'releaseStatuses']),
+                'release_sheet'
+            ),
+        ]);
+    }
+```
+
+## thesisDocuments
+
+Visibilidad: `public`. Líneas originales 401–425.
+
+```php
+    public function thesisDocuments()
+    {
+        if (! $this->repositoryVisibilityEnabled()) {
+            return response()->json(['error' => 'El apartado de tesis y residencias requiere ejecutar las migraciones pendientes en la API.'], 503);
+        }
+
+        $user = auth('api')->user();
+        $query = RepositoryDocument::with(['uploader:id,nombres,apa,ama,semestre,grupo', 'publisher:id,nombres,apa,ama'])
+            ->where('activo', true)
+            ->whereIn('document_category', [
+                RepositoryDocument::CATEGORY_THESIS_GENERAL,
+                RepositoryDocument::CATEGORY_THESIS_RESIDENCY,
+            ])
+            ->orderByDesc('created_at');
+
+        if ((int) $user->perfil_id === 3) {
+            $query->where('uploaded_by', $user->id);
+        } elseif (! in_array((int) $user->perfil_id, [1, 2], true)) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        return response()->json([
+            'data' => $query->paginate(12),
+        ]);
+    }
+```
+
+## storeThesisDocument
+
+Visibilidad: `public`. Líneas originales 427–484.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `archivo`, `tipo`.
+
+```php
+    public function storeThesisDocument(Request $request)
+    {
+        if ($request->input('tipo') === 'residencias') return response()->json(['message' => 'Registra los avances desde el expediente individual de Residencias. Los documentos anteriores siguen disponibles para consulta.'], 409);
+        try {
+            if (! $this->repositoryVisibilityEnabled()) {
+                return response()->json(['error' => 'El apartado de tesis y residencias requiere ejecutar las migraciones pendientes en la API.'], 503);
+            }
+
+            $user = auth('api')->user();
+            if ((int) $user->perfil_id !== 3) {
+                return response()->json(['error' => 'Solo estudiantes pueden subir avances de tesis o residencias.'], 403);
+            }
+
+            if ((int) $user->semestre !== 9) {
+                return response()->json(['error' => 'Solo estudiantes de 9no semestre pueden subir avances de tesis o residencias.'], 403);
+            }
+
+            $validated = $request->validate([
+                'tipo' => 'required|in:tesis,residencias',
+                'nombre' => 'required|string|max:255',
+                'descripcion' => 'nullable|string|max:5000',
+                'autores' => 'nullable|string|max:1000',
+                'archivo' => $this->fileValidationRule(true, ['pdf', 'doc', 'docx']),
+            ], [], [
+                'tipo' => 'tipo de documento',
+                'nombre' => 'nombre del documento',
+                'archivo' => 'archivo',
+            ]);
+
+            $category = $validated['tipo'] === 'residencias'
+                ? RepositoryDocument::CATEGORY_THESIS_RESIDENCY
+                : RepositoryDocument::CATEGORY_THESIS_GENERAL;
+            $result = $this->files->persist(
+                $request->file('archivo'),
+                $user,
+                fn () => RepositoryDocument::create([
+                    'nombre' => trim($validated['nombre']),
+                    'descripcion' => trim((string) ($validated['descripcion'] ?? '')),
+                    'autores' => trim((string) ($validated['autores'] ?? '')) ?: trim("{$user->nombres} {$user->apa} {$user->ama}"),
+                    'document_category' => $category,
+                    'visibility' => RepositoryDocument::VISIBILITY_PRIVATE,
+                    'uploaded_by' => $user->id,
+                    'activo' => true,
+                ]),
+                ['pdf', 'doc', 'docx'],
+                (int) SystemSetting::valueFor('max_file_size_mb', 50),
+                'repository/thesis'
+            );
+            $document = $result['document'];
+
+            return response()->json([
+                'message' => 'Avance guardado en repositorio privado para revision.',
+                'document' => $document->load(['uploader', 'publisher']),
+            ], 201);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
+    }
+```
+
+## store
+
+Visibilidad: `public`. Líneas originales 486–566.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `archivo`.
+
+```php
+    public function store(Request $request)
+    {
+        try {
+            $user = auth('api')->user();
+            if (! $user || ! in_array((int) $user->perfil_id, [1, 3], true)) {
+                return response()->json(['error' => 'Solo administradores o estudiantes con proyecto asignado pueden subir documentos.'], 403);
+            }
+
+            $validated = $request->validate([
+                'nombre' => 'required|string|max:255',
+                'descripcion' => 'required|string|max:5000',
+                'autores' => 'required|string|max:1000',
+                'project_id' => 'nullable|integer|exists:proyectos,id',
+                'tag_ids' => 'nullable|array',
+                'tag_ids.*' => 'integer|exists:etiquetas,id',
+                'visibility' => 'nullable|in:public,private',
+                'archivo' => $this->fileValidationRule(true),
+            ]);
+
+            $project = null;
+            if ((int) $user->perfil_id === 3) {
+                if (empty($validated['project_id'])) {
+                    return response()->json(['errors' => ['project_id' => ['Selecciona el proyecto al que pertenece el documento.']]], 422);
+                }
+
+                $project = Project::with('students:id,nombres,apa,ama')
+                    ->where('activo', true)
+                    ->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id))
+                    ->find($validated['project_id']);
+
+                if (! $project) {
+                    return response()->json(['error' => 'No puedes subir documentos para un proyecto que no tienes asignado.'], 403);
+                }
+            } elseif (! empty($validated['project_id'])) {
+                $project = Project::where('activo', true)->find($validated['project_id']);
+            }
+
+            $documentData = [
+                'nombre' => trim($validated['nombre']),
+                'descripcion' => trim($validated['descripcion']),
+                'autores' => trim($validated['autores']),
+                'project_id' => $project?->id,
+                'uploaded_by' => $user->id,
+                'activo' => true,
+            ];
+
+            if ($this->repositoryVisibilityEnabled()) {
+                $visibility = (int) $user->perfil_id === 3
+                    ? RepositoryDocument::VISIBILITY_PRIVATE
+                    : ($validated['visibility'] ?? RepositoryDocument::VISIBILITY_PUBLIC);
+                $documentData['document_category'] = $project
+                    ? RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT
+                    : RepositoryDocument::CATEGORY_REPOSITORY;
+                $documentData['visibility'] = $visibility;
+                $documentData['published_at'] = $visibility === RepositoryDocument::VISIBILITY_PUBLIC ? now() : null;
+                $documentData['published_by'] = $visibility === RepositoryDocument::VISIBILITY_PUBLIC ? $user->id : null;
+            }
+
+            $result = $this->files->persist(
+                $request->file('archivo'),
+                $user,
+                function () use ($documentData, $validated) {
+                    $document = RepositoryDocument::create($documentData);
+                    $document->tags()->sync($validated['tag_ids'] ?? []);
+
+                    return $document;
+                },
+                self::ALLOWED_EXTENSIONS,
+                (int) SystemSetting::valueFor('max_file_size_mb', 50),
+                'repository/general'
+            );
+            $document = $result['document'];
+
+            return response()->json([
+                'message' => 'Documento agregado al repositorio',
+                'document' => $document->load(['tags', 'uploader']),
+            ], 201);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
+    }
+```
+
+## update
+
+Visibilidad: `public`. Líneas originales 568–629.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `archivo`.
+
+```php
+    public function update(Request $request, $id)
+    {
+        try {
+            $document = RepositoryDocument::find($id);
+        abort_if($document && $document->document_category !== RepositoryDocument::CATEGORY_REPOSITORY, 409, 'La evidencia académica se gestiona desde su entrega o expediente; conserva su historial.');
+            if (! $document || ! $document->activo) {
+                return response()->json(['error' => 'Documento no encontrado'], 404);
+            }
+
+            $validated = $request->validate([
+                'nombre' => 'required|string|max:255',
+                'descripcion' => 'required|string|max:5000',
+                'autores' => 'required|string|max:1000',
+                'tag_ids' => 'nullable|array',
+                'tag_ids.*' => 'integer|exists:etiquetas,id',
+                'visibility' => 'nullable|in:public,private',
+                'archivo' => $this->fileValidationRule(false),
+            ]);
+
+            $updates = [
+                'nombre' => trim($validated['nombre']),
+                'descripcion' => trim($validated['descripcion']),
+                'autores' => trim($validated['autores']),
+            ];
+
+            if ($this->repositoryVisibilityEnabled() && isset($validated['visibility'])) {
+                $updates['visibility'] = $validated['visibility'];
+                $updates['published_at'] = $validated['visibility'] === RepositoryDocument::VISIBILITY_PUBLIC ? now() : null;
+                $updates['published_by'] = $validated['visibility'] === RepositoryDocument::VISIBILITY_PUBLIC ? auth('api')->id() : null;
+            }
+
+            if ($request->hasFile('archivo')) {
+                $result = $this->files->persist(
+                    $request->file('archivo'),
+                    auth('api')->user(),
+                    function () use ($document, $updates, $validated) {
+                        $locked = RepositoryDocument::query()->whereKey($document->id)->lockForUpdate()->firstOrFail();
+                        $locked->update($updates);
+                        $locked->tags()->sync($validated['tag_ids'] ?? []);
+
+                        return $locked;
+                    },
+                    self::ALLOWED_EXTENSIONS,
+                    (int) SystemSetting::valueFor('max_file_size_mb', 50),
+                    'repository/general'
+                );
+                $document = $result['document'];
+            } else {
+                DB::transaction(function () use ($document, $updates, $validated): void {
+                    $document->update($updates);
+                    $document->tags()->sync($validated['tag_ids'] ?? []);
+                });
+            }
+
+            return response()->json([
+                'message' => 'Documento actualizado',
+                'document' => $document->fresh()->load(['tags', 'uploader']),
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
+    }
+```
+
+## destroy
+
+Visibilidad: `public`. Líneas originales 631–643.
+
+```php
+    public function destroy($id)
+    {
+        $document = RepositoryDocument::find($id);
+        abort_if($document && $document->document_category !== RepositoryDocument::CATEGORY_REPOSITORY, 409, 'La evidencia académica se gestiona desde su entrega o expediente; conserva su historial.');
+        if (! $document || ! $document->activo) {
+            return response()->json(['error' => 'Documento no encontrado'], 404);
+        }
+
+        $document->tags()->detach();
+        $document->update(['activo' => false]);
+
+        return response()->json(['message' => 'Documento eliminado']);
+    }
+```
+
+## publish
+
+Visibilidad: `public`. Líneas originales 645–672.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `public`.
+
+```php
+    public function publish(Request $request, $id)
+    {
+        if (! $this->repositoryVisibilityEnabled()) {
+            return response()->json(['error' => 'Publicar documentos requiere ejecutar las migraciones pendientes en la API.'], 503);
+        }
+
+        $user = auth('api')->user();
+        if (! $user->isAdmin()) {
+            return response()->json(['error' => 'Solo administradores pueden publicar documentos.'], 403);
+        }
+
+        $document = RepositoryDocument::where('activo', true)->find($id);
+        if (! $document) {
+            return response()->json(['error' => 'Documento no encontrado'], 404);
+        }
+
+        $makePublic = $request->boolean('public', true);
+        $document->update([
+            'visibility' => $makePublic ? RepositoryDocument::VISIBILITY_PUBLIC : RepositoryDocument::VISIBILITY_PRIVATE,
+            'published_at' => $makePublic ? now() : null,
+            'published_by' => $makePublic ? $user->id : null,
+        ]);
+
+        return response()->json([
+            'message' => $makePublic ? 'Documento publicado en el repositorio.' : 'Documento marcado como privado.',
+            'document' => $document->fresh()->load(['tags', 'uploader', 'publisher']),
+        ]);
+    }
+```
+
+## download
+
+Visibilidad: `public`. Líneas originales 674–682.
+
+```php
+    public function download($id)
+    {
+        $document = RepositoryDocument::with('latestVersion')->find($id);
+        if (! $document || ! $document->activo || ! $document->latestVersion || ! $this->canAccessDocument($document)) {
+            return response()->json(['error' => 'Documento no encontrado'], 404);
+        }
+
+        return $this->downloads->download($document->latestVersion);
+    }
+```
+
+## view
+
+Visibilidad: `public`. Líneas originales 684–692.
+
+```php
+    public function view($id)
+    {
+        $document = RepositoryDocument::with('latestVersion')->find($id);
+        if (! $document || ! $document->activo || ! $document->latestVersion || ! $this->canAccessDocument($document)) {
+            return response()->json(['error' => 'Documento no encontrado'], 404);
+        }
+
+        return $this->downloads->download($document->latestVersion, null, true);
+    }
+```
+
+## fileValidationRule
+
+Visibilidad: `private`. Líneas originales 694–701.
+
+```php
+    private function fileValidationRule(bool $required, ?array $extensions = null): string
+    {
+        $maxFileSizeKb = ((int) SystemSetting::valueFor('max_file_size_mb', 50)) * 1024;
+        $presence = $required ? 'required' : 'nullable';
+        $extensions = $extensions ?: self::ALLOWED_EXTENSIONS;
+
+        return $presence.'|file|max:'.$maxFileSizeKb;
+    }
+```
+
+## canAccessDocument
+
+Visibilidad: `private`. Líneas originales 703–737.
+
+```php
+    private function canAccessDocument(RepositoryDocument $document): bool
+    {
+        if (! $this->repositoryVisibilityEnabled()) {
+            return false;
+        }
+
+        if ($document->visibility === RepositoryDocument::VISIBILITY_PUBLIC && $document->published_at !== null) {
+            return true;
+        }
+
+        $user = auth('api')->user();
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->canManageProjects()) {
+            return true;
+        }
+
+        if ((int) $user->perfil_id === 2) {
+            return true;
+        }
+
+        if ((int) $user->perfil_id === 3 && $document->project_id) {
+            return Project::where('id', $document->project_id)
+                ->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id))
+                ->exists();
+        }
+
+        if ((int) $user->perfil_id === 3 && in_array($document->document_category, [RepositoryDocument::CATEGORY_THESIS_GENERAL, RepositoryDocument::CATEGORY_THESIS_RESIDENCY], true)) {
+            return (string) $document->uploaded_by === (string) $user->id;
+        }
+
+        return false;
+    }
+```
+
+## requiresResearchDocument
+
+Visibilidad: `private`. Líneas originales 739–750.
+
+```php
+    private function requiresResearchDocument(Project $project): bool
+    {
+        $project->loadMissing('asignaturas:id,nombre,clave');
+
+        return $project->asignaturas->contains(function ($subject) {
+            $name = $this->normalizeText((string) $subject->nombre);
+            $key = $this->normalizeText((string) $subject->clave);
+
+            return preg_match('/\btaller de investigacion( i| ii| 1| 2)?\b/', $name) === 1
+                || in_array($key, ['ac009', 'ac010'], true);
+        });
+    }
+```
+
+## normalizeText
+
+Visibilidad: `private`. Líneas originales 752–761.
+
+```php
+    private function normalizeText(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = strtr($value, [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n',
+            'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u', 'Ü' => 'u', 'Ñ' => 'n',
+        ]);
+
+        return preg_replace('/\s+/', ' ', $value) ?? $value;
+    }
+```
+
+## projectAuthors
+
+Visibilidad: `private`. Líneas originales 763–771.
+
+```php
+    private function projectAuthors(Project $project): string
+    {
+        $names = $project->students
+            ->map(fn ($student) => trim("{$student->nombres} {$student->apa} {$student->ama}"))
+            ->filter()
+            ->values();
+
+        return $names->isNotEmpty() ? $names->join(', ') : (string) $project->authors;
+    }
+```
+
+## shapeEvaluationDelivery
+
+Visibilidad: `private`. Líneas originales 773–801.
+
+```php
+    private function shapeEvaluationDelivery(
+        Project $project,
+        ?RepositoryDocument $document,
+        string $type
+    ): array {
+        $isReleaseSheet = $type === 'release_sheet';
+        $statuses = $document?->releaseStatuses?->keyBy(fn ($status) => (string) $status->alumno_id)
+            ?? collect();
+
+        return [
+            'uploaded' => $document !== null,
+            'document' => $document ? $this->shapeEvaluationRepositoryDocument($document) : null,
+            'allowed_extensions' => $isReleaseSheet
+                ? ['pdf', 'doc', 'docx']
+                : ['pdf', 'ppt', 'pptx'],
+            'students' => $project->students->map(function ($student) use ($statuses) {
+                $status = $statuses->get((string) $student->id);
+
+                return [
+                    'id' => $student->id,
+                    'nombres' => $student->nombres,
+                    'apa' => $student->apa,
+                    'ama' => $student->ama,
+                    'released' => (bool) ($status?->liberado ?? false),
+                    'reviewed' => $status?->revisado_en !== null,
+                ];
+            })->values(),
+        ];
+    }
+```
+
+## shapeEvaluationRepositoryDocument
+
+Visibilidad: `private`. Líneas originales 803–833.
+
+```php
+    private function shapeEvaluationRepositoryDocument(RepositoryDocument $document): array
+    {
+        return [
+            'id' => $document->id,
+            'project_id' => $document->project_id,
+            'nombre' => $document->nombre,
+            'descripcion' => $document->descripcion,
+            'autores' => $document->autores,
+            'archivo_tipo' => $document->archivo_tipo,
+            'document_category' => $document->document_category,
+            'visibility' => $document->visibility,
+            'is_public' => $document->visibility === RepositoryDocument::VISIBILITY_PUBLIC,
+            'created_at' => optional($document->created_at)->toDateTimeString(),
+            'published_at' => optional($document->published_at)->toDateTimeString(),
+            'uploaded_by' => $document->uploader ? [
+                'id' => $document->uploader->id,
+                'nombres' => $document->uploader->nombres,
+                'apa' => $document->uploader->apa,
+                'ama' => $document->uploader->ama,
+            ] : null,
+            'published_by' => $document->publisher ? [
+                'id' => $document->publisher->id,
+                'nombres' => $document->publisher->nombres,
+                'apa' => $document->publisher->apa,
+                'ama' => $document->publisher->ama,
+            ] : null,
+            'allowed_extensions' => $document->document_category === RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION
+                ? ['pdf', 'ppt', 'pptx']
+                : ['pdf', 'doc', 'docx'],
+        ];
+    }
+```
+
+## repositoryVisibilityEnabled
+
+Visibilidad: `private`. Líneas originales 835–838.
+
+```php
+    private function repositoryVisibilityEnabled(): bool
+    {
+        return $this->repositoryDocumentsHas('visibility') && $this->repositoryDocumentsHas('document_category');
+    }
+```
+
+## repositoryDocumentsHas
+
+Visibilidad: `private`. Líneas originales 840–860.
+
+```php
+    private function repositoryDocumentsHas(string $column): bool
+    {
+        static $columns = [];
+        $normalizedColumns = [
+            'project_id' => 'proyecto_id',
+            'document_category' => 'categoria',
+            'visibility' => 'visibilidad',
+            'published_at' => 'publicado_en',
+            'published_by' => 'publicado_por',
+            'uploaded_by' => 'subido_por',
+            'created_at' => 'creado_en',
+            'updated_at' => 'actualizado_en',
+        ];
+        $databaseColumn = $normalizedColumns[$column] ?? $column;
+
+        if (! array_key_exists($column, $columns)) {
+            $columns[$column] = Schema::hasColumn('documentos', $databaseColumn);
+        }
+
+        return $columns[$column];
+    }
+```

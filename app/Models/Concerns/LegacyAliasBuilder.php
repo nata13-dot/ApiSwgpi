@@ -210,16 +210,20 @@ class LegacyAliasBuilder extends Builder
         }
 
         if ($this->model instanceof \App\Models\User && in_array($name, ['semestre', 'grupo'], true)
-            && \Illuminate\Support\Facades\Schema::hasTable('matriculas_academicas')) {
+            && \App\Support\SchemaCache::hasTable('matriculas_academicas')) {
             $career = (int) app(\App\Support\CareerContext::class)->careerId();
             $field = $name === 'semestre' ? 'semestre' : 'clave_grupo';
-            return new Expression("(SELECT g.{$field} FROM matriculas_academicas m JOIN grupos_academicos g ON g.id=m.grupo_id JOIN carrera_periodos cp ON cp.carrera_id=m.carrera_id AND cp.periodo_id=m.periodo_id WHERE m.estudiante_id=usuarios.id AND m.carrera_id={$career} AND m.estado='activa' AND cp.estado IN ('abierto','en_cierre') LIMIT 1)");
+            return new Expression("(SELECT g.{$field} FROM matriculas_academicas m JOIN grupos_academicos g ON g.id=m.grupo_id JOIN carrera_periodos cp ON cp.carrera_id=g.carrera_id AND cp.periodo_id=g.periodo_id WHERE m.estudiante_id=usuarios.id AND g.carrera_id={$career} AND m.estado='activa' AND cp.estado IN ('abierto','en_cierre') LIMIT 1)");
         }
 
-        if ($this->model instanceof \App\Models\RepositoryDocument && $name === 'document_category' && \Illuminate\Support\Facades\Schema::hasColumn('documentos', 'categoria_detalle')) return new Expression('COALESCE(documentos.categoria_detalle, documentos.categoria)');
+        if ($this->model instanceof \App\Models\RepositoryDocument && $name === 'document_category' && \App\Support\SchemaCache::hasColumn('documentos', 'categoria_detalle')) return new Expression('COALESCE(documentos.categoria_detalle, documentos.categoria)');
 
-        if ($this->model instanceof \App\Models\Project && $name === 'semestre' && \Illuminate\Support\Facades\Schema::hasTable('proyecto_periodos')) {
-            return new Expression("(SELECT g.semestre FROM grupos_academicos g WHERE g.id = COALESCE((SELECT pp.grupo_id FROM proyecto_periodos pp JOIN carrera_periodos cp ON cp.carrera_id=pp.carrera_id AND cp.periodo_id=pp.periodo_id WHERE pp.proyecto_id=proyectos.id AND pp.carrera_id=proyectos.carrera_id AND cp.estado IN ('abierto','en_cierre') LIMIT 1), proyectos.grupo_id) LIMIT 1)");
+        if ($this->model instanceof \App\Models\Project && $name === 'semestre' && \App\Support\SchemaCache::hasTable('proyecto_periodos')) {
+            return new Expression("(SELECT g.semestre FROM grupos_academicos g WHERE g.id = COALESCE((SELECT pp.grupo_id FROM proyecto_periodos pp JOIN grupos_academicos ppg ON ppg.id=pp.grupo_id JOIN carrera_periodos cp ON cp.carrera_id=ppg.carrera_id AND cp.periodo_id=ppg.periodo_id WHERE pp.proyecto_id=proyectos.id AND cp.estado IN ('abierto','en_cierre') LIMIT 1), proyectos.grupo_id) LIMIT 1)");
+        }
+
+        if ($name === 'carrera_id' && method_exists($this->model, 'derivesCareer') && $this->model->derivesCareer()) {
+            return new Expression(\App\Support\CareerScope::expression($this->model->getTable(), $prefix ?? $this->model->getTable()));
         }
 
         $aliases = method_exists($this->model, 'getLegacyAliases') ? $this->model->getLegacyAliases() : [];
@@ -232,6 +236,9 @@ class LegacyAliasBuilder extends Builder
     {
         $name = str_contains($column, '.') ? explode('.', $column, 2)[1] : $column;
         $virtuals = method_exists($this->model, 'getLegacyVirtualColumns') ? $this->model->getLegacyVirtualColumns() : [];
+        if ($name === 'carrera_id' && method_exists($this->model, 'derivesCareer') && $this->model->derivesCareer()) {
+            return true;
+        }
 
         return in_array($name, $virtuals, true);
     }

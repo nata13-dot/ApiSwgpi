@@ -13,7 +13,7 @@ class Rubric extends Model
     protected $table = 'rubricas';
     public $timestamps = false;
 
-    protected $fillable = ['carrera_id', 'nombre', 'etapa', 'semestre', 'activa'];
+    protected $fillable = ['carrera_id', 'nombre', 'etapa', 'semestre', 'modo_puntaje', 'activa'];
 
     protected $casts = [
         'semestre' => 'integer',

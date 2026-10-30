@@ -54,6 +54,8 @@ Route::prefix('repositorio')->group(function () {
     Route::middleware(['auth:api', 'active', 'career', 'academic.open'])->group(function () {
         Route::get('/evaluation-documents', [RepositoryController::class, 'evaluationDocuments']);
         Route::post('/evaluation-documents', [RepositoryController::class, 'storeEvaluationDocument']);
+        Route::post('/evaluation-documents/link', [RepositoryController::class, 'storeEvaluationLink']);
+        Route::put('/evaluation-documents/review', [RepositoryController::class, 'reviewEvaluationDelivery']);
         Route::put('/evaluation-documents/{id}/release-status', [RepositoryController::class, 'reviewEvaluationRelease']);
         Route::get('/thesis-documents', [RepositoryController::class, 'thesisDocuments']);
         Route::post('/thesis-documents', [RepositoryController::class, 'storeThesisDocument']);
@@ -68,6 +70,7 @@ Route::prefix('repositorio')->group(function () {
 Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/auth/careers', [AuthController::class, 'careers']);
     Route::post('/auth/switch-career', [AuthController::class, 'switchCareer']);
+    Route::post('/auth/password/change-initial', [\App\Http\Controllers\API\ProfileController::class, 'changeInitialPassword']);
 });
 
 // ========================
@@ -93,7 +96,11 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     Route::get('/courses/{course}/students', [CourseEnrollmentController::class, 'students']);
     Route::delete('/course-enrollments/{course}', [CourseEnrollmentController::class, 'leave']);
     Route::post('/semester-management/periods/{period}/transition', [SemesterManagementController::class, 'transition'])->middleware('role:academic_manager');
-    Route::put('/semester-management/exceptions/{exception}/decision', [SemesterManagementController::class, 'decideException'])->middleware('role:admin');
+    Route::post('/semester-management/periods/{period}/generate-groups', [SemesterManagementController::class, 'generateGroups'])->middleware('role:academic_manager');
+    Route::get('/semester-management/policy', [SemesterManagementController::class, 'policy']);
+    Route::get('/semester-management/irregular-check', [SemesterManagementController::class, 'irregularCheck']);
+    Route::post('/semester-management/irregular-check', [SemesterManagementController::class, 'answerIrregularCheck'])->middleware('role:academic_manager');
+    Route::put('/semester-management/exceptions/{exception}/decision', [SemesterManagementController::class, 'decideException'])->middleware('role:project_manager');
     Route::get('/academic-operations/authorizations', [\App\Http\Controllers\API\AcademicOperationsController::class, 'authorizations']);
     Route::post('/academic-operations/authorizations', [SemesterManagementController::class, 'storeException'])->middleware('role:teacher');
     Route::get('/career/modules', [CareerModuleController::class, 'index']);
@@ -132,6 +139,8 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::get('/careers/export', [CareerExportController::class, 'institutionalSummary']);
         Route::get('/audit', [CareerAuditController::class, 'index']);
         Route::get('/careers', [CareerManagementController::class, 'index']);
+        // Simular un nivel de perfil (sin entrar a la cuenta de ninguna persona).
+        Route::post('/view-level', [\App\Http\Controllers\API\ViewAsController::class, 'start']);
         Route::put('/careers/{career}', [CareerManagementController::class, 'update']);
         Route::get('/career-memberships', [CareerManagementController::class, 'memberships']);
         Route::post('/career-memberships', [CareerManagementController::class, 'storeMembership']);

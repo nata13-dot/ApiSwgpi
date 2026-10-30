@@ -35,7 +35,7 @@ class ProjectController extends Controller
                 ->where('activo', true)
                 ->where(function ($scope) {
                     $scope->whereNull('subject_group_id')
-                        ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
+                        ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereIn('semestre', app(\App\Services\SemesterManagementService::class)->careerSemesters()));
                 });
 
             $user = auth('api')->user();
@@ -56,7 +56,7 @@ class ProjectController extends Controller
             $this->applyProjectCategoryFilters($query, $request);
 
             $perPage = min((int) $request->query('per_page', 100), 500);
-            return response()->json($query->orderByDesc('created_at')->paginate($perPage));
+            return response()->json(tap($query->orderByDesc('created_at')->orderByDesc('id')->paginate($perPage), fn ($page) => $page->getCollection()->withRelationshipAutoloading()));
         }
 
         $query = Project::query()
@@ -80,7 +80,7 @@ class ProjectController extends Controller
             ->where('activo', true)
             ->where(function ($scope) {
                 $scope->whereNull('subject_group_id')
-                    ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
+                    ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereIn('semestre', app(\App\Services\SemesterManagementService::class)->careerSemesters()));
             });
 
         $user = auth('api')->user();
@@ -131,7 +131,7 @@ class ProjectController extends Controller
         }
 
         $perPage = min((int) $request->query('per_page', 15), 100);
-        return response()->json($query->orderByDesc('created_at')->paginate($perPage));
+        return response()->json(tap($query->orderByDesc('created_at')->orderByDesc('id')->paginate($perPage), fn ($page) => $page->getCollection()->withRelationshipAutoloading()));
     }
 
     private function applyRecordTypeFilter($query, Request $request): void
@@ -190,7 +190,7 @@ class ProjectController extends Controller
             ->where('activo', true)
             ->where(function ($scope) {
                 $scope->whereNull('subject_group_id')
-                    ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
+                    ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereIn('semestre', app(\App\Services\SemesterManagementService::class)->careerSemesters()));
             });
 
         $this->applyProjectCategoryFilters($query, $request);
@@ -199,7 +199,7 @@ class ProjectController extends Controller
             $query->where(function ($scope) {
                 $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
             });
-            return response()->json(['data' => $query->orderByDesc('created_at')->get()]);
+            return response()->json(['data' => $query->orderByDesc('created_at')->orderByDesc('id')->get()->withRelationshipAutoloading()]);
         }
 
         if ((int) $user->perfil_id === 2) {
@@ -212,13 +212,14 @@ class ProjectController extends Controller
             return response()->json(['message' => 'No autorizado'], 403);
         }
 
-        return response()->json(['data' => $query->orderByDesc('created_at')->get()]);
+        return response()->json(['data' => $query->orderByDesc('created_at')->orderByDesc('id')->get()->withRelationshipAutoloading()]);
     }
     public function store(Request $request)
     {
         try {
             $user = auth('api')->user();
             $validated = $request->validate($this->projectRules(true, (int) $user->perfil_id));
+            if (!empty($validated['is_thesis']) && ($guard = $this->guardThesisScope(null, true))) return $guard;
             $isStudentProposal = (int) $user->perfil_id === 3;
 
             if ($isStudentProposal) {
@@ -284,12 +285,14 @@ class ProjectController extends Controller
             if (!$project) {
                 return response()->json(['error' => 'Proyecto no encontrado'], 404);
             }
+            if ($guard = $this->guardThesisScope($project)) return $guard;
 
             $user = auth('api')->user();
             $validated = $request->validate($this->projectRules(false, (int) $user->perfil_id));
             if (!$user->canManageProjects()) {
                 unset($validated['is_thesis']);
             }
+            if (!empty($validated['is_thesis']) && ($guard = $this->guardThesisScope(null, true))) return $guard;
 
             if ((int) $user->perfil_id === 3) {
                 $this->guardStudentCanEditProposal($user, $project);
@@ -353,6 +356,7 @@ class ProjectController extends Controller
         if (!$project) {
             return response()->json(['error' => 'Proyecto no encontrado'], 404);
         }
+        if ($guard = $this->guardThesisScope($project)) return $guard;
         if (!auth('api')->user()->canManageProjects()) {
             return response()->json(['error' => 'Solo administradores pueden eliminar proyectos'], 403);
         }
@@ -368,6 +372,7 @@ class ProjectController extends Controller
             if (!$project) {
                 return response()->json(['error' => 'Proyecto no encontrado'], 404);
             }
+            if ($guard = $this->guardThesisScope($project)) return $guard;
 
             $validated = $request->validate([
                 'user_id' => ['required', 'string', Rule::exists('usuarios', 'id')->where('activo', true)],
@@ -430,6 +435,7 @@ class ProjectController extends Controller
         if (!$project) {
             return response()->json(['error' => 'Proyecto no encontrado'], 404);
         }
+        if ($guard = $this->guardThesisScope($project)) return $guard;
 
         $guard = $this->guardAdvisorModification(request());
         if ($guard) return $guard;
@@ -449,6 +455,7 @@ class ProjectController extends Controller
         if (!$project) {
             return response()->json(['error' => 'Proyecto no encontrado'], 404);
         }
+        if ($guard = $this->guardThesisScope($project)) return $guard;
 
         $guard = $this->guardAdvisorModification($request);
         if ($guard) return $guard;
@@ -520,6 +527,7 @@ class ProjectController extends Controller
         if (!$project) {
             return response()->json(['error' => 'Proyecto no encontrado'], 404);
         }
+        if ($guard = $this->guardThesisScope($project)) return $guard;
 
         if (!auth('api')->user()->canManageProjects()) {
             return response()->json(['error' => 'Solo administradores pueden ajustar materias del proyecto'], 403);
@@ -536,6 +544,17 @@ class ProjectController extends Controller
             'message' => 'Materias del proyecto actualizadas',
             'project' => $project->load(['asignaturas', 'subjectGroup.asignaturas']),
         ]);
+    }
+
+    /** El coordinador de proyectos integradores administra integradores, dual y casos; las tesis son de la jefatura. */
+    private function guardThesisScope(?Project $project, bool $thesis = false)
+    {
+        $isCoordinator = (int) app(\App\Support\CareerContext::class)->profileId() === \App\Support\Profiles::PROJECT_COORDINATOR;
+        if ($isCoordinator && ($thesis || ($project && $project->tipo === 'tesis'))) {
+            return response()->json(['error' => 'Las tesis las administran la jefatura y la asistencia de jefatura.'], 403);
+        }
+
+        return null;
     }
 
     public function projectsExcelTemplate()
@@ -657,11 +676,11 @@ class ProjectController extends Controller
             'title' => [$creating ? 'required' : 'nullable', 'string', 'max:255'],
             'description' => [$creating ? 'required_without:descripcion' : 'nullable', 'string', 'max:5000'],
             'descripcion' => [$creating ? 'required_without:description' : 'nullable', 'string', 'max:5000'],
-            'semestre' => [($creating && !$studentCreating) ? 'required' : 'nullable', 'integer', 'in:5,6,7,8,9'],
+            'semestre' => [($creating && !$studentCreating) ? 'required' : 'nullable', 'integer', Rule::in(app(\App\Services\SemesterManagementService::class)->careerSemesters())],
             'subject_group_id' => [
                 $creating ? 'required' : 'nullable',
                 Rule::exists('grupos_academicos', 'id')->where(
-                    fn ($query) => $query->where('activo', true)->whereBetween('semestre', [5, 9])
+                    fn ($query) => $query->where('activo', true)->whereIn('semestre', app(\App\Services\SemesterManagementService::class)->careerSemesters())
                 ),
             ],
             'year' => [($creating && !$studentCreating) ? 'required' : 'nullable', 'integer', 'min:2000', 'max:2100'],
@@ -742,7 +761,7 @@ class ProjectController extends Controller
             ->join('proyectos', 'proyectos.id', '=', 'proyecto_integrantes.proyecto_id')
             ->whereIn('proyecto_integrantes.usuario_id', $studentIds)
             ->whereIn('proyecto_integrantes.rol', ['lider', 'integrante'])
-            ->where('proyectos.carrera_id', $project->carrera_id)
+            ->whereIn('proyectos.grupo_id', \App\Support\CareerScope::ids('grupos_academicos', (int) $project->carrera_id))
             ->where('proyectos.activo', true)
             ->where('proyecto_integrantes.proyecto_id', '!=', $project->id)
             ->select('proyecto_integrantes.usuario_id as user_id', 'proyectos.titulo as title')

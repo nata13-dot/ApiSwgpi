@@ -9,21 +9,22 @@ class UserCareer extends Model
 {
     protected static function booted(): void
     {
+        static::saved(fn () => User::forgetPrincipalProfiles());
         static::updating(function (self $membership) {
-            if (!\Illuminate\Support\Facades\Schema::hasTable('residencias')) return;
+            if (!\App\Support\SchemaCache::hasTable('residencias')) return;
             if ($membership->isDirty('perfil_id') || ($membership->isDirty('activo') && !$membership->activo)) {
                 app(\App\Services\AcademicMembershipService::class)->ensureReleased($membership);
             }
         });
         static::updated(function (self $membership) {
-            if (!\Illuminate\Support\Facades\Schema::hasTable('bitacora_academica')) return;
+            if (!\App\Support\SchemaCache::hasTable('bitacora_academica')) return;
             app(\App\Services\AcademicWorkflowService::class)->audit('membresia.cambio', 'membresia', $membership->id, $membership->getOriginal(), $membership->getAttributes());
         });
         static::created(function (self $membership) {
-            if (\Illuminate\Support\Facades\Schema::hasTable('bitacora_academica')) app(\App\Services\AcademicWorkflowService::class)->audit('membresia.alta', 'membresia', $membership->id, null, $membership->getAttributes());
+            if (\App\Support\SchemaCache::hasTable('bitacora_academica')) app(\App\Services\AcademicWorkflowService::class)->audit('membresia.alta', 'membresia', $membership->id, null, $membership->getAttributes());
         });
         static::deleting(function (self $membership) {
-            if (\Illuminate\Support\Facades\Schema::hasTable('bitacora_academica')) abort(409, 'Desactiva la membresía para conservar el historial.');
+            if (\App\Support\SchemaCache::hasTable('bitacora_academica')) abort(409, 'Desactiva la membresía para conservar el historial.');
         });
     }
 

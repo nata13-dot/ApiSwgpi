@@ -119,15 +119,18 @@ class DeliverableController extends Controller
 
     public function index(Request $request)
     {
-        $originalNameSelection = Schema::hasColumn('documento_versiones', 'nombre_original')
+        $originalNameSelection = \App\Support\SchemaCache::hasColumn('documento_versiones', 'nombre_original')
             ? 'ultima_version.nombre_original'
             : DB::raw('NULL as nombre_original');
 
         $query = DB::table('entregables')
             ->join('cursos', 'cursos.id', '=', 'entregables.curso_id')
             ->leftJoin('asignaturas', 'asignaturas.id', '=', 'cursos.asignatura_id')
+            // Proyectos de la misma carrera que el curso: ambos la toman de su grupo.
+            ->join('grupos_academicos as grupo_curso', 'grupo_curso.id', '=', 'cursos.grupo_id')
+            ->join('grupos_academicos as grupo_proyecto', 'grupo_proyecto.carrera_id', '=', 'grupo_curso.carrera_id')
             ->join('proyectos', function ($join) {
-                $join->on('proyectos.carrera_id', '=', 'cursos.carrera_id')->where('proyectos.activo', true)
+                $join->on('proyectos.grupo_id', '=', 'grupo_proyecto.id')->where('proyectos.activo', true)
                     ->whereRaw("(EXISTS (SELECT 1 FROM curso_estudiantes ce JOIN proyecto_integrantes pi ON pi.usuario_id=ce.estudiante_id WHERE ce.curso_id=cursos.id AND ce.activo=1 AND pi.proyecto_id=proyectos.id AND pi.rol IN ('lider','integrante')) OR EXISTS (SELECT 1 FROM entregas e WHERE e.entregable_id=entregables.id AND e.proyecto_id=proyectos.id))");
             })
             ->leftJoin('entregas', function ($join) {
@@ -190,7 +193,7 @@ class DeliverableController extends Controller
             });
         }
 
-        $query->where('entregables.carrera_id', app(\App\Support\CareerContext::class)->careerId());
+        $query->where('grupo_curso.carrera_id', app(\App\Support\CareerContext::class)->careerId());
         if ($user->isStudent()) $query->whereIn('entregables.curso_id', DB::table('curso_estudiantes')->where('estudiante_id', $user->id)->where('activo', true)->select('curso_id'));
 
         if ($request->filled('project_id')) {
@@ -261,11 +264,11 @@ class DeliverableController extends Controller
                 'students:id,nombres,apa,ama',
                 'advisors:id,nombres,apa,ama',
                 'asignaturas:id,nombre,clave',
-                'evaluations:id,project_id,evaluation_room_id,estado,resultado,fecha_exposicion',
+                'evaluations:id,project_id,evaluation_room_id,estado,apto_titulacion',
                 'evaluations.room:id,nombre,salon,fecha_evaluacion',
             ])
             ->where('activo', true)
-            ->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereBetween('semestre', [5, 9]));
+            ->whereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereIn('semestre', app(\App\Services\SemesterManagementService::class)->careerSemesters()));
 
         if ((int) $user->perfil_id === 2) {
             $roomProjectIds = EvaluationRoom::where(function ($query) use ($user) {
@@ -290,7 +293,7 @@ class DeliverableController extends Controller
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
-        $projects = $projectsQuery->orderBy('title')->get();
+        $projects = $projectsQuery->orderBy('title')->get()->withRelationshipAutoloading();
 
         $data = $projects->map(function (Project $project) use ($user) {
             $deliverables = $this->deliverablesForProject($project)
@@ -706,8 +709,7 @@ class DeliverableController extends Controller
 
     private function courseIdForDeliverable(int $subjectId, $projectId = null): int
     {
-        $query = DB::table('cursos')
-            ->where('carrera_id', app(CareerContext::class)->careerId())
+        $query = \App\Support\CareerScope::constrain(DB::table('cursos'), 'cursos', app(CareerContext::class)->careerId())
             ->where('asignatura_id', $subjectId)
             ->where('activo', true);
 

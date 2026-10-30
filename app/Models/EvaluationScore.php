@@ -32,11 +32,12 @@ class EvaluationScore extends Model
     ];
 
     protected $fillable = [
-        'dictamen_id', 'criterio_id', 'valor', 'nivel', 'puntaje', 'comentario',
+        'dictamen_id', 'criterio_id', 'valor', 'nivel', 'puntaje', 'escala', 'porcentaje', 'comentario',
     ];
 
     protected $casts = [
         'puntaje' => 'integer',
+        'porcentaje' => 'float',
     ];
 
     public function evaluation(): BelongsTo

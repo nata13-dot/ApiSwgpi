@@ -12,8 +12,8 @@ class DocumentTagController extends Controller
     public function index(Request $request)
     {
         $query = DocumentTag::query()
-            ->where('activo', true)
-            ->withCount(['deliverables', 'repositoryDocuments'])
+            ->where('activa', true)
+            ->withCount('repositoryDocuments')
             ->orderBy('nombre');
 
         if ($request->filled('q')) {
@@ -27,7 +27,9 @@ class DocumentTagController extends Controller
         $perPage = min(max((int) $request->query('per_page', 15), 5), 50);
         $tags = $query->paginate($perPage);
         $tags->getCollection()->transform(function (DocumentTag $tag) {
-            $tag->documents_count = (int) $tag->deliverables_count + (int) $tag->repository_documents_count;
+            // Las etiquetas sólo se aplican a documentos del repositorio; los entregables ya no se etiquetan.
+            $tag->deliverables_count = 0;
+            $tag->documents_count = (int) $tag->repository_documents_count;
             return $tag;
         });
 
@@ -52,7 +54,7 @@ class DocumentTagController extends Controller
 
     public function show($id)
     {
-        $tag = DocumentTag::with('deliverables')->find($id);
+        $tag = DocumentTag::withCount('repositoryDocuments')->find($id);
         if (!$tag) {
             return response()->json(['error' => 'Etiqueta no encontrada'], 404);
         }
@@ -74,6 +76,11 @@ class DocumentTagController extends Controller
                 'activo' => 'nullable|boolean',
             ]);
 
+            // La columna es "activa"; se acepta "activo" por compatibilidad con clientes anteriores.
+            if (array_key_exists('activo', $validated)) {
+                $validated['activa'] = $validated['activo'];
+                unset($validated['activo']);
+            }
             $tag->update($validated);
             return response()->json(['message' => 'Etiqueta actualizada', 'tag' => $tag]);
         } catch (ValidationException $e) {

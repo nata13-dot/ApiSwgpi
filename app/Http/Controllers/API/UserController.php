@@ -23,7 +23,7 @@ class UserController extends Controller
         $careerId = app(\App\Support\CareerContext::class)->careerId();
         $canGovernUsers = auth('api')->user()?->globalProfileId() === 4;
         $compact = !$canGovernUsers || $request->boolean('compact');
-        $hasPhoneTable = Schema::hasTable('usuarios_telefonos');
+        $hasPhoneTable = \App\Support\SchemaCache::hasTable('usuarios_telefonos');
         $query = User::withoutGlobalScope('careerMembership')
             ->whereHas('careerMemberships', fn ($membershipQuery) => $membershipQuery
                 ->where('carrera_id', $careerId));
@@ -150,23 +150,19 @@ class UserController extends Controller
                 'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/', 'unique:usuarios,id'],
                 'nombres' => 'required|string|max:200',
                 'email' => 'nullable|email|unique:usuarios,correo',
-                'password' => 'required|string|min:6|max:72|confirmed',
-                'perfil_id' => 'required|integer|in:1,2,3,5,6,7',
-                'semestre' => 'nullable|integer|in:5,6,7,8,9',
+                'password' => 'nullable|string|min:6|max:72|confirmed',
+                'perfil_id' => ['required', 'integer', $this->assignableProfileRule()],
+                'semestre' => $this->semesterRule(),
                 'grupo' => 'nullable|string|max:20',
                 'apa' => 'nullable|string|max:100',
                 'ama' => 'nullable|string|max:100',
-                'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:usuarios,curp'],
-                'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
+                'especialidad' => 'nullable|string|max:255',
                 'telefonos' => 'nullable|string|max:200',
             ]);
 
             $academicAssignment = $this->pullAcademicAssignment($validated);
             $this->preparePhoneData($validated);
-            $validated['password'] = Hash::make($validated['password']);
-            if (!empty($validated['direccion'])) {
-                $validated['direccion'] = $this->normalizeAddress($validated['direccion']);
-            }
+            $this->applyInitialPassword($validated);
             $user = DB::transaction(function () use ($validated, $academicAssignment) {
                 $user = User::create($validated);
                 $this->syncAcademicAssignment($user, $academicAssignment);
@@ -186,7 +182,7 @@ class UserController extends Controller
     public function show($id)
     {
         $query = User::query();
-        if (Schema::hasTable('usuarios_telefonos')) {
+        if (\App\Support\SchemaCache::hasTable('usuarios_telefonos')) {
             $query->with('phoneNumbers');
         }
         $user = $query->find($id);
@@ -203,20 +199,24 @@ class UserController extends Controller
             if (!$user) {
                 return response()->json(['error' => 'Usuario no encontrado'], 404);
             }
+            if (!auth('api')->user()->isGeneralAdmin() && in_array((int) $user->perfil_id, [\App\Support\Profiles::CAREER_HEAD, \App\Support\Profiles::HEAD_ASSISTANT], true)) {
+                return response()->json(['error' => 'Las cuentas de jefatura y asistencia las administra el administrador general.'], 403);
+            }
 
             $validated = $request->validate([
                 'nombres' => 'nullable|string|max:200',
                 'email' => 'nullable|email|unique:usuarios,correo,' . $user->id . ',id',
                 'activo' => 'nullable|boolean',
-                'perfil_id' => 'nullable|integer|in:1,2,3,5,6,7',
+                'perfil_id' => ['nullable', 'integer', $this->assignableProfileRule()],
                 'admin_password' => 'nullable|string|max:72',
-                'semestre' => 'nullable|integer|in:5,6,7,8,9',
+                'semestre' => $this->semesterRule(),
                 'grupo' => 'nullable|string|max:20',
                 'apa' => 'nullable|string|max:100',
                 'ama' => 'nullable|string|max:100',
-                'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
+                'especialidad' => 'nullable|string|max:255',
                 'telefonos' => 'nullable|string|max:200',
                 'password' => 'nullable|string|min:6|max:72|confirmed',
+                'reset_password' => 'nullable|boolean',
             ]);
 
             $touchesProtectedAdmin = $user->isAdmin()
@@ -233,19 +233,21 @@ class UserController extends Controller
             }
 
             unset($validated['admin_password']);
-            if (array_key_exists('password', $validated) && $validated['password']) {
+            if (!empty($validated['reset_password'])) {
+                // Restablecer deja la matrícula como contraseña temporal y obliga a cambiarla.
+                $validated['password'] = Hash::make((string) $user->id);
+                $validated['debe_cambiar_contrasena'] = true;
+            } elseif (array_key_exists('password', $validated) && $validated['password']) {
                 $validated['password'] = Hash::make($validated['password']);
             } else {
                 unset($validated['password']);
             }
+            unset($validated['reset_password']);
 
             $careerProfileId = (int) ($validated['perfil_id'] ?? $user->perfil_id);
             $academicAssignment = $this->pullAcademicAssignment($validated, $careerProfileId);
             unset($validated['perfil_id']);
             $this->preparePhoneData($validated);
-            if (!empty($validated['direccion'])) {
-                $validated['direccion'] = $this->normalizeAddress($validated['direccion']);
-            }
             DB::transaction(function () use ($user, $validated, $academicAssignment, $careerProfileId) {
                 $user->update($validated);
                 $user->careerMemberships()
@@ -381,11 +383,11 @@ class UserController extends Controller
                 'body' => 'required|string|min:20|max:5000',
                 'user_ids' => 'nullable|array|max:200',
                 'user_ids.*' => ['string', 'max:10', 'exists:usuarios,id'],
-                'perfil_id' => 'nullable|integer|in:1,2,3,5,6,7',
+                'perfil_id' => 'nullable|integer|'.\App\Support\Profiles::rule(),
                 'perfil_ids' => 'nullable|array|max:6',
-                'perfil_ids.*' => 'integer|in:1,2,3,5,6,7',
+                'perfil_ids.*' => 'integer|'.\App\Support\Profiles::rule(),
                 'status' => 'nullable|in:active,inactive,all',
-                'semestre' => 'nullable|integer|in:5,6,7,8,9',
+                'semestre' => $this->semesterRule(),
                 'grupo' => 'nullable|string|max:20',
                 'q' => 'nullable|string|max:100',
                 'rotate_password' => 'nullable|boolean',
@@ -438,9 +440,11 @@ class UserController extends Controller
             foreach ($users as $user) {
                 $temporaryPassword = '';
                 $previousPasswordHash = $user->password;
+                $previousMustChange = (bool) $user->debe_cambiar_contrasena;
                 if ($rotatePassword) {
                     $temporaryPassword = $this->generateTemporaryPassword();
-                    $user->forceFill(['password' => Hash::make($temporaryPassword)])->save();
+                    // Una contraseña temporal enviada por correo también debe cambiarse al entrar.
+                    $user->forceFill(['password' => Hash::make($temporaryPassword), 'debe_cambiar_contrasena' => true])->save();
                 }
 
                 try {
@@ -450,7 +454,7 @@ class UserController extends Controller
                     $sent++;
                 } catch (\Throwable $e) {
                     if ($rotatePassword) {
-                        $user->forceFill(['password' => $previousPasswordHash])->save();
+                        $user->forceFill(['password' => $previousPasswordHash, 'debe_cambiar_contrasena' => $previousMustChange])->save();
                     }
                     report($e);
                     $errors[] = [
@@ -472,33 +476,34 @@ class UserController extends Controller
         }
     }
 
-    public function blankCsvTemplate()
+    public function blankCsvTemplate(Request $request)
     {
-        return $this->usersExcelTemplate();
+        return $this->usersExcelTemplate($request);
     }
 
-    public function usersExcelTemplate()
+    public function usersExcelTemplate(Request $request)
     {
-        return $this->excelTemplateResponse('plantilla_usuarios.xls', 'Plantilla para carga masiva de usuarios', [
-            'matricula_nomina',
-            'nombres',
-            'apellido_paterno',
-            'apellido_materno',
-            'email',
-            'password',
-            'confirmar_password',
-            'telefono',
-            'direccion',
-            'perfil',
-            'semestre',
-            'grupo',
-            'curp',
-            'activo',
+        $semesters = app(\App\Services\SemesterManagementService::class);
+        if ($request->query('tipo') === 'personal') {
+            return $this->excelTemplateResponse('plantilla_personal.xls', 'Plantilla para carga de docentes y personal', [
+                'numero_empleado', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo', 'telefono', 'especialidad', 'perfil',
+            ], [
+                'perfil: escribe Jefe de carrera, Asistente de jefatura, Coordinador de proyectos integradores o Docente (también se aceptan los números 5, 6, 7 y 2).',
+                'La contraseña inicial es el número de empleado; el sistema pedirá cambiarla en el primer inicio de sesión.',
+                'Teléfono, especialidad y apellido materno son opcionales.',
+            ]);
+        }
+
+        $period = rescue(fn () => app(\App\Services\AcademicWorkflowService::class)->period(), null, false);
+        $allowed = $period ? $semesters->semestersForPeriod($period) : $semesters->careerSemesters();
+
+        return $this->excelTemplateResponse('plantilla_alumnos.xls', 'Plantilla para carga de alumnos', [
+            'matricula', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo', 'semestre', 'grupo',
         ], [
-            'perfil: usa 1=Administrador, 2=Docente, 3=Estudiante, 5=Jefe de Carrera, 6=Asistente de Jefe de Carrera o 7=Coordinador de Proyectos.',
-            'semestre y grupo solo aplican para estudiantes.',
-            'activo: usa 1 para activo o 0 para inactivo.',
-            'No cambies el formato del archivo a .xlsx; usa la plantilla .xls generada por el sistema.',
+            'semestre: '.($period ? "en el periodo {$period->nombre} sólo existen " : 'usa ').implode(', ', $allowed).'.',
+            'grupo: una letra (A, B, C...). Si el grupo no existe en el periodo abierto se crea automáticamente, por ejemplo 6° A.',
+            'La contraseña inicial es la matrícula; el sistema pedirá cambiarla en el primer inicio de sesión.',
+            'Correo y apellido materno son opcionales.',
         ]);
     }
 
@@ -507,8 +512,11 @@ class UserController extends Controller
         try {
             $request->validate([
                 'archivo' => 'required|file|max:10240',
+                // alumnos: la plantilla no lleva perfil (siempre 3); personal: el perfil va en cada fila.
+                'tipo' => 'nullable|in:alumnos,personal',
             ]);
             $this->guardImportExtension($request->file('archivo')->getClientOriginalExtension());
+            $kind = $request->input('tipo');
 
             $rows = $this->readTabularUpload($request->file('archivo')->getRealPath());
             $errors = [];
@@ -532,28 +540,35 @@ class UserController extends Controller
                 ]);
             }
 
+            $period = app(\App\Services\AcademicWorkflowService::class)->period();
+            $semesters = app(\App\Services\SemesterManagementService::class);
+            $allowedSemesters = $period ? $semesters->semestersForPeriod($period) : $semesters->careerSemesters();
+
             foreach ($rows as $index => $row) {
                 $line = $index + 2;
-                $profileId = $this->parseProfileValue($row['perfil_id'] ?? 0);
+                $profileId = $kind === 'alumnos' ? 3 : $this->parseProfileValue($row['perfil_id'] ?? 0);
+                if ($profileId === 0 && ($row['semestre'] ?? '') !== '' && ($row['grupo'] ?? '') !== '') {
+                    $profileId = 3;
+                }
                 $semesterValue = $this->normalizeSpreadsheetValue($row['semestre'] ?? '');
                 $userId = trim((string) ($row['id'] ?? ''));
                 $existing = $userId === ''
                     ? null
                     : User::withoutGlobalScopes()->find($userId);
+                $password = (string) ($row['password'] ?? '');
                 $data = [
                     'id' => $userId,
                     'nombres' => trim((string) ($row['nombres'] ?? '')),
                     'apa' => trim((string) ($row['apa'] ?? '')) ?: null,
                     'ama' => trim((string) ($row['ama'] ?? '')) ?: null,
                     'email' => trim((string) ($row['email'] ?? '')) ?: null,
-                    'password' => (string) ($row['password'] ?? ''),
-                    'password_confirmation' => (string) ($row['password_confirmation'] ?? ''),
+                    'password' => $password,
+                    'password_confirmation' => (string) ($row['password_confirmation'] ?? $password),
                     'telefonos' => trim((string) ($row['telefonos'] ?? '')) ?: null,
-                    'direccion' => trim((string) ($row['direccion'] ?? '')) ?: null,
+                    'especialidad' => $profileId === 3 ? null : (trim((string) ($row['especialidad'] ?? '')) ?: null),
                     'perfil_id' => $profileId,
                     'semestre' => $profileId === 3 && $semesterValue !== '' ? (int) $semesterValue : null,
-                    'grupo' => $profileId === 3 ? (trim((string) ($row['grupo'] ?? '')) ?: null) : null,
-                    'curp' => trim((string) ($row['curp'] ?? '')) ?: null,
+                    'grupo' => $profileId === 3 ? (strtoupper(trim((string) ($row['grupo'] ?? ''))) ?: null) : null,
                     'activo' => $this->parseBooleanValue($row['activo'] ?? '1'),
                 ];
 
@@ -563,18 +578,20 @@ class UserController extends Controller
                         'id' => ['required', 'string', 'max:10', 'regex:/^[A-Za-z0-9_-]+$/'],
                         'nombres' => 'required|string|max:200',
                         'email' => ['nullable', 'email', Rule::unique('usuarios', 'correo')->ignore($existing?->id, 'id')],
-                        'password' => 'required|string|min:6|max:72|confirmed',
-                        'perfil_id' => 'required|integer|in:1,2,3,5,6,7',
-                        'semestre' => 'nullable|integer|in:5,6,7,8,9',
-                        'grupo' => 'nullable|string|max:20',
+                        'password' => 'nullable|string|min:6|max:72|confirmed',
+                        'perfil_id' => ['required', 'integer', $this->assignableProfileRule()],
+                        'semestre' => [$profileId === 3 ? 'required' : 'nullable', 'integer', Rule::in($allowedSemesters)],
+                        'grupo' => [$profileId === 3 ? 'required' : 'nullable', 'string', 'max:5', 'regex:/^[A-Z0-9]+$/'],
                         'apa' => 'nullable|string|max:100',
                         'ama' => 'nullable|string|max:100',
-                        'curp' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', Rule::unique('usuarios', 'curp')->ignore($existing?->id, 'id')],
-                        'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
+                        'especialidad' => 'nullable|string|max:255',
                         'telefonos' => 'nullable|string|max:200',
                         'activo' => 'nullable|boolean',
                     ],
-                    $this->importValidationMessages(),
+                    $this->importValidationMessages() + [
+                        'semestre.in' => 'El semestre debe ser uno de los que existen en el periodo actual: '.implode(', ', $allowedSemesters).'.',
+                        'grupo.regex' => 'El grupo debe ser una letra o clave corta, por ejemplo A.',
+                    ],
                     $this->importValidationAttributes()
                 );
 
@@ -599,9 +616,6 @@ class UserController extends Controller
 
                 $academicAssignment = $this->pullAcademicAssignment($data);
                 $this->preparePhoneData($data);
-                if (!empty($data['direccion'])) {
-                    $data['direccion'] = $this->normalizeAddress($data['direccion']);
-                }
                 unset($data['password_confirmation']);
                 $preparedRows[] = compact('data', 'academicAssignment', 'existing', 'profileId', 'line');
             }
@@ -615,9 +629,17 @@ class UserController extends Controller
                 ], 422);
             }
 
-            $summary = DB::transaction(function () use ($preparedRows) {
+            $needsGroups = collect($preparedRows)->contains(fn ($prepared) => $prepared['academicAssignment']['semester'] !== null);
+            if ($needsGroups && !$period) {
+                throw ValidationException::withMessages([
+                    'archivo' => ['Para asignar alumnos a grupos la carrera necesita un periodo abierto.'],
+                ]);
+            }
+
+            $summary = DB::transaction(function () use ($preparedRows, $period) {
                 $created = 0;
                 $linked = 0;
+                $groupsCreated = [];
                 $careerId = app(\App\Support\CareerContext::class)->careerId();
 
                 foreach ($preparedRows as $prepared) {
@@ -630,30 +652,39 @@ class UserController extends Controller
                             [
                                 'perfil_id' => $prepared['profileId'],
                                 'activo' => (bool) ($data['activo'] ?? true),
-                                'es_principal' => !$user->careerMemberships()->where('activo', true)->exists(),
+                                'es_principal' => !$user->careerMemberships()->where('es_principal', true)->where('carrera_id', '<>', $careerId)->exists(),
                                 'asignado_por' => auth('api')->id(),
                             ]
                         );
                         $linked++;
                     } else {
-                        $data['password'] = Hash::make($data['password']);
+                        $this->applyInitialPassword($data);
                         $user = User::create($data);
                         $created++;
                     }
-                    $this->syncAcademicAssignment($user, $prepared['academicAssignment']);
+                    $assignment = $prepared['academicAssignment'];
+                    if ($assignment['semester'] !== null && $assignment['group'] !== null) {
+                        // El Excel genera el grupo del periodo abierto si todavía no existe.
+                        [$group, $isNew] = $this->groupForAssignment($period, $assignment['semester'], $assignment['group']);
+                        if ($isNew) $groupsCreated[] = $group->nombre;
+                        app(\App\Services\AcademicWorkflowService::class)->assign($user->id, $group);
+                    }
                 }
 
-                return compact('created', 'linked');
+                return compact('created', 'linked', 'groupsCreated');
             });
 
             return response()->json([
                 'message' => 'Importacion procesada',
                 'created' => $summary['created'],
                 'linked' => $summary['linked'],
+                'groups_created' => $summary['groupsCreated'],
                 'errors' => [],
             ], 201);
         } catch (ValidationException $e) {
             return response()->json(['message' => 'No se pudo importar el archivo', 'errors' => $e->errors()], 422);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            return response()->json(['message' => $e->getMessage() ?: 'No se pudo importar el archivo', 'errors' => ['archivo' => [$e->getMessage()]]], $e->getStatusCode());
         } catch (\Throwable $e) {
             report($e);
             return response()->json([
@@ -663,10 +694,59 @@ class UserController extends Controller
         }
     }
 
+    /** Sin contraseña, la inicial es la matrícula/número de empleado y se exige cambiarla al entrar. */
+    private function applyInitialPassword(array &$data): void
+    {
+        if (empty($data['password'])) {
+            $data['password'] = (string) $data['id'];
+            $data['debe_cambiar_contrasena'] = true;
+        }
+        $data['password'] = Hash::make($data['password']);
+        unset($data['password_confirmation']);
+    }
+
+    /** El administrador general asigna cualquier perfil; jefatura y asistencia, coordinador, docente y estudiante. */
+    private function assignableProfiles(): array
+    {
+        return auth('api')->user()?->isGeneralAdmin()
+            ? \App\Support\Profiles::ASSIGNABLE
+            : [\App\Support\Profiles::PROJECT_COORDINATOR, \App\Support\Profiles::TEACHER, \App\Support\Profiles::STUDENT];
+    }
+
+    private function assignableProfileRule(): \Illuminate\Validation\Rules\In
+    {
+        return Rule::in($this->assignableProfiles());
+    }
+
+    private function semesterRule(): array
+    {
+        return ['nullable', 'integer', Rule::in(app(\App\Services\SemesterManagementService::class)->careerSemesters())];
+    }
+
+    /** @return array{0: SubjectGroup, 1: bool} el grupo del periodo y si se acaba de crear */
+    private function groupForAssignment(\App\Models\AcademicPeriod $period, int $semester, string $letter): array
+    {
+        $group = SubjectGroup::where('periodo_id', $period->id)->where('semestre', $semester)->where('grupo', $letter)->first();
+        if ($group) {
+            abort_unless($group->activo, 409, "El grupo {$semester}° {$letter} está inactivo; actívalo antes de asignar alumnos.");
+            return [$group, false];
+        }
+        app(\App\Services\SemesterManagementService::class)->assertSemesterInPeriod($semester, $period);
+
+        return [SubjectGroup::create([
+            'nombre' => "{$semester}° {$letter}",
+            'semestre' => $semester,
+            'grupo' => $letter,
+            'periodo_id' => $period->id,
+            'activo' => true,
+        ]), true];
+    }
+
     private function guardAdminSensitiveAction(Request $request, User $target, ?int $careerProfileId = null)
     {
         $protectedProfile = $careerProfileId ?? (int) $target->perfil_id;
-        if (!in_array($protectedProfile, [1, 5], true)) {
+        // Jefatura y asistencia sólo las modifica el administrador general (con su contraseña).
+        if (!in_array($protectedProfile, [1, \App\Support\Profiles::CAREER_HEAD, \App\Support\Profiles::HEAD_ASSISTANT], true)) {
             return null;
         }
 
@@ -689,7 +769,7 @@ class UserController extends Controller
 
     private function loadPhonesIfAvailable(User $user): User
     {
-        return Schema::hasTable('usuarios_telefonos')
+        return \App\Support\SchemaCache::hasTable('usuarios_telefonos')
             ? $user->load('phoneNumbers')
             : $user;
     }
@@ -722,8 +802,9 @@ class UserController extends Controller
 
         if ((int) $assignment['profile_id'] !== 3 || $assignment['semester'] === null || $assignment['group'] === null) return;
         $workflow = app(\App\Services\AcademicWorkflowService::class);
-        $targetGroup = SubjectGroup::where('activo', true)->where('periodo_id', $workflow->period()?->id)
-            ->where('semestre', $assignment['semester'])->where('grupo', $assignment['group'])->firstOrFail();
+        $period = $workflow->period();
+        abort_unless($period, 409, 'Para asignar el grupo la carrera necesita un periodo abierto.');
+        [$targetGroup] = $this->groupForAssignment($period, (int) $assignment['semester'], (string) $assignment['group']);
         $workflow->assign($user->id, $targetGroup);
     }
 
@@ -746,6 +827,10 @@ class UserController extends Controller
         $query = User::query()
             ->whereNotNull('email')
             ->where('email', '<>', '');
+        // Jefatura y asistencia envían credenciales sólo a los perfiles que pueden registrar.
+        if (!auth('api')->user()->isGeneralAdmin()) {
+            $query->withCareerProfiles($this->assignableProfiles());
+        }
 
         if ($request->filled('user_ids')) {
             $query->whereIn('id', $request->input('user_ids', []));
@@ -814,15 +899,7 @@ class UserController extends Controller
 
     private function profileName(int $profileId): string
     {
-        return match ($profileId) {
-            1 => 'Administrador',
-            2 => 'Docente',
-            3 => 'Estudiante',
-            5 => 'Jefe de Carrera',
-            6 => 'Asistente de Jefe de Carrera',
-            7 => 'Coordinador de Proyectos',
-            default => 'Usuario',
-        };
+        return \App\Support\Profiles::label($profileId) ?? 'Usuario';
     }
 
     private function generateTemporaryPassword(): string
@@ -834,11 +911,6 @@ class UserController extends Controller
         }
 
         return $password;
-    }
-
-    private function normalizeAddress(?string $address): ?string
-    {
-        return $address ? preg_replace('/\s+/', ' ', trim($address)) : null;
     }
 
     private function excelTemplateResponse(string $filename, string $title, array $headers, array $notes = [])
@@ -1070,7 +1142,7 @@ class UserController extends Controller
 
     private function spreadsheetRowHasImportData(array $row): bool
     {
-        foreach (['id', 'nombres', 'password', 'perfil_id'] as $key) {
+        foreach (['id', 'nombres', 'apa', 'email'] as $key) {
             if ($this->normalizeSpreadsheetValue($row[$key] ?? '') !== '') {
                 return true;
             }
@@ -1082,9 +1154,8 @@ class UserController extends Controller
     private function looksLikeUserImportHeader(array $headers): bool
     {
         $headers = array_filter($headers);
-        $matches = array_intersect(['id', 'nombres', 'password', 'perfil_id'], $headers);
-
-        return count($matches) >= 3;
+        // Basta matrícula/número y nombres: las plantillas cortas ya no llevan contraseña ni, en alumnos, perfil.
+        return in_array('id', $headers, true) && in_array('nombres', $headers, true);
     }
 
     private function normalizeImportHeader($header): string
@@ -1106,6 +1177,10 @@ class UserController extends Controller
             'matricula' => 'id',
             'nomina' => 'id',
             'matricula_nomina' => 'id',
+            'numero_empleado' => 'id',
+            'numero_de_empleado' => 'id',
+            'correo' => 'email',
+            'correo_electronico' => 'email',
             'apellido_paterno' => 'apa',
             'apellido_materno' => 'ama',
             'telefono' => 'telefonos',
@@ -1146,12 +1221,12 @@ class UserController extends Controller
         }
 
         return match ($text) {
-            'administrador', 'admin', 'administrativo', 'administrativa' => 1,
+            // El perfil "Administrador" de carrera ya no existe: esas cuentas son jefatura.
             'docente', 'profesor', 'maestro', 'teacher' => 2,
             'estudiante', 'alumno', 'student' => 3,
             'jefe de carrera', 'jefe_carrera', 'jefatura' => 5,
-            'asistente de jefe de carrera', 'asistente_jefe_carrera', 'asistente de jefatura' => 6,
-            'coordinador de proyectos', 'coordinador_proyectos', 'coordinador' => 7,
+            'asistente de jefe de carrera', 'asistente_jefe_carrera', 'asistente de jefatura', 'asistente' => 6,
+            'coordinador de proyectos', 'coordinador de proyectos integradores', 'coordinador_proyectos', 'coordinador' => 7,
             default => 0,
         };
     }
@@ -1186,8 +1261,7 @@ class UserController extends Controller
             'perfil_id' => 'perfil',
             'semestre' => 'semestre',
             'grupo' => 'grupo',
-            'curp' => 'CURP',
-            'direccion' => 'direccion',
+            'especialidad' => 'especialidad',
             'telefonos' => 'telefono',
             'activo' => 'activo',
         ];

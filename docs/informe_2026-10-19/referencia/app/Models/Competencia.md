@@ -1,0 +1,50 @@
+# Competencia
+
+Fuente: [app/Models/Competencia.php](../../../../../app/Models/Competencia.php). Corte: 19 de octubre de 2026.
+
+
+## Declaraciones y propiedades
+
+Las propiedades, constantes, dependencias y comentarios se transcriben a continuación. Los métodos se separan después.
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Competencia extends Model
+{
+    use HasFactory;
+
+    protected $table = 'competencias';
+
+    public $timestamps = false;
+
+    protected $fillable = ['nombre', 'asignatura_id', 'fecha_inicio', 'fecha_fin'];
+
+    protected $casts = [
+        'fecha_inicio' => 'date',
+        'fecha_fin' => 'date',
+    ];
+
+    // RELACIONES
+
+    // SCOPES
+
+}
+```
+
+## asignatura
+
+Visibilidad: `public`. Líneas originales 25–28.
+
+```php
+    public function asignatura(): BelongsTo
+    {
+        return $this->belongsTo(Asignatura::class, 'asignatura_id');
+    }
+```

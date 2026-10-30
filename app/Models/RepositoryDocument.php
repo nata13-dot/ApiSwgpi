@@ -32,6 +32,9 @@ class RepositoryDocument extends Model
 
     public const CATEGORY_EVALUATION_PRESENTATION = 'evaluation_presentation';
 
+    /** Documento de reporte del proyecto (avance en 6° y 7°, final en 8°). */
+    public const CATEGORY_EVALUATION_REPORT = 'evaluation_report';
+
     public const CATEGORY_THESIS_GENERAL = 'thesis_general';
 
     public const CATEGORY_THESIS_RESIDENCY = 'thesis_residency';
@@ -202,8 +205,8 @@ class RepositoryDocument extends Model
 
     public function setCategoriaAttribute($value): void
     {
-        $detail = in_array($value, [self::CATEGORY_EVALUATION_RELEASE, self::CATEGORY_EVALUATION_PRESENTATION, self::CATEGORY_THESIS_RESIDENCY], true);
-        if (\Illuminate\Support\Facades\Schema::hasColumn('documentos', 'categoria_detalle')) {
+        $detail = in_array($value, [self::CATEGORY_EVALUATION_RELEASE, self::CATEGORY_EVALUATION_PRESENTATION, self::CATEGORY_EVALUATION_REPORT, self::CATEGORY_THESIS_RESIDENCY], true);
+        if (\App\Support\SchemaCache::hasColumn('documentos', 'categoria_detalle')) {
             $this->attributes['categoria_detalle'] = $detail ? $value : null;
             $this->attributes['categoria'] = $detail ? ($value === self::CATEGORY_THESIS_RESIDENCY ? 'tesis' : 'evaluacion') : $this->mapLegacyValue('document_category', $value);
         } else $this->attributes['categoria'] = $this->mapLegacyValue('document_category', $value);
@@ -228,6 +231,7 @@ class RepositoryDocument extends Model
                 self::CATEGORY_EVALUATION_DOCUMENT, 'evaluacion' => 'evaluacion',
                 self::CATEGORY_EVALUATION_RELEASE => self::CATEGORY_EVALUATION_RELEASE,
                 self::CATEGORY_EVALUATION_PRESENTATION => self::CATEGORY_EVALUATION_PRESENTATION,
+                self::CATEGORY_EVALUATION_REPORT => self::CATEGORY_EVALUATION_REPORT,
                 self::CATEGORY_THESIS_GENERAL, 'tesis' => 'tesis',
                 self::CATEGORY_THESIS_RESIDENCY => self::CATEGORY_THESIS_RESIDENCY,
                 default => $value,

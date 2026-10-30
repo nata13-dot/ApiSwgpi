@@ -77,7 +77,7 @@ class DeliverySubmissionService
     ): array {
         return DB::transaction(function () use ($deliverable, $project, $user, $prepared, $stored): array {
             Deliverable::query()->whereKey($deliverable->id)->lockForUpdate()->firstOrFail();
-            if (Schema::hasTable('matriculas_academicas')) {
+            if (\App\Support\SchemaCache::hasTable('matriculas_academicas')) {
                 DB::table('cursos')->where('id', $deliverable->curso_id)->lockForUpdate()->first();
                 $this->authorizeContext($deliverable->fresh(), $project, $user);
             }
@@ -122,7 +122,7 @@ class DeliverySubmissionService
                 ]);
             }
 
-            if (Schema::hasTable('entrega_participantes')) {
+            if (\App\Support\SchemaCache::hasTable('entrega_participantes')) {
                 $participants = DB::table('curso_estudiantes')->where('curso_id', $deliverable->curso_id)->where('activo', true)
                     ->whereIn('estudiante_id', $project->students()->pluck('usuarios.id'))->pluck('estudiante_id');
                 foreach ($participants as $student) DB::table('entrega_participantes')->insertOrIgnore(['entrega_id' => $delivery->id, 'estudiante_id' => $student]);
@@ -145,13 +145,13 @@ class DeliverySubmissionService
                 'uploaded_by' => $user->id,
                 'created_at' => now(),
             ];
-            if (Schema::hasColumn('documento_versiones', 'nombre_original')) {
+            if (\App\Support\SchemaCache::hasColumn('documento_versiones', 'nombre_original')) {
                 $attributes['original_name'] = $prepared['original_name'];
             }
-            if (Schema::hasColumn('documento_versiones', 'disco')) {
+            if (\App\Support\SchemaCache::hasColumn('documento_versiones', 'disco')) {
                 $attributes['disk'] = $stored['disk'];
             }
-            if (Schema::hasColumn('documento_versiones', 'checksum_sha256')) {
+            if (\App\Support\SchemaCache::hasColumn('documento_versiones', 'checksum_sha256')) {
                 $attributes['checksum'] = $prepared['checksum_sha256'];
             }
 
@@ -169,7 +169,7 @@ class DeliverySubmissionService
     {
         $deliverable->loadMissing('course');
         $sameCareer = (int) $deliverable->carrera_id === (int) $project->carrera_id;
-        $modern = Schema::hasTable('matriculas_academicas');
+        $modern = \App\Support\SchemaCache::hasTable('matriculas_academicas');
         $sameGroup = $deliverable->course
             && (int) $deliverable->course->grupo_id === (int) $project->grupo_id;
 

@@ -21,7 +21,7 @@ class CourseAdmissionService
         $enrollment = $this->workflow->enrollment($student->id, (int) $group->periodo_id);
         abort_unless($enrollment, 422, 'Se requiere matrícula en este periodo.');
         if ((int) $enrollment->semestre !== (int) $group->semestre) {
-            abort_unless(DB::table('autorizaciones_academicas')->where('carrera_id', $this->workflow->careerId())
+            abort_unless(DB::table('autorizaciones_academicas')
                 ->where('periodo_id', $group->periodo_id)->where('estudiante_id', $student->id)->where('curso_id', $course->id)
                 ->where('tipo', 'inscripcion_semestre')->where('estado', 'aprobada')->where('vigente_hasta', '>=', now())->exists(),
                 422, 'La materia requiere autorización por diferencia de semestre.');

@@ -1,0 +1,3879 @@
+[
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "/",
+    "name": null,
+    "action": "Closure",
+    "middleware": [
+      "web"
+    ],
+    "path": "routes/web.php:5"
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/academic-operations/authorizations",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AcademicOperationsController@authorizations",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/academic-operations/authorizations",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@storeException",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:teacher"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/academic-operations/catalog",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AcademicOperationsController@catalog",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/academic-operations/classrooms",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AcademicOperationsController@classroom",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/academic-operations/enrollments",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AcademicOperationsController@enrollments",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/academic-operations/enrollments",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AcademicOperationsController@assign",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/academic-operations/memberships/{membership}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AcademicOperationsController@membership",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/academic-operations/memberships/{membership}/commitments",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AcademicOperationsController@commitments",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|POST|HEAD",
+    "uri": "api/academic-operations/periods/{period}/reconciliation",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AcademicOperationsController@reconciliation",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/academic-operations/project-period",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AcademicOperationsController@projectPeriod",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/activity-notifications",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ActivityNotificationController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/activity-notifications/read-all",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ActivityNotificationController@markAllRead",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/activity-notifications/{notification}/read",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ActivityNotificationController@markRead",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/audit",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerAuditController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/career-memberships",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerManagementController@memberships",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/admin/career-memberships",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerManagementController@storeMembership",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/admin/career-memberships/{membership}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerManagementController@updateMembership",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/admin/career-memberships/{membership}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerManagementController@destroyMembership",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/careers",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerManagementController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/careers/export",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerExportController@institutionalSummary",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/admin/careers/{career}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerManagementController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/continuity-history",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ContinuityReportController@history",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/admin/continuity-history",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ContinuityReportController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/continuity-policy",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ContinuityPolicyController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/admin/continuity-policy",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ContinuityPolicyController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/continuity-report",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ContinuityReportController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/continuity-report.pdf",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ContinuityReportController@pdf",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/database-backups",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DatabaseBackupController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/admin/database-backups",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DatabaseBackupController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/admin/database-backups-cleanup",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DatabaseBackupController@cleanup",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/database-backups-health",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DatabaseBackupController@health",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/database-backups/{backup}/download",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DatabaseBackupController@download",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/admin/database-backups/{backup}/verify",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DatabaseBackupController@verify",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/integrity",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerIntegrityController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/integrity/history",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerIntegrityController@history",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/admin/integrity/run",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerIntegrityController@run",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/operational-alerts",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\OperationalAlertController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/admin/operational-alerts/scan",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\OperationalAlertController@scan",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/admin/operational-alerts/summary",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\OperationalAlertController@summary",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/admin/operational-alerts/{alert}/acknowledge",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\OperationalAlertController@acknowledge",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:general_admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/asignaturas",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AsignaturaController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/asignaturas",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AsignaturaController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/asignaturas/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AsignaturaController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/asignaturas/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AsignaturaController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/asignaturas/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AsignaturaController@destroy",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/auth/careers",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AuthController@careers",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/auth/heartbeat",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AuthController@heartbeat",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/auth/login",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AuthController@login",
+    "middleware": [
+      "api",
+      "Illuminate\\Routing\\Middleware\\ThrottleRequests:login"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/auth/logout",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AuthController@logout",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/auth/me",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AuthController@me",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/auth/password/request-token",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AuthController@requestPasswordReset",
+    "middleware": [
+      "api",
+      "Illuminate\\Routing\\Middleware\\ThrottleRequests:password-recovery"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/auth/password/reset",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AuthController@resetPasswordWithToken",
+    "middleware": [
+      "api",
+      "Illuminate\\Routing\\Middleware\\ThrottleRequests:password-recovery"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/auth/password/verify-token",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AuthController@verifyPasswordResetToken",
+    "middleware": [
+      "api",
+      "Illuminate\\Routing\\Middleware\\ThrottleRequests:password-recovery"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/auth/refresh",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AuthController@refresh",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/auth/switch-career",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\AuthController@switchCareer",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/career/export",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerExportController@activeCareer",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/career/indicators",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerModuleController@storeIndicator",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/career/indicators/{indicator}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerModuleController@updateIndicator",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/career/indicators/{indicator}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerModuleController@destroyIndicator",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/career/module-records",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerModuleController@records",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/career/module-records",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerModuleController@storeRecord",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/career/module-records/{record}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerModuleController@updateRecord",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/career/module-records/{record}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerModuleController@destroyRecord",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/career/modules",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerModuleController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/career/modules/{module}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerModuleController@updateModule",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/career/setup/catalog",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CareerSetupController@importCatalog",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/companies",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CompanyController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/companies/{company}/review",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CompanyController@review",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/competencias",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CompetenciaController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/competencias",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CompetenciaController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/competencias/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CompetenciaController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/competencias/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CompetenciaController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/competencias/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CompetenciaController@destroy",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/course-enrollments",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CourseEnrollmentController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/course-enrollments/{course}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CourseEnrollmentController@leave",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/course-enrollments/{course}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CourseEnrollmentController@enroll",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "Illuminate\\Routing\\Middleware\\ThrottleRequests:10,1",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:student"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/courses/{course}/self-enrollment",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CourseEnrollmentController@updateAccess",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:teacher"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/courses/{course}/students",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\CourseEnrollmentController@students",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/dashboard/stats",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DashboardController@stats",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/dashboard/student",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DashboardController@student",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/dashboard/teacher",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DashboardController@teacher",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/deliverables",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/deliverables",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/deliverables/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/deliverables/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/deliverables/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@destroy",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/deliverables/{id}/calificar",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@calificar",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/deliverables/{id}/download",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@download",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/deliverables/{id}/upload",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@upload",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/document-tags",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DocumentTagController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/document-tags",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DocumentTagController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/document-tags/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DocumentTagController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/document-tags/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DocumentTagController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/document-tags/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DocumentTagController@destroy",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/evaluation-documents",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@evaluationDocuments",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/evaluation-managers",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@managers",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/evaluation-managers",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@updateManagers",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/evaluations",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/archive-selected",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@archiveSelected",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/evaluations/criteria",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@criteria",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/evaluations/managers",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@managers",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/evaluations/managers",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@updateManagers",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/evaluations/projects",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@projects",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/evaluations/rooms",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@rooms",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/rooms",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@storeRoom",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/evaluations/rooms/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@updateRoom",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/evaluations/rooms/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@destroyRoom",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/rooms/{id}/advance",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@advanceRoom",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/rooms/{id}/archive",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@archiveRoom",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/rooms/{id}/lock-sequence",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@lockRoomSequence",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/evaluations/rooms/{id}/report.pdf",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@exportRoomPdf",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/evaluations/rooms/{id}/schedule",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@updateRoomSchedule",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/rooms/{id}/timer",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@controlRoomTimer",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/rooms/{id}/unarchive",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@unarchiveRoom",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/rubric-criteria",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@storeCriterion",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/evaluations/rubric-criteria/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@updateCriterion",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/evaluations/rubric-criteria/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@destroyCriterion",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/evaluations/rubric-score-modes",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@updateRubricScoreModes",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/rubrics/initialize",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@initializeRubrics",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/unarchive-selected",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@unarchiveSelected",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/evaluations/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/evaluations/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/evaluations/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@destroy",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/{id}/archive",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@archive",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/{id}/feedback",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@feedback",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/{id}/mark-completed",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@markCompleted",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/evaluations/{id}/report.pdf",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@exportEvaluationPdf",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/{id}/score",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@score",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/evaluations/{id}/unarchive",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@unarchive",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/my-deliverables",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@myDeliverables",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/my-projects",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@myProjects",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/notices",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SystemSettingController@notices",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/notices",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SystemSettingController@updateNotices",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/profile",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProfileController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/profile",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProfileController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/profile/complete-initial",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProfileController@completeInitial",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/projects",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/projects",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:student,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/projects-template.xls",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@projectsExcelTemplate",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/projects/import-excel",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@importExcel",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/projects/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/projects/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:student,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/projects/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@destroy",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/projects/{id}/advisors",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@addAdvisor",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/projects/{id}/advisors",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@syncAdvisors",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/projects/{id}/asignaturas",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@syncAsignaturas",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/projects/{projectId}/advisors/{userId}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProjectController@removeAdvisor",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/proposal/assignments",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@storeAssignment",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/proposal/assignments/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@destroyAssignment",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/proposal/config",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@configIndex",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/proposal/exceptions",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@storeException",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/proposal/exceptions/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@destroyException",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/proposal/projects/{id}/review",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@review",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/proposal/student-status",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@studentStatus",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/proposal/students/search",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@searchStudents",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/proposal/teacher-projects",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@teacherProjects",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/proposal/window-groups",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@windowGroups",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/proposal/windows",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@storeWindow",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/proposal/windows/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@updateWindow",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/proposal/windows/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ProposalWorkflowController@destroyWindow",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,teacher,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@index",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/repositorio",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio/admin/list",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@adminIndex",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio/buscar",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@search",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio/etiqueta/{tagId}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@byTag",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio/evaluation-documents",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@evaluationDocuments",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/repositorio/evaluation-documents",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@storeEvaluationDocument",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/repositorio/evaluation-documents/{id}/release-status",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@reviewEvaluationRelease",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio/proyecto/{projectId}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@byProject",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio/student/list",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@studentIndex",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio/thesis-documents",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@thesisDocuments",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/repositorio/thesis-documents",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@storeThesisDocument",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@show",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/repositorio/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/repositorio/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@destroy",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio/{id}/download",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@download",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/repositorio/{id}/publish",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@publish",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/repositorio/{id}/view",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\RepositoryController@view",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/residencies",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ResidencyController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/residencies",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ResidencyController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/residencies/{residency}/advisor",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ResidencyController@advisor",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/residencies/{residency}/close",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ResidencyController@close",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/residencies/{residency}/requirements",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ResidencyController@requirement",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/residencies/{residency}/requirements/{requirement}/versions",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ResidencyController@upload",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/residencies/{residency}/versions/{version}/download",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ResidencyController@download",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/residencies/{residency}/versions/{version}/review",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\ResidencyController@review",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/semester-management",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@summary",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/semester-management/exceptions",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@storeException",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/semester-management/exceptions/{exception}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@destroyException",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/semester-management/exceptions/{exception}/decision",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@decideException",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/semester-management/periods",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@storePeriod",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/semester-management/periods/{period}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@updatePeriod",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/semester-management/periods/{period}/activate",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@activatePeriod",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/semester-management/periods/{period}/promote",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@applyPromotion",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/semester-management/periods/{period}/promotion-preview",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@promotionPreview",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/semester-management/periods/{period}/transition",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@transition",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/semester-management/search",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SemesterManagementController@search",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/settings",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SystemSettingController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/settings",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SystemSettingController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/settings/current",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SystemSettingController@current",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/settings/public",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SystemSettingController@public",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/student/evaluation-schedule",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\EvaluationController@studentSchedule",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/subject-groups",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SubjectGroupController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/subject-groups",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SubjectGroupController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/subject-groups/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SubjectGroupController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/subject-groups/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SubjectGroupController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/subject-groups/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SubjectGroupController@destroy",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/subject-groups/{id}/students",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SubjectGroupController@students",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/subject-groups/{id}/students",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\SubjectGroupController@syncStudents",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,academic_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/teacher/deliverables-matrix",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\DeliverableController@teacherMatrix",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/users",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@index",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:admin,project_manager"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/users",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@store",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:user_governance"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/users-inactive",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@getInactive",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:user_governance"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/users-template.csv",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@blankCsvTemplate",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/users-template.xls",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@usersExcelTemplate",
+    "middleware": [
+      "api"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/users/credential-email-template",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@credentialEmailTemplate",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:user_governance"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/users/import-excel",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@importExcel",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:user_governance"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/users/send-credentials",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@sendCredentialEmails",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:user_governance"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "api/users/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@show",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:user_governance"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "api/users/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@update",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:user_governance"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "DELETE",
+    "uri": "api/users/{id}",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@destroy",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:user_governance"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "api/users/{id}/toggle-active",
+    "name": null,
+    "action": "App\\Http\\Controllers\\API\\UserController@toggleActive",
+    "middleware": [
+      "api",
+      "Illuminate\\Auth\\Middleware\\Authenticate:api",
+      "App\\Http\\Middleware\\EnsureUserIsActive",
+      "App\\Http\\Middleware\\ResolveCareerContext",
+      "App\\Http\\Middleware\\EnsureCareerModuleEnabled",
+      "App\\Http\\Middleware\\AuditCareerMutation",
+      "App\\Http\\Middleware\\EnsureAcademicPeriodOpen",
+      "App\\Http\\Middleware\\CheckRole:user_governance"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "POST",
+    "uri": "resend/webhook",
+    "name": "resend.webhook",
+    "action": "Resend\\Laravel\\Http\\Controllers\\WebhookController@handleWebhook",
+    "middleware": [],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "sanctum/csrf-cookie",
+    "name": "sanctum.csrf-cookie",
+    "action": "Laravel\\Sanctum\\Http\\Controllers\\CsrfCookieController@show",
+    "middleware": [
+      "web"
+    ],
+    "path": null
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "storage/{path}",
+    "name": "storage.local",
+    "action": "Closure",
+    "middleware": [],
+    "path": "vendor/laravel/framework/src/Illuminate/Filesystem/FilesystemServiceProvider.php:98"
+  },
+  {
+    "domain": null,
+    "method": "PUT",
+    "uri": "storage/{path}",
+    "name": "storage.local.upload",
+    "action": "Closure",
+    "middleware": [],
+    "path": "vendor/laravel/framework/src/Illuminate/Filesystem/FilesystemServiceProvider.php:106"
+  },
+  {
+    "domain": null,
+    "method": "GET|HEAD",
+    "uri": "up",
+    "name": null,
+    "action": "Closure",
+    "middleware": [],
+    "path": "vendor/laravel/framework/src/Illuminate/Foundation/Configuration/ApplicationBuilder.php:219"
+  }
+]

@@ -138,7 +138,7 @@ class Project extends Model
 
     public function evaluations(): HasMany
     {
-        return $this->hasMany(Evaluation::class, 'proyecto_id');
+        return $this->hasMany(Evaluation::class, 'proyecto_id')->orderBy('evaluaciones.id');
     }
 
     public function avances(): HasMany
@@ -305,7 +305,7 @@ class Project extends Model
 
     public function getSemestreAttribute(): ?int
     {
-        if (\Illuminate\Support\Facades\Schema::hasTable('proyecto_periodos') && app(\App\Support\CareerContext::class)->careerId()) {
+        if (\App\Support\SchemaCache::hasTable('proyecto_periodos') && app(\App\Support\CareerContext::class)->careerId()) {
             $period = app(\App\Services\AcademicWorkflowService::class)->period();
             if ($period) return app(\App\Services\AcademicWorkflowService::class)->projectSemester($this, $period->id) ?? $this->subjectGroup?->semestre;
         }

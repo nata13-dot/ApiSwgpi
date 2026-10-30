@@ -11,7 +11,8 @@ class AcademicAuthorizationService
 
     public function valid(string $type, int $project, int $period)
     {
-        return DB::table('autorizaciones_academicas')->where('carrera_id', $this->workflow->careerId())
+        // Filtrar por el proyecto ya fija la carrera: es la del proyecto.
+        return DB::table('autorizaciones_academicas')
             ->where('periodo_id', $period)->where('proyecto_id', $project)->where('tipo', $type)
             ->where('estado', 'aprobada')->where('vigente_hasta', '>=', now())->whereNull('consumida_en')->orderByDesc('id');
     }
@@ -33,7 +34,7 @@ class AcademicAuthorizationService
             if (!$user->canManageProjects()) abort_unless($project->advisors()->where('usuarios.id', $user->id)->exists(), 403, 'No tienes asignado este proyecto.');
             if (in_array($data['type'], ['reintento', 'reprogramacion'])) {
                 abort_unless(DB::table('evaluaciones')->where('id', $data['evaluation_id'] ?? null)->where('proyecto_id', $project->id)
-                    ->where('carrera_id', $this->workflow->careerId())->exists(), 422, 'Selecciona la evaluación de origen.');
+                    ->exists(), 422, 'Selecciona la evaluación de origen.');
             }
         }
         return DB::transaction(function () use ($data, $project, $user) {
@@ -53,11 +54,12 @@ class AcademicAuthorizationService
 
     public function decide(int $id, array $data): object
     {
-        $this->workflow->manager();
+        $this->workflow->approver();
         return DB::transaction(function () use ($id, $data) {
-            $query = DB::table('autorizaciones_academicas')->where('carrera_id', $this->workflow->careerId())->where('id', $id);
+            $query = \App\Support\CareerScope::constrainOptional(DB::table('autorizaciones_academicas'), 'autorizaciones_academicas', $this->workflow->careerId())->where('id', $id);
             $old = (clone $query)->lockForUpdate()->first();
             abort_unless($old, 404);
+            $this->workflow->approver($old->proyecto_id ? Project::find($old->proyecto_id) : null);
             abort_unless((int) $old->version === (int) $data['version'], 409, 'La solicitud cambió. Actualiza la vista.');
             $allowed = $old->estado === 'solicitada' ? ['aprobada', 'rechazada'] : ($old->estado === 'aprobada' ? ['revocada'] : []);
             abort_unless(in_array($data['status'], $allowed, true) && !$old->consumida_en, 409, 'Esta autorización ya fue resuelta o utilizada.');

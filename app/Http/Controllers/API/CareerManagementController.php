@@ -12,32 +12,42 @@ class CareerManagementController extends Controller
 {
     public function index()
     {
-        $memberships = $this->countsByCareer('usuario_carrera', fn ($query) => $query->where('activo', true));
-        $administrators = $this->countsByCareer('usuario_carrera', fn ($query) => $query->where('activo', true)->where('perfil_id', 1));
-        $careerHeads = $this->countsByCareer('usuario_carrera', fn ($query) => $query->where('activo', true)->where('perfil_id', 5));
-        $careerHeadAssistants = $this->countsByCareer('usuario_carrera', fn ($query) => $query->where('activo', true)->where('perfil_id', 6));
-        $projectCoordinators = $this->countsByCareer('usuario_carrera', fn ($query) => $query->where('activo', true)->where('perfil_id', 7));
-        $teachers = $this->countsByCareer('usuario_carrera', fn ($query) => $query->where('activo', true)->where('perfil_id', 2));
-        $students = $this->countsByCareer('usuario_carrera', fn ($query) => $query->where('activo', true)->where('perfil_id', 3));
+        // Un solo conteo agrupado por carrera y perfil en lugar de una consulta por perfil.
+        $roles = DB::table('usuario_carrera')->where('activo', true)
+            ->selectRaw('carrera_id, perfil_id, COUNT(*) total')->groupBy('carrera_id', 'perfil_id')->get();
+        $byProfile = fn (int $profile) => $roles->where('perfil_id', $profile)->pluck('total', 'carrera_id');
+        $memberships = $roles->groupBy('carrera_id')->map(fn ($rows) => $rows->sum('total'));
+        $administrators = $byProfile(1);
+        $careerHeads = $byProfile(5);
+        $careerHeadAssistants = $byProfile(6);
+        $projectCoordinators = $byProfile(7);
+        $teachers = $byProfile(2);
+        $students = $byProfile(3);
+        $modulesByCareer = DB::table('carrera_modulos')->orderBy('modulo')
+            ->get(['carrera_id', 'modulo', 'habilitado', 'configuracion'])->groupBy('carrera_id');
         $projects = $this->countsByCareer('proyectos', fn ($query) => $query->where('activo', true));
         $subjects = $this->countsByCareer('asignaturas', fn ($query) => $query->where('activo', true));
         $groups = $this->countsByCareer('grupos_academicos', fn ($query) => $query->where('activo', true));
         $documents = $this->countsByCareer('documentos');
         $evaluations = $this->countsByCareer('evaluaciones');
         $rubrics = $this->countsByCareer('rubricas', fn ($query) => $query->where('activa', true));
-        $settings = $this->countsByCareer('configuraciones_carrera');
+        $settings = $this->countsByCareer('configuraciones_carrera', fn ($query) => $query->whereIn('clave', \App\Models\CareerSetting::STORED_KEYS));
+        // Periodo vigente de cada carrera (abierto o en cierre; si no, el más reciente en preparación).
+        $periods = DB::table('carrera_periodos as cp')->join('periodos_academicos as p', 'p.id', '=', 'cp.periodo_id')
+            ->whereIn('cp.estado', ['abierto', 'en_cierre', 'preparacion'])
+            ->orderByRaw("FIELD(cp.estado, 'abierto', 'en_cierre', 'preparacion')")->orderByDesc('p.fecha_inicio')
+            ->get(['cp.carrera_id', 'cp.estado', 'cp.conciliado', 'p.id', 'p.nombre'])->unique('carrera_id')->keyBy('carrera_id');
 
         return response()->json([
             'careers' => Career::query()->orderBy('id')->get()->map(function (Career $career) use (
                 $memberships, $administrators, $careerHeads, $careerHeadAssistants, $projectCoordinators,
                 $teachers, $students, $projects,
-                $subjects, $groups, $documents, $evaluations, $rubrics, $settings
+                $subjects, $groups, $documents, $evaluations, $rubrics, $settings, $modulesByCareer, $periods
             ) {
                 $careerId = $career->id;
-                $modules = DB::table('carrera_modulos')
-                    ->where('carrera_id', $careerId)
-                    ->orderBy('modulo')
-                    ->get(['modulo', 'habilitado', 'configuracion']);
+                $modules = collect($modulesByCareer[$careerId] ?? [])
+                    ->map(fn ($module) => (object) ['modulo' => $module->modulo, 'habilitado' => $module->habilitado, 'configuracion' => $module->configuracion])
+                    ->values();
                 $checklist = [
                     'identity' => filled($career->nombre) && filled($career->nombre_corto) && filled($career->color_primario),
                     // Administrador y jefe de carrera son cargos independientes y opcionales.
@@ -46,13 +56,15 @@ class CareerManagementController extends Controller
                     'subjects' => (int) ($subjects[$careerId] ?? 0) > 0,
                     'groups' => (int) ($groups[$careerId] ?? 0) > 0,
                     'students' => (int) ($students[$careerId] ?? 0) > 0,
-                    'configuration' => (int) ($settings[$careerId] ?? 0) >= 5,
+                    'configuration' => (int) ($settings[$careerId] ?? 0) >= count(\App\Models\CareerSetting::STORED_KEYS),
                     'rubrics' => (int) ($rubrics[$careerId] ?? 0) >= 4,
                 ];
                 $completed = collect($checklist)->filter()->count();
                 $readiness = (int) round(($completed / count($checklist)) * 100);
 
                 return array_merge($career->toArray(), [
+                    'basic_semesters_enabled' => (bool) \App\Models\CareerSetting::valueForCareer($careerId, 'basic_semesters_enabled', false),
+                    'period' => $periods->get($careerId),
                     'members_count' => (int) ($memberships[$careerId] ?? 0),
                     'projects_count' => (int) ($projects[$careerId] ?? 0),
                     'subjects_count' => (int) ($subjects[$careerId] ?? 0),
@@ -88,7 +100,10 @@ class CareerManagementController extends Controller
             $filter($query);
         }
 
-        return $query
+        // Las tablas derivadas no guardan carrera: se agrupa por la de su padre.
+        $career = \App\Support\CareerScope::expression($table, $table);
+
+        return DB::query()->fromSub($query->selectRaw("{$career} AS carrera_id"), 'fila')
             ->selectRaw('carrera_id, COUNT(*) total')
             ->groupBy('carrera_id')
             ->pluck('total', 'carrera_id');
@@ -109,11 +124,16 @@ class CareerManagementController extends Controller
             'modules' => 'sometimes|array',
             'modules.*.modulo' => 'required|string|max:80',
             'modules.*.habilitado' => 'required|boolean',
+            // Carreras con casos integradores pueden registrar 1°–4°; las demás sólo 5°–9°.
+            'basic_semesters_enabled' => 'sometimes|boolean',
         ]);
 
         DB::transaction(function () use ($career, $validated): void {
             $modules = $validated['modules'] ?? null;
-            unset($validated['modules']);
+            if (array_key_exists('basic_semesters_enabled', $validated)) {
+                \App\Models\CareerSetting::setValueForCareer($career->id, 'basic_semesters_enabled', (bool) $validated['basic_semesters_enabled'], 'boolean', 'Registro de semestres 1° a 4°');
+            }
+            unset($validated['modules'], $validated['basic_semesters_enabled']);
             $career->update($validated);
 
             foreach ($modules ?? [] as $module) {
@@ -141,7 +161,11 @@ class CareerManagementController extends Controller
             ->with([
                 'user' => fn ($userQuery) => $userQuery
                     ->withoutGlobalScope('careerMembership')
-                    ->select(['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo', 'perfil_id', 'activo']),
+                    ->leftJoin('usuario_carrera as membresia', fn ($join) => $join
+                        ->on('membresia.usuario_id', '=', 'usuarios.id')
+                        ->where('membresia.carrera_id', $validated['carrera_id']))
+                    ->select(['usuarios.id', 'usuarios.nombres', 'usuarios.apellido_paterno', 'usuarios.apellido_materno',
+                        'usuarios.correo', 'usuarios.activo', 'membresia.perfil_id as career_profile_id']),
                 'career',
             ])
             ->where('carrera_id', $validated['carrera_id']);
@@ -166,7 +190,7 @@ class CareerManagementController extends Controller
         $validated = $request->validate([
             'usuario_id' => 'required|string|exists:usuarios,id',
             'carrera_id' => 'required|integer|exists:carreras,id',
-            'perfil_id' => 'required|integer|in:1,2,3,5,6,7',
+            'perfil_id' => 'required|integer|'.\App\Support\Profiles::rule(),
             'es_principal' => 'sometimes|boolean',
             'activo' => 'sometimes|boolean',
         ]);
@@ -201,7 +225,7 @@ class CareerManagementController extends Controller
     public function updateMembership(Request $request, UserCareer $membership)
     {
         $validated = $request->validate([
-            'perfil_id' => 'sometimes|required|integer|in:1,2,3,5,6,7',
+            'perfil_id' => 'sometimes|required|integer|'.\App\Support\Profiles::rule(),
             'es_principal' => 'sometimes|boolean',
             'activo' => 'sometimes|boolean',
         ]);

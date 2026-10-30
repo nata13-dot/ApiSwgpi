@@ -33,9 +33,9 @@ class DashboardController extends Controller
                     'creador.apellido_paterno as creador_apa',
                     'creador.apellido_materno as creador_ama',
                 ])
-                ->where('proyectos.carrera_id', $careerId)
+                ->whereIn('proyectos.grupo_id', \App\Support\CareerScope::ids('grupos_academicos', $careerId))
                 ->where('proyectos.activo', true)
-                ->orderByDesc('proyectos.creado_en')
+                ->orderByDesc('proyectos.creado_en')->orderByDesc('proyectos.id')
                 ->limit(5)
                 ->get()
                 ->map(fn ($project) => [
@@ -60,7 +60,7 @@ class DashboardController extends Controller
                 self::DELIVERABLE_STATUSES
             );
             $projectProposalCounts = $this->statusCounts(
-                DB::table('proyectos')->where('carrera_id', $careerId)->where('activo', true)->where('tipo', 'propuesta'),
+                \App\Support\CareerScope::constrain(DB::table('proyectos'), 'proyectos', $careerId)->where('activo', true)->where('tipo', 'propuesta'),
                 'estado',
                 self::PROPOSAL_STATUSES
             );
@@ -78,7 +78,7 @@ class DashboardController extends Controller
                 SUM(CASE WHEN usuario_carrera.perfil_id = 6 THEN 1 ELSE 0 END) AS career_head_assistants,
                 SUM(CASE WHEN usuario_carrera.perfil_id = 7 THEN 1 ELSE 0 END) AS project_coordinators'
             )->first();
-            $projectCounts = DB::table('proyectos')->where('carrera_id', $careerId)->selectRaw(
+            $projectCounts = \App\Support\CareerScope::constrain(DB::table('proyectos'), 'proyectos', $careerId)->selectRaw(
                 'COUNT(*) AS total_projects,
                 SUM(CASE WHEN activo = 1 THEN 1 ELSE 0 END) AS active_projects'
             )->first();
@@ -151,9 +151,9 @@ class DashboardController extends Controller
                 'subjectGroup:id,nombre,semestre,grupo',
             ])
             ->whereIn('id', $projectIds)
-            ->orderByDesc('created_at')
+            ->orderByDesc('created_at')->orderByDesc('id')
             ->limit(5)
-            ->get();
+            ->get()->withRelationshipAutoloading();
 
         $projectGroupIds = Project::whereIn('id', $projectIds)->pluck('grupo_id')->filter();
         $deliverableStatusCounts = $this->statusCounts(
@@ -210,9 +210,9 @@ class DashboardController extends Controller
                 'subjectGroup:id,nombre,semestre,grupo',
             ])
             ->whereIn('id', $projectIds)
-            ->orderByDesc('created_at')
+            ->orderByDesc('created_at')->orderByDesc('id')
             ->limit(5)
-            ->get();
+            ->get()->withRelationshipAutoloading();
 
         $projectGroupIds = Project::whereIn('id', $projectIds)->pluck('grupo_id')->filter();
         $deliverableStatusCounts = $this->statusCounts(

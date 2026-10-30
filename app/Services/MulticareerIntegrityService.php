@@ -9,48 +9,50 @@ class MulticareerIntegrityService
     public function report(): array
     {
         $checks = collect([
-            $this->check('project_group', 'Proyectos y grupos', 'Proyectos asociados a un grupo de otra carrera.', <<<'SQL'
-                SELECT COUNT(*) total
-                FROM proyectos p
-                JOIN grupos_academicos g ON g.id = p.grupo_id
-                WHERE p.carrera_id <> g.carrera_id
-            SQL),
-            $this->check('course_group', 'Cursos y grupos', 'Cursos cuya carrera no coincide con su grupo.', <<<'SQL'
+            // Cada tabla guarda su carrera una sola vez; aquí se revisan los "rombos": dos caminos
+            // que deben llegar a la misma carrera.
+            $this->check('course_subject', 'Cursos y asignaturas', 'Cursos cuyo grupo y asignatura son de carreras distintas.', <<<'SQL'
                 SELECT COUNT(*) total
                 FROM cursos c
                 JOIN grupos_academicos g ON g.id = c.grupo_id
-                WHERE c.carrera_id <> g.carrera_id
-            SQL),
-            $this->check('course_subject', 'Cursos y asignaturas', 'Cursos que contienen asignaturas de otra carrera.', <<<'SQL'
-                SELECT COUNT(*) total
-                FROM cursos c
                 JOIN asignaturas a ON a.id = c.asignatura_id
-                WHERE c.carrera_id <> a.carrera_id
+                WHERE g.carrera_id <> a.carrera_id
             SQL),
-            $this->check('evaluation_project', 'Evaluaciones y proyectos', 'Evaluaciones ligadas a proyectos de otra carrera.', <<<'SQL'
-                SELECT COUNT(*) total
-                FROM evaluaciones e
-                JOIN proyectos p ON p.id = e.proyecto_id
-                WHERE e.carrera_id <> p.carrera_id
-            SQL),
-            $this->check('evaluation_room', 'Evaluaciones y salas', 'Evaluaciones asignadas a salas de otra carrera.', <<<'SQL'
+            $this->check('evaluation_room_project', 'Evaluaciones, salas y proyectos', 'Evaluaciones cuya sala y proyecto son de carreras distintas.', <<<'SQL'
                 SELECT COUNT(*) total
                 FROM evaluaciones e
                 JOIN salas_evaluacion s ON s.id = e.sala_id
-                WHERE e.carrera_id <> s.carrera_id
+                JOIN rubricas r ON r.id = s.rubrica_id
+                JOIN proyectos p ON p.id = e.proyecto_id
+                JOIN grupos_academicos g ON g.id = p.grupo_id
+                WHERE r.carrera_id <> g.carrera_id
             SQL),
-            $this->check('document_project', 'Documentos y proyectos', 'Documentos cuyo proyecto pertenece a otra carrera.', <<<'SQL'
+            $this->check('document_career', 'Carrera de documentos', 'Documentos que guardan carrera teniendo proyecto, o que no tienen ninguna de las dos.', <<<'SQL'
                 SELECT COUNT(*) total
                 FROM documentos d
-                JOIN proyectos p ON p.id = d.proyecto_id
-                WHERE d.carrera_id <> p.carrera_id
+                WHERE (d.proyecto_id IS NULL) = (d.carrera_id IS NULL)
             SQL),
             $this->check('rubric_project', 'Rúbricas personalizadas', 'Criterios personalizados ligados a proyectos de otra carrera.', <<<'SQL'
                 SELECT COUNT(*) total
                 FROM criterios_rubrica criterion
                 JOIN rubricas rubric ON rubric.id = criterion.rubrica_id
                 JOIN proyectos project ON project.id = criterion.proyecto_id
-                WHERE rubric.carrera_id <> project.carrera_id
+                JOIN grupos_academicos project_group ON project_group.id = project.grupo_id
+                WHERE rubric.carrera_id <> project_group.carrera_id
+            SQL),
+            $this->check('project_period_group', 'Continuidad de proyectos', 'Grupos de continuidad de otra carrera que la del proyecto.', <<<'SQL'
+                SELECT COUNT(*) total
+                FROM proyecto_periodos pp
+                JOIN grupos_academicos g ON g.id = pp.grupo_id
+                JOIN proyectos p ON p.id = pp.proyecto_id
+                JOIN grupos_academicos pg ON pg.id = p.grupo_id
+                WHERE g.carrera_id <> pg.carrera_id
+            SQL),
+            $this->check('authorization_source', 'Autorizaciones', 'Autorizaciones cuya evaluación de origen es de otro proyecto.', <<<'SQL'
+                SELECT COUNT(*) total
+                FROM autorizaciones_academicas a
+                JOIN evaluaciones e ON e.id = a.evaluacion_id
+                WHERE a.proyecto_id IS NOT NULL AND e.proyecto_id <> a.proyecto_id
             SQL),
             $this->check('student_group_membership', 'Estudiantes y grupos', 'Estudiantes activos en grupos sin membresía estudiantil en esa carrera.', <<<'SQL'
                 SELECT COUNT(*) total
@@ -70,7 +72,7 @@ class MulticareerIntegrityService
                 JOIN usuarios user ON user.id = member.usuario_id
                 LEFT JOIN usuario_carrera membership
                     ON membership.usuario_id = member.usuario_id
-                    AND membership.carrera_id = project.carrera_id
+                    AND membership.carrera_id = (SELECT carrera_id FROM grupos_academicos WHERE id = project.grupo_id)
                     AND membership.activo = 1
                 WHERE user.activo = 1 AND membership.id IS NULL
             SQL),
@@ -83,13 +85,14 @@ class MulticareerIntegrityService
                     HAVING COUNT(*) > 1
                 ) duplicates
             SQL),
-            $this->check('career_settings', 'Configuración por carrera', 'Carreras que no tienen las cinco configuraciones funcionales mínimas.', <<<'SQL'
+            $this->check('career_settings', 'Configuración por carrera', 'Carreras que no tienen las tres configuraciones funcionales mínimas.', <<<'SQL'
                 SELECT COUNT(*) total FROM (
                     SELECT career.id
                     FROM carreras career
                     LEFT JOIN configuraciones_carrera setting ON setting.carrera_id = career.id
+                        AND setting.clave IN ('system_notices', 'proposal_registration_enabled', 'max_project_members')
                     GROUP BY career.id
-                    HAVING COUNT(setting.clave) < 5
+                    HAVING COUNT(setting.clave) < 3
                 ) incomplete
             SQL),
         ]);

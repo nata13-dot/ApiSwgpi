@@ -12,14 +12,16 @@ class CareerProfilesAuthorizationTest extends TestCase
         $this->assertContains('admin', CheckRole::grantsForProfile(5));
         $this->assertContains('academic_manager', CheckRole::grantsForProfile(5));
         $this->assertContains('project_manager', CheckRole::grantsForProfile(5));
-        $this->assertNotContains('user_governance', CheckRole::grantsForProfile(5));
+        // Desde 2026-10: la jefatura registra usuarios de su carrera (UserController limita los perfiles).
+        $this->assertContains('user_governance', CheckRole::grantsForProfile(5));
     }
 
-    public function test_only_general_administrator_governs_user_accounts(): void
+    public function test_only_general_administrator_head_and_assistant_govern_user_accounts(): void
     {
-        $this->assertContains('user_governance', CheckRole::grantsForProfile(4));
-
-        foreach ([1, 2, 3, 5, 6, 7] as $profileId) {
+        foreach ([4, 5, 6] as $profileId) {
+            $this->assertContains('user_governance', CheckRole::grantsForProfile($profileId));
+        }
+        foreach ([2, 3, 7] as $profileId) {
             $this->assertNotContains('user_governance', CheckRole::grantsForProfile($profileId));
         }
     }

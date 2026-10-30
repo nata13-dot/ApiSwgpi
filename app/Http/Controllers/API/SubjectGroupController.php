@@ -20,7 +20,7 @@ class SubjectGroupController extends Controller
     {
         $query = SubjectGroup::with(['asignaturas', 'academicPeriod'])
             ->where('activo', true)
-            ->whereBetween('semestre', [5, 9])
+            ->whereIn('semestre', app(\App\Services\SemesterManagementService::class)->careerSemesters())
             ->orderBy('semestre')
             ->orderBy('grupo')
             ->orderBy('nombre');
@@ -74,12 +74,16 @@ class SubjectGroupController extends Controller
             }
 
             $validated = $this->validatePayload($request);
-            $groupData = $this->groupData($validated);
+            // Un grupo existente que sólo cambia nombre o materias conserva su semestre aunque sea anterior a la regla par/impar.
+            $groupData = $this->groupData($validated, $group);
             $this->ensureUniqueGroup($groupData['semestre'], $groupData['grupo'], (int) $group->id);
 
             $linked = DB::table('matriculas_academicas')->where('grupo_id', $group->id)->exists() || $group->projects()->exists()
                 || DB::table('curso_estudiantes')->whereIn('curso_id', DB::table('cursos')->where('grupo_id', $group->id)->select('id'))->exists();
             if ($linked) abort_if((int) $group->semestre !== (int) $groupData['semestre'] || $group->grupo !== $groupData['grupo'] || (int) $group->periodo_id !== (int) $groupData['periodo_id'], 409, 'Un grupo con historial conserva su semestre, clave y periodo. Crea el grupo destino.');
+            if ((int) $group->semestre !== (int) $groupData['semestre'] || (int) $group->periodo_id !== (int) $groupData['periodo_id']) {
+                app(\App\Services\SemesterManagementService::class)->assertSemesterInPeriod((int) $groupData['semestre'], AcademicPeriodModel::findOrFail($groupData['periodo_id']));
+            }
             DB::transaction(function () use ($group, $groupData, $validated) {
                 $group->update($groupData);
                 $subjects = $validated['asignatura_ids'] ?? [];
@@ -123,7 +127,7 @@ class SubjectGroupController extends Controller
 
         $students = User::students()
             ->where('activo', true)
-            ->whereIn('usuarios.id', DB::table('matriculas_academicas')->where('carrera_id', $group->carrera_id)->where('periodo_id', $group->periodo_id)->where('grupo_id', $group->id)->where('estado', 'activa')->select('estudiante_id'))
+            ->whereIn('usuarios.id', DB::table('matriculas_academicas')->where('grupo_id', $group->id)->where('estado', 'activa')->select('estudiante_id'))
             ->orderBy('nombres')
             ->get(['id', 'nombres', 'apa', 'ama', 'email', 'semestre', 'grupo']);
 
@@ -157,7 +161,7 @@ class SubjectGroupController extends Controller
     {
         $validated = $request->validate([
             'nombre' => 'required|string|max:255',
-            'semestre' => 'required|integer|in:5,6,7,8,9',
+            'semestre' => ['required', 'integer', Rule::in(app(\App\Services\SemesterManagementService::class)->careerSemesters())],
             'grupo' => 'required|string|max:20',
             'periodo' => 'required|string|exists:periodos_academicos,nombre',
             'asignatura_ids' => 'nullable|array',
@@ -183,11 +187,16 @@ class SubjectGroupController extends Controller
         return $validated;
     }
 
-    private function groupData(array $validated): array
+    private function groupData(array $validated, ?SubjectGroup $current = null): array
     {
         $period = AcademicPeriodModel::where('nombre', $validated['periodo'])->firstOrFail();
 
         abort_if(DB::table('carrera_periodos')->where('carrera_id', app(CareerContext::class)->careerId())->where('periodo_id', $period->id)->whereIn('estado', ['en_cierre', 'cerrado'])->exists(), 409, 'El periodo no admite cambios de grupos.');
+        // Enero–junio sólo tiene semestres pares y julio–diciembre impares.
+        // Al editar, update() lo comprueba después de la regla de historial, que tiene prioridad.
+        if (!$current) {
+            app(\App\Services\SemesterManagementService::class)->assertSemesterInPeriod((int) $validated['semestre'], $period);
+        }
         return [
             'nombre' => $validated['nombre'],
             'semestre' => $validated['semestre'],
@@ -216,10 +225,9 @@ class SubjectGroupController extends Controller
 
     private function courseSyncPayload(array $subjectIds): array
     {
-        $careerId = app(CareerContext::class)->careerId();
-
+        // El curso obtiene la carrera de su grupo; la asignatura ya se validó contra esa carrera.
         return collect($subjectIds)
-            ->mapWithKeys(fn ($subjectId) => [(int) $subjectId => ['carrera_id' => $careerId]])
+            ->mapWithKeys(fn ($subjectId) => [(int) $subjectId => []])
             ->all();
     }
 }

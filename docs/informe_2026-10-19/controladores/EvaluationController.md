@@ -1,0 +1,3339 @@
+# EvaluationController
+
+Fuente: [app/Http/Controllers/API/EvaluationController.php](../../../app/Http/Controllers/API/EvaluationController.php). Corte: 19 de octubre de 2026.
+
+## Rutas vinculadas
+
+| Método | URI | Acción | Middleware declarado |
+|---|---|---|---|
+| GET\|HEAD | `/api/evaluation-managers` | [managers](#managers) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| PUT | `/api/evaluation-managers` | [updateManagers](#updatemanagers) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| GET\|HEAD | `/api/evaluations` | [index](#index) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations` | [store](#store) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/archive-selected` | [archiveSelected](#archiveselected) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| GET\|HEAD | `/api/evaluations/criteria` | [criteria](#criteria) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| GET\|HEAD | `/api/evaluations/managers` | [managers](#managers) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| PUT | `/api/evaluations/managers` | [updateManagers](#updatemanagers) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| GET\|HEAD | `/api/evaluations/projects` | [projects](#projects) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| GET\|HEAD | `/api/evaluations/rooms` | [rooms](#rooms) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/rooms` | [storeRoom](#storeroom) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| PUT | `/api/evaluations/rooms/{id}` | [updateRoom](#updateroom) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| DELETE | `/api/evaluations/rooms/{id}` | [destroyRoom](#destroyroom) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/rooms/{id}/advance` | [advanceRoom](#advanceroom) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/rooms/{id}/archive` | [archiveRoom](#archiveroom) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/rooms/{id}/lock-sequence` | [lockRoomSequence](#lockroomsequence) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| GET\|HEAD | `/api/evaluations/rooms/{id}/report.pdf` | [exportRoomPdf](#exportroompdf) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| PUT | `/api/evaluations/rooms/{id}/schedule` | [updateRoomSchedule](#updateroomschedule) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/rooms/{id}/timer` | [controlRoomTimer](#controlroomtimer) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/rooms/{id}/unarchive` | [unarchiveRoom](#unarchiveroom) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/rubric-criteria` | [storeCriterion](#storecriterion) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| PUT | `/api/evaluations/rubric-criteria/{id}` | [updateCriterion](#updatecriterion) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| DELETE | `/api/evaluations/rubric-criteria/{id}` | [destroyCriterion](#destroycriterion) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| PUT | `/api/evaluations/rubric-score-modes` | [updateRubricScoreModes](#updaterubricscoremodes) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/rubrics/initialize` | [initializeRubrics](#initializerubrics) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/unarchive-selected` | [unarchiveSelected](#unarchiveselected) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| GET\|HEAD | `/api/evaluations/{id}` | [show](#show) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| PUT | `/api/evaluations/{id}` | [update](#update) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| DELETE | `/api/evaluations/{id}` | [destroy](#destroy) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/{id}/archive` | [archive](#archive) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/{id}/feedback` | [feedback](#feedback) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/{id}/mark-completed` | [markCompleted](#markcompleted) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| GET\|HEAD | `/api/evaluations/{id}/report.pdf` | [exportEvaluationPdf](#exportevaluationpdf) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/{id}/score` | [score](#score) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| POST | `/api/evaluations/{id}/unarchive` | [unarchive](#unarchive) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen, CheckRole:admin,teacher,project_manager |
+| GET\|HEAD | `/api/student/evaluation-schedule` | [studentSchedule](#studentschedule) | api, Authenticate:api, EnsureUserIsActive, ResolveCareerContext, EnsureCareerModuleEnabled, AuditCareerMutation, EnsureAcademicPeriodOpen |
+
+## Declaraciones y propiedades
+
+Las propiedades, constantes, dependencias y comentarios se transcriben a continuación. Los métodos se separan después.
+
+```php
+<?php
+
+namespace App\Http\Controllers\API;
+
+use App\Http\Controllers\Controller;
+use App\Models\Evaluation;
+use App\Models\EvaluationAttempt;
+use App\Models\EvaluationRoom;
+use App\Models\EvaluationScore;
+use App\Models\Project;
+use App\Models\RepositoryDocument;
+use App\Models\RubricCriterion;
+use App\Models\Rubric;
+use App\Models\SystemSetting;
+use App\Models\CareerSetting;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use App\Services\ActivityNotificationService;
+use Illuminate\Validation\ValidationException;
+use App\Services\SemesterManagementService;
+use App\Support\CareerContext;
+
+class EvaluationController extends Controller
+{
+    private array $criteriaLabelCache = [];
+    private array $evaluationDocumentReadinessCache = [];
+
+    private array $levels = [
+        'totalmente_de_acuerdo' => 4,
+        'de_acuerdo' => 3,
+        'neutral' => 2,
+        'en_desacuerdo' => 1,
+        'totalmente_en_desacuerdo' => 0,
+    ];
+
+    private array $legacyLevels = [
+        'nada' => 0,
+        'poco' => 1,
+        'bastante' => 2,
+        'mucho' => 3,
+    ];
+
+    private array $levelLabels = [
+        'totalmente_de_acuerdo' => 'Totalmente de acuerdo',
+        'de_acuerdo' => 'De acuerdo',
+        'neutral' => 'Neutral',
+        'en_desacuerdo' => 'En desacuerdo',
+        'totalmente_en_desacuerdo' => 'Totalmente en desacuerdo',
+        'nada' => 'Totalmente en desacuerdo',
+        'poco' => 'En desacuerdo',
+        'bastante' => 'De acuerdo',
+        'mucho' => 'Totalmente de acuerdo',
+    ];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+```
+
+## criteria
+
+Visibilidad: `public`. Líneas originales 59–102.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `project_id`, `semestre`.
+
+```php
+    public function criteria(Request $request)
+    {
+        if (!Schema::hasTable('criterios_rubrica') || !Schema::hasTable('rubricas')) {
+            return response()->json([
+                'criteria' => [],
+                'levels' => collect($this->levels)->map(fn ($score, $key) => [
+                    'key' => $key,
+                    'label' => $this->levelLabels[$key],
+                    'puntaje' => $score,
+                ])->values(),
+                'score_modes' => $this->rubricScoreModes(),
+            ]);
+        }
+
+        $semester = $request->integer('semestre');
+        $query = RubricCriterion::query()
+            ->select('criterios_rubrica.*', 'rubricas.semestre as semestre')
+            ->join('rubricas', 'rubricas.id', '=', 'criterios_rubrica.rubrica_id')
+            ->where('rubricas.carrera_id', app(CareerContext::class)->careerId())
+            ->where('criterios_rubrica.activo', true)
+            ->orderBy('rubricas.semestre')
+            ->orderBy('criterios_rubrica.orden')
+            ->orderBy('criterios_rubrica.id');
+
+        if ($semester) {
+            $query->where('rubricas.semestre', $semester);
+        }
+        if ($request->filled('project_id')) {
+            $projectId = (int) $request->project_id;
+            $query->where(function ($scope) use ($projectId) {
+                $scope->whereNull('criterios_rubrica.proyecto_id')->orWhere('criterios_rubrica.proyecto_id', $projectId);
+            });
+        }
+
+        return response()->json([
+            'criteria' => $query->get()->map(fn ($criterion) => $this->shapeCriterion($criterion)),
+            'levels' => collect($this->levels)->map(fn ($score, $key) => [
+                'key' => $key,
+                'label' => $this->levelLabels[$key],
+                'puntaje' => $score,
+            ])->values(),
+            'score_modes' => $this->rubricScoreModes(),
+        ]);
+    }
+```
+
+## updateRubricScoreModes
+
+Visibilidad: `public`. Líneas originales 104–120.
+
+```php
+    public function updateRubricScoreModes(Request $request)
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        $validated = $request->validate([
+            'semester' => 'required|integer|in:5,6,7,8',
+            'mode' => ['required', Rule::in(['levels', 'numeric'])],
+        ]);
+
+        abort_if(Evaluation::whereNull('modo_puntaje')->whereHas('room.rubric', fn ($q) => $q->where('semestre', $validated['semester']))->exists(), 409, 'Conserva la escala de las evaluaciones históricas que aún no tienen una escala documentada.');
+
+        $modes = $this->rubricScoreModes();
+        $modes[(string) $validated['semester']] = $validated['mode'];
+        CareerSetting::setValue('rubric_score_modes', $modes, 'array', 'Metodo de puntaje de rubrica por semestre');
+
+        return response()->json(['message' => 'Metodo de rubrica guardado', 'score_modes' => $modes]);
+    }
+```
+
+## initializeRubrics
+
+Visibilidad: `public`. Líneas originales 122–152.
+
+```php
+    public function initializeRubrics()
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        $definitions = [
+            5 => ['etapa' => 'propuesta', 'nombre' => 'Rúbrica de propuesta - 5.º semestre'],
+            6 => ['etapa' => 'avance', 'nombre' => 'Rúbrica de avance - 6.º semestre'],
+            7 => ['etapa' => 'avance', 'nombre' => 'Rúbrica de avance - 7.º semestre'],
+            8 => ['etapa' => 'titulacion', 'nombre' => 'Rúbrica de titulación - 8.º semestre'],
+        ];
+        $created = 0;
+
+        foreach ($definitions as $semester => $definition) {
+            $rubric = Rubric::firstOrCreate(
+                ['etapa' => $definition['etapa'], 'semestre' => $semester],
+                ['nombre' => $definition['nombre'], 'activa' => true]
+            );
+            $created += $rubric->wasRecentlyCreated ? 1 : 0;
+        }
+
+        $modes = CareerSetting::valueFor('rubric_score_modes', []);
+        CareerSetting::setValue('rubric_score_modes', array_replace([
+            '5' => 'numeric', '6' => 'levels', '7' => 'levels', '8' => 'levels',
+        ], $modes), 'array', 'Método de puntaje de rúbrica por semestre');
+
+        return response()->json([
+            'message' => $created ? 'Rúbricas inicializadas correctamente.' : 'Las rúbricas ya estaban inicializadas.',
+            'created' => $created,
+            'rubrics' => Rubric::query()->orderBy('semestre')->get(),
+        ]);
+    }
+```
+
+## storeCriterion
+
+Visibilidad: `public`. Líneas originales 154–210.
+
+```php
+    public function storeCriterion(Request $request)
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        try {
+            $validated = $request->validate([
+                'semestre' => 'required|integer|in:5,6,7,8',
+                'project_id' => 'nullable|integer|exists:proyectos,id',
+                'pregunta' => 'required|string|max:255',
+                'orden' => 'nullable|integer|min:0',
+            ]);
+
+            $project = null;
+            if (!empty($validated['project_id'])) {
+                $project = Project::where('id', $validated['project_id'])
+                    ->where('semestre', 8)
+                    ->where('activo', true)
+                    ->first();
+                if (!$project || (int) $validated['semestre'] !== 8) {
+                    throw ValidationException::withMessages([
+                        'project_id' => ['La rubrica personalizada solo aplica a proyectos activos de 8vo semestre.'],
+                    ]);
+                }
+            }
+
+            $baseKey = Str::limit(Str::slug($validated['pregunta'], '_') ?: 'criterio', 64, '');
+            $rubric = Rubric::query()
+                ->where('semestre', $validated['semestre'])
+                ->where('activa', true)
+                ->first();
+            if (!$rubric) {
+                throw ValidationException::withMessages([
+                    'semestre' => ['Inicializa las rúbricas de la carrera antes de agregar preguntas.'],
+                ]);
+            }
+            $key = $project ? Str::limit('p' . $project->id . '_' . $baseKey, 80, '') : $baseKey;
+            $suffix = 2;
+            while (RubricCriterion::where('rubrica_id', $rubric->id)->where('clave', $key)->exists()) {
+                $prefix = $project ? 'p' . $project->id . '_' : '';
+                $key = $prefix . Str::limit($baseKey, 80 - strlen($prefix) - strlen((string) $suffix) - 1, '') . '_' . $suffix;
+                $suffix++;
+            }
+
+            $criterion = RubricCriterion::create([
+                'rubrica_id' => $rubric->id,
+                'project_id' => $validated['project_id'] ?? null,
+                'clave' => $key,
+                'pregunta' => $validated['pregunta'],
+                'orden' => $validated['orden'] ?? ((int) RubricCriterion::where('rubrica_id', $rubric->id)->where('project_id', $validated['project_id'] ?? null)->max('orden') + 1),
+                'activo' => true,
+            ]);
+
+            return response()->json(['message' => 'Pregunta creada', 'criterion' => $this->shapeCriterion($criterion)], 201);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
+    }
+```
+
+## updateCriterion
+
+Visibilidad: `public`. Líneas originales 212–240.
+
+```php
+    public function updateCriterion(Request $request, $id)
+    {
+        $historicalCriterion = RubricCriterion::whereHas('rubric')->findOrFail($id);
+        abort_if(EvaluationScore::where('criterio_id', $historicalCriterion->id)->exists(), 409, 'La pregunta tiene resultados históricos. Crea una nueva rúbrica para otro periodo.');
+
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        $criterion = RubricCriterion::whereHas('rubric')->find($id);
+        if (!$criterion) {
+            return response()->json(['error' => 'Pregunta no encontrada'], 404);
+        }
+
+        try {
+            $validated = $request->validate([
+                'pregunta' => 'required|string|max:255',
+                'orden' => 'nullable|integer|min:0',
+                'activo' => 'nullable|boolean',
+            ]);
+
+            DB::transaction(function () use ($criterion, $validated) {
+                $criterion->update($validated);
+
+            });
+
+            return response()->json(['message' => 'Pregunta actualizada', 'criterion' => $this->shapeCriterion($criterion)]);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
+    }
+```
+
+## destroyCriterion
+
+Visibilidad: `public`. Líneas originales 242–260.
+
+```php
+    public function destroyCriterion($id)
+    {
+        $historicalCriterion = RubricCriterion::whereHas('rubric')->findOrFail($id);
+        abort_if(EvaluationScore::where('criterio_id', $historicalCriterion->id)->exists(), 409, 'La pregunta tiene resultados históricos. Crea una nueva rúbrica para otro periodo.');
+
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        $criterion = RubricCriterion::whereHas('rubric')->find($id);
+        if (!$criterion) {
+            return response()->json(['error' => 'Pregunta no encontrada'], 404);
+        }
+
+        DB::transaction(function () use ($criterion) {
+            $criterion->update(['activo' => false]);
+            // Historical scores remain attached to the retired criterion.
+        });
+
+        return response()->json(['message' => 'Pregunta desactivada']);
+    }
+```
+
+## index
+
+Visibilidad: `public`. Líneas originales 262–313.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `archived`, `per_page`, `project_id`, `semestre`.
+
+```php
+    public function index(Request $request)
+    {
+        $user = auth('api')->user();
+        $archived = $request->boolean('archived');
+        $supportsArchive = $this->supportsEvaluationArchive();
+
+        if ($archived && !$supportsArchive) {
+            return response()->json([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => 15,
+                'total' => 0,
+            ]);
+        }
+
+        $relations = ['project.students', 'room.rubric', 'room.teachers', 'room.responsibleTeacher'];
+        if ($this->supportsEvaluationAttempts()) {
+            $relations[] = 'attempts.teacher';
+        }
+        if ($this->supportsEvaluationResponses()) {
+            array_push($relations, 'scores.teacher', 'scores.criterion', 'scores.attempt');
+        }
+
+        $query = Evaluation::with($relations)
+            ->when($supportsArchive && $archived, fn ($scope) => $scope->whereNotNull('archived_at'))
+            ->when($supportsArchive && !$archived, fn ($scope) => $scope->whereNull('archived_at'))
+            ->orderBy('evaluation_room_id')
+            ->orderBy('presentation_order')
+            ->orderByDesc('created_at');
+
+        if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
+            $query->where(function ($scope) use ($user) {
+                $scope->whereHas('room.teachers', fn ($teacherQuery) => $teacherQuery->where('usuarios.id', $user->id))
+                    ->orWhereHas('room', fn ($roomQuery) => $roomQuery->where('responsible_teacher_id', $user->id));
+            });
+        }
+
+        if ($request->filled('project_id')) {
+            $query->where('project_id', $request->project_id);
+        }
+
+        if ($request->filled('semestre')) {
+            $query->whereHas('room.rubric', fn ($rubricQuery) => $rubricQuery->where('semestre', (int) $request->semestre));
+        }
+
+        $perPage = min(max((int) $request->input('per_page', 100), 1), 200);
+        $evaluations = $query->paginate($perPage);
+        $evaluations->getCollection()->transform(fn ($evaluation) => $this->shapeEvaluation($evaluation));
+
+        return response()->json($evaluations);
+    }
+```
+
+## archive
+
+Visibilidad: `public`. Líneas originales 315–339.
+
+```php
+    public function archive($id)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        if (!$this->supportsEvaluationArchive()) {
+            return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
+        }
+
+        $evaluation = Evaluation::find($id);
+        if (!$evaluation) {
+            return response()->json(['error' => 'Evaluacion no encontrada'], 404);
+        }
+        $evaluation->loadMissing('room');
+        if ($evaluation->room?->sequence_locked && !$evaluation->room?->completed_at) {
+            return response()->json(['error' => 'No puedes archivar una evaluacion mientras la secuencia de la sala esta en curso.'], 409);
+        }
+
+        $evaluation->update([
+            'archived_at' => now(),
+            'archived_by' => $user->id,
+        ]);
+
+        return response()->json(['message' => 'Evaluacion archivada']);
+    }
+```
+
+## archiveSelected
+
+Visibilidad: `public`. Líneas originales 341–387.
+
+```php
+    public function archiveSelected(Request $request)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        if (!$this->supportsEvaluationArchive()) {
+            return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
+        }
+
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:500'],
+            'ids.*' => ['integer', 'distinct', 'exists:evaluaciones,id'],
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $validated['ids'])));
+        $now = now();
+
+        $updated = DB::transaction(function () use ($ids, $now, $user) {
+            $roomIds = Evaluation::whereIn('id', $ids)
+                ->whereNotNull('evaluation_room_id')
+                ->pluck('evaluation_room_id')
+                ->unique()
+                ->values();
+
+            $updatedCount = Evaluation::whereIn('id', $ids)->update([
+                'archived_at' => $now,
+                'archived_by' => $user->id,
+            ]);
+
+            $roomIds->each(function ($roomId) {
+                $hasActiveEvaluations = Evaluation::where('evaluation_room_id', $roomId)
+                    ->whereNull('archived_at')
+                    ->exists();
+
+                if (!$hasActiveEvaluations) {
+                    EvaluationRoom::where('id', $roomId)->update(['estado' => 'finalizada']);
+                }
+            });
+
+            return $updatedCount;
+        });
+
+        return response()->json([
+            'message' => 'Evaluaciones archivadas',
+            'archived_count' => $updated,
+        ]);
+    }
+```
+
+## unarchive
+
+Visibilidad: `public`. Líneas originales 389–392.
+
+```php
+    public function unarchive($id)
+    {
+        return response()->json(['error' => 'El historial se conserva. Programa una nueva evaluación con autorización de reintento.'], 409);
+    }
+```
+
+## unarchiveSelected
+
+Visibilidad: `public`. Líneas originales 394–397.
+
+```php
+    public function unarchiveSelected(Request $request)
+    {
+        return response()->json(['error' => 'El historial se conserva. Programa una nueva evaluación con autorización de reintento.'], 409);
+    }
+```
+
+## store
+
+Visibilidad: `public`. Líneas originales 399–403.
+
+```php
+    public function store(Request $request)
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+        return response()->json(['error' => 'Agrega el proyecto desde la sala para validar agenda, etapa y autorizaciones.'], 409);
+    }
+```
+
+## show
+
+Visibilidad: `public`. Líneas originales 405–421.
+
+```php
+    public function show($id)
+    {
+        $relations = ['project.students', 'room.teachers', 'room.responsibleTeacher'];
+        if ($this->supportsEvaluationAttempts()) {
+            $relations[] = 'attempts.teacher';
+        }
+        if ($this->supportsEvaluationResponses()) {
+            array_push($relations, 'scores.teacher', 'scores.criterion', 'scores.attempt');
+        }
+
+        $evaluation = Evaluation::with($relations)->find($id);
+        if (!$evaluation) {
+            return response()->json(['error' => 'Evaluacion no encontrada'], 404);
+        }
+
+        return response()->json($this->shapeEvaluation($evaluation));
+    }
+```
+
+## update
+
+Visibilidad: `public`. Líneas originales 423–428.
+
+```php
+    public function update(Request $request, $id)
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+        Evaluation::findOrFail($id);
+        return response()->json(['error' => 'Modifica la asignación desde la sala; para reprogramar o repetir solicita una autorización.'], 409);
+    }
+```
+
+## destroy
+
+Visibilidad: `public`. Líneas originales 430–447.
+
+```php
+    public function destroy($id)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        $evaluation = Evaluation::find($id);
+        if (!$evaluation) {
+            return response()->json(['error' => 'Evaluacion no encontrada'], 404);
+        }
+        $evaluation->loadMissing('room');
+        if ($evaluation->room?->sequence_locked) {
+            return response()->json(['error' => 'No puedes eliminar evaluaciones despues de bloquear el orden de la sala.'], 409);
+        }
+
+        abort_if(EvaluationAttempt::where('evaluation_id', $evaluation->id)->exists(), 409, 'Conserva el historial: esta evaluación ya contiene resultados.');
+        $evaluation->delete();
+        return response()->json(['message' => 'Evaluacion eliminada']);
+    }
+```
+
+## score
+
+Visibilidad: `public`. Líneas originales 449–575.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `apto_titulacion`.
+
+```php
+    public function score(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        if (!in_array($user->perfil_id, [1, 2, 5, 6, 7], true)) {
+            return response()->json(['error' => 'Solo administradores y docentes pueden evaluar'], 403);
+        }
+
+        $evaluation = Evaluation::find($id);
+        if (!$evaluation) {
+            return response()->json(['error' => 'Evaluacion no encontrada'], 404);
+        }
+        if (!$this->evaluationDocumentReadiness($evaluation->project)['all_students_released']) {
+            return response()->json([
+                'error' => 'No se puede evaluar: falta la hoja de liberacion o hay alumnos no liberados.',
+            ], 403);
+        }
+        $window = $this->roomEvaluationWindow($evaluation->room);
+        if (!$window['is_open']) {
+            return response()->json([
+                'error' => $window['status'] === 'scheduled'
+                    ? 'La evaluacion aun no esta disponible porque no ha iniciado el horario de la sala.'
+                    : 'El horario de la sala termino. El encargado debe extenderlo o autorizar una evaluacion fuera de horario.',
+                'evaluation_window' => $window,
+            ], 403);
+        }
+        if (!$this->canProceedInRoomSequence($evaluation)) {
+            return response()->json(['error' => 'La evaluacion de este proyecto esta bloqueada hasta que sea su turno en la sala.'], 403);
+        }
+        if (!$this->canUserScoreEvaluation($evaluation, $user)) {
+            return response()->json(['error' => 'No estas asignado como evaluador de esta sala.'], 403);
+        }
+
+        try {
+            $validCriteria = $this->criteriaForEvaluation($evaluation)->pluck('clave')->all();
+            $validated = $request->validate([
+                'scores' => 'required|array|min:1',
+                'scores.*.criterio' => ['required', 'string', 'distinct', Rule::in($validCriteria)],
+                'scores.*.nivel' => ['required', 'string', Rule::in(array_keys($this->levels))],
+                'scores.*.comentario' => 'nullable|string',
+                'general_comment' => 'nullable|string|max:3000',
+                'confirm_update' => 'nullable|boolean',
+                'apto_titulacion' => 'nullable|boolean',
+            ]);
+            $submittedCriteria = collect($validated['scores'])->pluck('criterio')->sort()->values()->all();
+            $expectedCriteria = collect($validCriteria)->sort()->values()->all();
+            if ($submittedCriteria !== $expectedCriteria) {
+                throw ValidationException::withMessages([
+                    'scores' => ['Debes responder todos los criterios activos de la rubrica antes de enviarla.'],
+                ]);
+            }
+
+            DB::transaction(function () use ($validated, $evaluation, $user, $request) {
+                $lockedEvaluation = Evaluation::whereKey($evaluation->id)->lockForUpdate()->firstOrFail();
+                if ($lockedEvaluation->evaluation_room_id) {
+                    $lockedRoom = EvaluationRoom::whereKey($lockedEvaluation->evaluation_room_id)->lockForUpdate()->firstOrFail();
+                    if (!$this->roomEvaluationWindow($lockedRoom)['is_open']) {
+                        throw ValidationException::withMessages([
+                            'evaluation' => ['El horario autorizado termino antes de guardar. Solicita una extension al encargado de sala.'],
+                        ]);
+                    }
+                    if (!$lockedRoom->sequence_locked
+                        || (int) $lockedRoom->current_order !== (int) $lockedEvaluation->presentation_order
+                        || $lockedEvaluation->estado !== 'en_evaluacion'
+                        || $lockedRoom->completed_at !== null) {
+                        throw ValidationException::withMessages([
+                            'evaluation' => ['El turno cambio antes de guardar. Actualiza la sala y evalua solamente el proyecto activo.'],
+                        ]);
+                    }
+                }
+                $attempt = EvaluationAttempt::firstOrCreate(
+                    ['evaluation_id' => $lockedEvaluation->id, 'teacher_id' => $user->id],
+                    ['attempts_count' => 0]
+                );
+                $maxAttempts = $lockedEvaluation->room?->max_attempts ?? 1;
+                $hasScores = EvaluationScore::where('dictamen_id', $attempt->id)->exists();
+                if ($hasScores) {
+                    throw ValidationException::withMessages(['evaluation' => ['El resultado se conserva. Solicita un nuevo intento autorizado en otra evaluación.']]);
+                }
+                if ($attempt->attempts_count >= $maxAttempts) {
+                    throw ValidationException::withMessages([
+                        'attempts' => ["Ya alcanzaste el limite de {$maxAttempts} oportunidad(es) para esta evaluacion."],
+                    ]);
+                }
+
+                foreach ($validated['scores'] as $score) {
+                    $scoreMode = $lockedEvaluation->modo_puntaje ?? $this->rubricScoreModeForSemester((int) $lockedEvaluation->semestre);
+                    $storageLevel = $this->storageLevelForScore($score['nivel']);
+                    $criterion = $this->criteriaForEvaluation($lockedEvaluation)->firstWhere('clave', $score['criterio']);
+                    EvaluationScore::create(['dictamen_id' => $attempt->id, 'criterio_id' => $criterion->id,
+                        'valor' => $storageLevel, 'puntaje' => $this->pointsForStoredLevel($score['nivel'], $storageLevel, $scoreMode),
+                        'comentario' => $score['comentario'] ?? null]);
+                }
+                $attemptPayload = [
+                    'attempts_count' => $attempt->attempts_count + 1,
+                    'last_submitted_at' => now(),
+                ];
+                if (Schema::hasColumn('dictamenes_docentes', 'comentario_general')) {
+                    $attemptPayload['general_comment'] = $validated['general_comment'] ?? $attempt->general_comment;
+                }
+                if (
+                    (int) $lockedEvaluation->semestre === 8
+                    && $request->has('apto_titulacion')
+                    && Schema::hasColumn('evaluaciones', 'apto_titulacion')
+                ) {
+                    $attemptPayload['apto_titulacion'] = $request->boolean('apto_titulacion');
+                }
+                $attempt->update($attemptPayload);
+            });
+
+            if (
+                (int) $evaluation->semestre === 8
+                && Schema::hasColumn('evaluaciones', 'apto_titulacion')
+            ) {
+                $this->syncTitulationAptResult($evaluation->fresh(['attempts']));
+            }
+
+            return response()->json([
+                'message' => 'Rubrica guardada',
+                'evaluation' => $this->shapeEvaluation($evaluation->fresh(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'scores.criterion', 'scores.attempt', 'attempts.teacher'])),
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['error' => 'No se pudo guardar la rubrica. Revisa que las migraciones de evaluaciones esten aplicadas.'], 500);
+        }
+    }
+```
+
+## feedback
+
+Visibilidad: `public`. Líneas originales 577–595.
+
+```php
+    public function feedback(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        $evaluation = Evaluation::with('room')->findOrFail($id);
+        if (!$this->isRoomResponsible($evaluation->room, $user) && !$this->isEvaluationManager($user)) {
+            return response()->json(['error' => 'Solo el responsable de la sala o administracion puede registrar retroalimentacion.'], 403);
+        }
+        $validated = $request->validate([
+            'room_feedback' => 'required|string|max:5000',
+        ]);
+
+        $evaluation->update([
+            'room_feedback' => $validated['room_feedback'],
+            'feedback_by' => $user->id,
+            'feedback_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Retroalimentacion guardada', 'evaluation' => $this->shapeEvaluation($evaluation->fresh(['project.students', 'room.teachers', 'room.responsibleTeacher', 'scores.teacher', 'scores.criterion', 'scores.attempt', 'attempts.teacher']))]);
+    }
+```
+
+## markCompleted
+
+Visibilidad: `public`. Líneas originales 597–656.
+
+```php
+    public function markCompleted($id)
+    {
+        $user = auth('api')->user();
+        $evaluation = Evaluation::with([
+            'project.students',
+            'room.teachers',
+            'room.responsibleTeacher',
+            'scores.teacher',
+            'scores.criterion',
+            'scores.attempt',
+            'attempts.teacher',
+        ])->find($id);
+
+        if (!$evaluation) {
+            return response()->json(['error' => 'Evaluacion no encontrada'], 404);
+        }
+        if (!$this->isRoomResponsible($evaluation->room, $user) && !$this->isEvaluationManager($user)) {
+            return response()->json(['error' => 'Solo el responsable de la sala o administracion puede marcar la evaluacion como completada.'], 403);
+        }
+        if ($evaluation->room?->sequence_locked) {
+            return response()->json([
+                'error' => 'Para conservar el orden de exposicion, completa el proyecto desde Avanzar turno en la sala.',
+            ], 409);
+        }
+        if ($this->activeScoresForEvaluation($evaluation)->isEmpty()) {
+            throw ValidationException::withMessages([
+                'evaluation' => ['Debe existir al menos una rubrica registrada antes de marcar la evaluacion como completada.'],
+            ]);
+        }
+
+        $wasCompleted = $evaluation->estado === 'finalizada' || $evaluation->finalized_at !== null;
+        $evaluation->update([
+            'estado' => 'finalizada',
+            'finalized_at' => $evaluation->finalized_at ?? now(),
+        ]);
+        if (!$wasCompleted) {
+            $projectTitle = $evaluation->project?->title ?? 'tu proyecto';
+            ActivityNotificationService::send(
+                $evaluation->project?->students->pluck('id') ?? collect(),
+                (string) $user->id,
+                'evaluacion_realizada',
+                'Evaluacion realizada',
+                "La evaluacion de \"{$projectTitle}\" fue completada. Ya puedes consultar su seguimiento.",
+                '/pages/student/dashboard.php'
+            );
+        }
+
+        return response()->json([
+            'message' => 'Evaluacion marcada como completada',
+            'evaluation' => $this->shapeEvaluation($evaluation->fresh([
+                'project.students',
+                'room.teachers',
+                'room.responsibleTeacher',
+                'scores.teacher',
+                'scores.criterion',
+                'scores.attempt',
+                'attempts.teacher',
+            ])),
+        ]);
+    }
+```
+
+## projects
+
+Visibilidad: `public`. Líneas originales 658–709.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `semestre`.
+
+```php
+    public function projects(Request $request)
+    {
+        $user = auth('api')->user();
+        $semesterService = app(SemesterManagementService::class);
+        $activePeriod = $semesterService->activePeriod();
+        $query = Project::with([
+                'students:id,nombres,apa,ama,email,semestre,grupo',
+                'subjectGroup:id,semestre,grupo,nombre',
+                'empresa:id,nombre,giro,contacto_nombre,contacto_cargo,direccion',
+            ])
+            ->where('estado', '!=', 'finalizada')
+            ->orderBy('title');
+        if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
+            $projectIds = Evaluation::where(function ($scope) use ($user) {
+                $scope->whereHas('room.teachers', fn ($teacherQuery) => $teacherQuery->where('usuarios.id', $user->id))
+                    ->orWhereHas('room', fn ($roomQuery) => $roomQuery->where('responsible_teacher_id', $user->id));
+            })->pluck('project_id');
+            $query->whereIn('id', $projectIds);
+        }
+        $projects = $query->get([
+            'id',
+            'title',
+            'description',
+            'subject_group_id',
+            'empresa_id',
+            'created_at',
+            'proposal_status',
+        ]);
+
+        $assignments = DB::table('evaluaciones')
+            ->join('salas_evaluacion', 'salas_evaluacion.id', '=', 'evaluaciones.sala_id')
+            ->whereIn('proyecto_id', $projects->pluck('id'))
+            ->where('salas_evaluacion.estado', '!=', 'finalizada')
+            ->where('evaluaciones.estado', '!=', 'archivada')
+            ->when($this->supportsEvaluationArchive(), fn ($query) => $query->whereNull('evaluaciones.archivada_en'))
+            ->orderBy('evaluaciones.id')
+            ->get(['evaluaciones.proyecto_id', 'evaluaciones.sala_id'])
+            ->groupBy('proyecto_id');
+        $presentationSemesters = $semesterService->presentationSemestersForProjects($projects, $activePeriod);
+
+        $projects->each(function ($project) use ($assignments, $presentationSemesters) {
+            $project->presentation_semester = $presentationSemesters[(int) $project->id] ?? null;
+            $project->assigned_room_id = $assignments->get($project->id)?->first()?->sala_id;
+        });
+
+        if ($request->filled('semestre')) {
+            $semester = (int) $request->semestre;
+            $projects = $projects->filter(fn ($project) => (int) $project->presentation_semester === $semester)->values();
+        }
+
+        return response()->json($projects);
+    }
+```
+
+## rooms
+
+Visibilidad: `public`. Líneas originales 711–731.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `archived`, `semestre`.
+
+```php
+    public function rooms(Request $request)
+    {
+        $user = auth('api')->user();
+        $query = EvaluationRoom::with(['teachers:id,nombres,apa,ama,perfil_id', 'responsibleTeacher:id,nombres,apa,ama,perfil_id', 'projects:id,title,semestre,company_name'])
+            ->when($request->boolean('archived'), fn ($scope) => $scope->where('estado', 'finalizada'), fn ($scope) => $scope->where('estado', '!=', 'finalizada'))
+            ->orderByDesc('fecha_evaluacion')
+            ->orderBy('nombre');
+
+        if ((int) $user->perfil_id === 2 && !$this->isEvaluationManager($user)) {
+            $query->where(function ($scope) use ($user) {
+                $scope->whereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('usuarios.id', $user->id))
+                    ->orWhere('responsible_teacher_id', $user->id);
+            });
+        }
+
+        if ($request->filled('semestre')) {
+            $query->where('semestre', $request->semestre);
+        }
+
+        return response()->json($query->get()->map(fn ($room) => $this->shapeRoom($room)));
+    }
+```
+
+## storeRoom
+
+Visibilidad: `public`. Líneas originales 733–759.
+
+```php
+    public function storeRoom(Request $request)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        $validated = $this->roomRules($request);
+        $room = DB::transaction(function () use ($validated, $user) {
+            $validated = array_replace($validated, app(\App\Services\EvaluationAgendaService::class)->validate($validated));
+            $room = EvaluationRoom::create(collect($validated)
+                ->except(['teacher_ids', 'project_ids', 'project_order', 'semestre', 'etapa'])
+                ->merge([
+                    'created_by' => $user->id,
+                    'estado' => 'programada',
+                    'timer_duration_seconds' => ((int) $validated['project_presentation_minutes']) * 60,
+                ])->toArray());
+            $room->teachers()->sync($validated['teacher_ids'] ?? []);
+            $this->syncRoomEvaluations(
+                $room,
+                $validated['project_ids'] ?? [],
+                $validated['project_order'] ?? []
+            );
+
+            return $room;
+        });
+
+        return response()->json(['message' => 'Sala creada', 'room' => $this->shapeRoom($room->load(['teachers', 'responsibleTeacher', 'projects']))], 201);
+    }
+```
+
+## updateRoom
+
+Visibilidad: `public`. Líneas originales 761–797.
+
+```php
+    public function updateRoom(Request $request, $id)
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        $room = EvaluationRoom::findOrFail($id);
+        if ($room->sequence_locked) {
+            throw ValidationException::withMessages([
+                'sequence_locked' => ['No puedes cambiar integrantes, proyectos u orden después de bloquear la secuencia.'],
+            ]);
+        }
+        $validated = $this->roomRules($request);
+        DB::transaction(function () use ($room, $validated) {
+            $lockedRoom = EvaluationRoom::whereKey($room->id)->lockForUpdate()->firstOrFail();
+            if ($lockedRoom->sequence_locked) {
+                throw ValidationException::withMessages([
+                    'sequence_locked' => ['La secuencia fue bloqueada por otro usuario. Actualiza la vista.'],
+                ]);
+            }
+            // La etapa y el periodo identifican las evaluaciones y sus autorizaciones originales.
+            if (Evaluation::where('sala_id', $lockedRoom->id)->exists()) {
+                abort_unless((int) $validated['rubrica_id'] === (int) $lockedRoom->rubrica_id
+                    && (int) ($validated['periodo_id'] ?? $lockedRoom->periodo_id) === (int) $lockedRoom->periodo_id,
+                    409, 'La sala ya contiene evaluaciones. Conserva su etapa y periodo; programa una nueva sala con las autorizaciones correspondientes.');
+            }
+            abort_unless(\Illuminate\Support\Carbon::parse($validated['fecha_evaluacion'])->equalTo($lockedRoom->fecha_evaluacion) && \Illuminate\Support\Carbon::parse($validated['fecha_fin_evaluacion'])->equalTo($lockedRoom->fecha_fin_evaluacion), 409, 'Reprograma mediante una autorización y el control de horario.');
+            $validated = array_replace($validated, app(\App\Services\EvaluationAgendaService::class)->validate($validated, $lockedRoom));
+            $lockedRoom->update(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
+            $lockedRoom->teachers()->sync($validated['teacher_ids'] ?? []);
+            $this->syncRoomEvaluations(
+                $lockedRoom,
+                $validated['project_ids'] ?? [],
+                $validated['project_order'] ?? []
+            );
+        });
+
+        return response()->json(['message' => 'Sala actualizada', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
+    }
+```
+
+## destroyRoom
+
+Visibilidad: `public`. Líneas originales 799–817.
+
+```php
+    public function destroyRoom($id)
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        $room = EvaluationRoom::findOrFail($id);
+        $deletedEvaluations = 0;
+
+        DB::transaction(function () use ($room, &$deletedEvaluations) {
+            abort_if(EvaluationAttempt::whereIn('evaluation_id', Evaluation::where('evaluation_room_id', $room->id)->select('id'))->exists(), 409, 'No puedes eliminar una sala con resultados.');
+            $deletedEvaluations = Evaluation::where('evaluation_room_id', $room->id)->count();
+            Evaluation::where('evaluation_room_id', $room->id)->delete();
+            $room->delete();
+        });
+
+        return response()->json([
+            'message' => 'Sala y evaluaciones eliminadas',
+            'deleted_evaluations' => $deletedEvaluations,
+        ]);
+    }
+```
+
+## archiveRoom
+
+Visibilidad: `public`. Líneas originales 819–836.
+
+```php
+    public function archiveRoom($id)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        if (!$this->supportsEvaluationArchive()) {
+            return response()->json(['message' => 'La migracion de archivo de evaluaciones aun no esta aplicada.'], 409);
+        }
+
+        $room = EvaluationRoom::findOrFail($id);
+        $room->update(['estado' => 'finalizada']);
+        Evaluation::where('evaluation_room_id', $room->id)->update([
+            'archived_at' => now(),
+            'archived_by' => $user->id,
+        ]);
+
+        return response()->json(['message' => 'Sala archivada']);
+    }
+```
+
+## unarchiveRoom
+
+Visibilidad: `public`. Líneas originales 838–841.
+
+```php
+    public function unarchiveRoom($id)
+    {
+        return response()->json(['error' => 'El historial se conserva. Programa una nueva evaluación con autorización de reintento.'], 409);
+    }
+```
+
+## lockRoomSequence
+
+Visibilidad: `public`. Líneas originales 843–896.
+
+```php
+    public function lockRoomSequence($id)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+
+        $room = DB::transaction(function () use ($id) {
+            $room = EvaluationRoom::whereKey($id)->lockForUpdate()->firstOrFail();
+            if ($room->sequence_locked) {
+                throw ValidationException::withMessages([
+                    'sequence_locked' => ['El orden de esta sala ya esta bloqueado.'],
+                ]);
+            }
+            $ordered = $room->projects()->get()->sortBy('pivot.orden_presentacion')->values();
+            if ($ordered->isEmpty()) {
+                throw ValidationException::withMessages(['project_ids' => ['La sala no tiene proyectos asignados.']]);
+            }
+            if (!$room->responsible_teacher_id) {
+                throw ValidationException::withMessages([
+                    'responsible_teacher_id' => ['Asigna un encargado antes de bloquear el orden.'],
+                ]);
+            }
+            if (!$this->evaluationDocumentReadiness($ordered->first())['all_students_released']) {
+                throw ValidationException::withMessages([
+                    'project_ids' => ['El primer proyecto no puede presentar porque tiene alumnos sin liberar.'],
+                ]);
+            }
+
+            $firstOrder = (int) $ordered->first()->pivot->orden_presentacion;
+            Evaluation::where('evaluation_room_id', $room->id)->update([
+                'estado' => 'programada',
+                'finalized_at' => null,
+            ]);
+            Evaluation::where('evaluation_room_id', $room->id)
+                ->where('presentation_order', $firstOrder)
+                ->update(['estado' => 'en_evaluacion']);
+            $room->update([
+                'estado' => 'en_curso',
+                'sequence_locked' => true,
+                'current_order' => $firstOrder,
+                'sequence_version' => ((int) $room->sequence_version) + 1,
+                'completed_at' => null,
+                'timer_status' => 'detenido',
+                'timer_order' => $firstOrder,
+                'timer_duration_seconds' => ((int) $room->project_presentation_minutes) * 60,
+                'timer_started_at' => null,
+                'timer_ends_at' => null,
+                'timer_remaining_seconds' => ((int) $room->project_presentation_minutes) * 60,
+            ]);
+
+            return $room;
+        });
+
+        return response()->json(['message' => 'Orden bloqueado. El primer proyecto ya puede evaluarse.', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
+    }
+```
+
+## advanceRoom
+
+Visibilidad: `public`. Líneas originales 898–1022.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `force`.
+
+```php
+    public function advanceRoom(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        $room = EvaluationRoom::with('projects')->findOrFail($id);
+        if (!$this->isRoomResponsible($room, $user) && !$this->isEvaluationManager($user)) {
+            return response()->json(['error' => 'Solo el responsable de la sala puede avanzar el turno.'], 403);
+        }
+        if (!$room->sequence_locked) {
+            throw ValidationException::withMessages([
+                'sequence_locked' => ['Primero debes bloquear el orden de la sala.'],
+            ]);
+        }
+        if ($room->completed_at || !$room->current_order) {
+            throw ValidationException::withMessages([
+                'current_order' => ['La sala ya no tiene proyectos pendientes por avanzar.'],
+            ]);
+        }
+
+        $validated = $request->validate([
+            'continue_next' => 'required|boolean',
+            'expected_sequence_version' => 'required|integer|min:0',
+            'force' => 'nullable|boolean',
+            'force_reason' => 'required_if:force,true|nullable|string|min:10|max:500',
+        ]);
+        if (!$validated['continue_next']) {
+            return response()->json(['message' => 'La sala permanece en el proyecto actual.', 'room' => $this->shapeRoom($room->load(['teachers', 'responsibleTeacher', 'projects']))]);
+        }
+
+        if ($request->boolean('force') && !$this->isEvaluationManager($user)) {
+            return response()->json(['error' => 'Solo un gestor de evaluaciones puede forzar el avance.'], 403);
+        }
+
+        $room = DB::transaction(function () use ($id, $validated, $user, $request) {
+            $room = EvaluationRoom::whereKey($id)->lockForUpdate()->firstOrFail();
+            if (!$this->isRoomResponsible($room, $user) && !$this->isEvaluationManager($user)) {
+                abort(403, 'Solo el responsable de la sala puede avanzar el turno.');
+            }
+            if (isset($validated['expected_sequence_version'])
+                && (int) $validated['expected_sequence_version'] !== (int) $room->sequence_version) {
+                throw ValidationException::withMessages([
+                    'sequence_version' => ['La sala cambio mientras realizabas la operacion. Actualiza antes de continuar.'],
+                ]);
+            }
+            if (!$room->sequence_locked || !$room->current_order || $room->completed_at) {
+                throw ValidationException::withMessages([
+                    'current_order' => ['La sala no tiene un turno activo.'],
+                ]);
+            }
+            $currentOrder = (int) $room->current_order;
+            $current = Evaluation::where('evaluation_room_id', $room->id)
+                ->where('presentation_order', $currentOrder)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $teacherIds = $room->teachers()->pluck('usuarios.id')->map(fn ($teacherId) => (string) $teacherId);
+            $submittedIds = EvaluationAttempt::where('evaluation_id', $current->id)
+                ->whereNotNull('last_submitted_at')
+                ->whereIn('teacher_id', $teacherIds)
+                ->pluck('teacher_id')
+                ->map(fn ($teacherId) => (string) $teacherId);
+            $pendingIds = $teacherIds->diff($submittedIds);
+            if ($pendingIds->isNotEmpty() && !$request->boolean('force')) {
+                throw ValidationException::withMessages([
+                    'evaluators' => ['Aun faltan '.count($pendingIds).' evaluador(es) por enviar su rubrica.'],
+                ]);
+            }
+            if ($this->roomTimerRemainingSeconds($room) > 0 && $room->timer_status === 'en_curso' && !$request->boolean('force')) {
+                throw ValidationException::withMessages([
+                    'timer' => ['Deten o finaliza el temporizador antes de avanzar el turno.'],
+                ]);
+            }
+
+            $next = $room->projects()->get()
+                ->first(fn ($project) => (int) $project->pivot->orden_presentacion > $currentOrder);
+            if ($next && !$this->evaluationDocumentReadiness($next)['all_students_released']) {
+                throw ValidationException::withMessages([
+                    'project_ids' => ['El siguiente proyecto no puede presentar porque tiene alumnos sin liberar.'],
+                ]);
+            }
+
+            $current->update(['estado' => 'finalizada', 'finalized_at' => now()]);
+            $nextOrder = $next ? (int) $next->pivot->orden_presentacion : null;
+            if ($next) {
+                Evaluation::where('evaluation_room_id', $room->id)
+                    ->where('project_id', $next->id)
+                    ->update(['estado' => 'en_evaluacion', 'finalized_at' => null]);
+            }
+            $duration = ((int) $room->project_presentation_minutes) * 60;
+            $room->update([
+                'estado' => $next ? 'en_curso' : 'finalizada',
+                'current_order' => $nextOrder,
+                'completed_at' => $next ? null : now(),
+                'sequence_version' => ((int) $room->sequence_version) + 1,
+                'timer_status' => 'detenido',
+                'timer_order' => $nextOrder,
+                'timer_duration_seconds' => $duration,
+                'timer_started_at' => null,
+                'timer_ends_at' => null,
+                'timer_remaining_seconds' => $duration,
+                'timer_updated_by' => $user->id,
+            ]);
+            if ($request->boolean('force')) {
+                DB::table('auditoria_carreras')->insert([
+                    'carrera_id' => $room->carrera_id,
+                    'actor_id' => $user->id,
+                    'metodo' => 'POST',
+                    'ruta' => "/api/evaluations/rooms/{$room->id}/advance",
+                    'accion' => 'forced_room_advance',
+                    'estado_http' => 200,
+                    'direccion_ip' => $request->ip(),
+                    'agente_usuario' => mb_substr((string) $request->userAgent(), 0, 255),
+                    'detalle' => json_encode([
+                        'from_order' => $currentOrder,
+                        'to_order' => $nextOrder,
+                        'reason' => $validated['force_reason'],
+                        'pending_evaluator_ids' => $pendingIds->values()->all(),
+                    ], JSON_UNESCAPED_UNICODE),
+                    'creado_en' => now(),
+                ]);
+            }
+
+            return $room;
+        });
+
+        return response()->json(['message' => $room->completed_at ? 'Sala finalizada' : 'Turno actualizado', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
+    }
+```
+
+## controlRoomTimer
+
+Visibilidad: `public`. Líneas originales 1024–1117.
+
+```php
+    public function controlRoomTimer(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        $validated = $request->validate([
+            'action' => ['required', Rule::in(['start', 'pause', 'resume', 'reset', 'finish'])],
+            'duration_seconds' => 'nullable|integer|min:60|max:14400',
+            'expected_sequence_version' => 'required|integer|min:0',
+        ]);
+
+        $room = DB::transaction(function () use ($id, $validated, $user) {
+            $room = EvaluationRoom::whereKey($id)->lockForUpdate()->firstOrFail();
+            if (!$this->isRoomResponsible($room, $user) && !$this->isEvaluationManager($user)) {
+                abort(403, 'Solo el encargado de sala o un gestor de evaluaciones puede controlar el temporizador.');
+            }
+            if (isset($validated['expected_sequence_version'])
+                && (int) $validated['expected_sequence_version'] !== (int) $room->sequence_version) {
+                throw ValidationException::withMessages([
+                    'sequence_version' => ['La sala cambio mientras realizabas la operacion. Actualiza antes de continuar.'],
+                ]);
+            }
+            if (!$room->sequence_locked || !$room->current_order || $room->completed_at) {
+                throw ValidationException::withMessages([
+                    'timer' => ['El temporizador solo puede utilizarse cuando existe un proyecto en turno.'],
+                ]);
+            }
+
+            $action = $validated['action'];
+            $duration = (int) ($validated['duration_seconds']
+                ?? $room->timer_remaining_seconds
+                ?? $room->timer_duration_seconds
+                ?? (((int) $room->project_presentation_minutes) * 60));
+            $duration = max(60, min(14400, $duration));
+            $payload = [
+                'timer_order' => (int) $room->current_order,
+                'timer_updated_by' => $user->id,
+                'sequence_version' => ((int) $room->sequence_version) + 1,
+            ];
+
+            if ($action === 'start') {
+                $payload += [
+                    'timer_status' => 'en_curso',
+                    'timer_duration_seconds' => $duration,
+                    'timer_started_at' => now(),
+                    'timer_ends_at' => now()->addSeconds($duration),
+                    'timer_remaining_seconds' => null,
+                ];
+            } elseif ($action === 'pause') {
+                if ($room->timer_status !== 'en_curso' || (int) $room->timer_order !== (int) $room->current_order) {
+                    throw ValidationException::withMessages(['timer' => ['No hay un temporizador activo para pausar.']]);
+                }
+                $remaining = $this->roomTimerRemainingSeconds($room);
+                $payload += [
+                    'timer_status' => $remaining > 0 ? 'pausado' : 'finalizado',
+                    'timer_started_at' => null,
+                    'timer_ends_at' => null,
+                    'timer_remaining_seconds' => $remaining,
+                ];
+            } elseif ($action === 'resume') {
+                if ($room->timer_status !== 'pausado' || (int) $room->timer_order !== (int) $room->current_order) {
+                    throw ValidationException::withMessages(['timer' => ['No hay un temporizador pausado para reanudar.']]);
+                }
+                $remaining = max(1, $this->roomTimerRemainingSeconds($room));
+                $payload += [
+                    'timer_status' => 'en_curso',
+                    'timer_started_at' => now(),
+                    'timer_ends_at' => now()->addSeconds($remaining),
+                    'timer_remaining_seconds' => null,
+                ];
+            } elseif ($action === 'finish') {
+                $payload += [
+                    'timer_status' => 'finalizado',
+                    'timer_started_at' => null,
+                    'timer_ends_at' => now(),
+                    'timer_remaining_seconds' => 0,
+                ];
+            } else {
+                $payload += [
+                    'timer_status' => 'detenido',
+                    'timer_duration_seconds' => $duration,
+                    'timer_started_at' => null,
+                    'timer_ends_at' => null,
+                    'timer_remaining_seconds' => $duration,
+                ];
+            }
+
+            $room->update($payload);
+            return $room;
+        });
+
+        return response()->json([
+            'message' => 'Temporizador actualizado',
+            'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects'])),
+        ]);
+    }
+```
+
+## updateRoomSchedule
+
+Visibilidad: `public`. Líneas originales 1119–1212.
+
+```php
+    public function updateRoomSchedule(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        $validated = $request->validate([
+            'fecha_evaluacion' => 'required|date',
+            'fecha_fin_evaluacion' => 'required|date|after:fecha_evaluacion',
+            'allow_late_evaluations' => 'required|boolean',
+            'late_evaluation_until' => 'nullable|required_if:allow_late_evaluations,true|date|after:fecha_fin_evaluacion',
+            'late_evaluation_reason' => 'nullable|required_if:allow_late_evaluations,true|string|min:10|max:500',
+            'expected_sequence_version' => 'required|integer|min:0',
+        ]);
+
+        $room = DB::transaction(function () use ($id, $validated, $user) {
+            $room = EvaluationRoom::whereKey($id)->lockForUpdate()->firstOrFail();
+            if (!$this->isRoomResponsible($room, $user) && !$this->isEvaluationManager($user)) {
+                abort(403, 'Solo el encargado de sala o un gestor puede modificar el horario.');
+            }
+            if ((int) $validated['expected_sequence_version'] !== (int) $room->sequence_version) {
+                throw ValidationException::withMessages([
+                    'sequence_version' => ['El horario o turno cambio. Actualiza la sala antes de guardar.'],
+                ]);
+            }
+
+            $startsAt = \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion']);
+            $endsAt = \Illuminate\Support\Carbon::parse($validated['fecha_fin_evaluacion']);
+            $originalStart = $room->fecha_evaluacion;
+            $originalEnd = $room->fecha_fin_evaluacion;
+            if ($originalStart && $originalStart->isPast() && !$startsAt->equalTo($originalStart)) {
+                throw ValidationException::withMessages([
+                    'fecha_evaluacion' => ['La sala ya comenzó. Conserva la hora de inicio y modifica solamente la hora de finalización.'],
+                ]);
+            }
+            if ($originalStart && !$startsAt->equalTo($originalStart) && $startsAt->isPast()) {
+                throw ValidationException::withMessages([
+                    'fecha_evaluacion' => ['La nueva hora de inicio no puede ser anterior al momento actual.'],
+                ]);
+            }
+            if (!$originalStart || !$startsAt->equalTo($originalStart)) {
+                $createdAt = $room->created_at ?: now();
+                if ($startsAt->lt($createdAt)) {
+                    throw ValidationException::withMessages([
+                        'fecha_evaluacion' => ['La sala no puede programarse antes de su fecha y hora de creación.'],
+                    ]);
+                }
+            }
+            if ($originalEnd && !$endsAt->equalTo($originalEnd) && $endsAt->isPast()) {
+                throw ValidationException::withMessages([
+                    'fecha_fin_evaluacion' => ['Una modificación de horario debe finalizar después del momento actual.'],
+                ]);
+            }
+
+            $workflow = app(\App\Services\AcademicWorkflowService::class);
+            $workflow->manager();
+            $room->loadMissing(['teachers', 'projects']);
+            foreach ($room->projects as $project) {
+                $authorization = app(\App\Services\AcademicAuthorizationService::class)
+                    ->valid('reprogramacion', $project->id, (int) $room->periodo_id)
+                    ->where('evaluacion_id', $project->pivot->id)->lockForUpdate()->first();
+                abort_unless($authorization, 422, 'Cada evaluación requiere autorización vigente de reprogramación.');
+                DB::table('autorizaciones_academicas')->where('id', $authorization->id)->update(['consumida_en' => now()]);
+            }
+            app(\App\Services\EvaluationAgendaService::class)->validate(array_merge($validated, [
+                'teacher_ids' => $room->teachers->pluck('id')->all(), 'project_ids' => $room->projects->pluck('id')->all(),
+                'semestre' => $room->semestre, 'salon_id' => $room->salon_id,
+                'project_presentation_minutes' => $room->project_presentation_minutes,
+                'teacher_evaluation_minutes' => $room->teacher_evaluation_minutes,
+            ]), $room);
+            $allowsLate = (bool) $validated['allow_late_evaluations'];
+            $room->update([
+                'fecha_evaluacion' => $startsAt,
+                'fecha_fin_evaluacion' => $endsAt,
+                'allow_late_evaluations' => $allowsLate,
+                'late_evaluation_until' => $allowsLate
+                    ? \Illuminate\Support\Carbon::parse($validated['late_evaluation_until'])
+                    : null,
+                'late_evaluation_reason' => $allowsLate ? $validated['late_evaluation_reason'] : null,
+                'schedule_updated_by' => $user->id,
+                'schedule_updated_at' => now(),
+                'sequence_version' => ((int) $room->sequence_version) + 1,
+            ]);
+            if (!$originalStart || !$startsAt->equalTo($originalStart)) {
+                Evaluation::where('evaluation_room_id', $room->id)
+                    ->where('estado', 'programada')
+                    ->update(['fecha_exposicion' => $startsAt]);
+            }
+
+            return $room;
+        });
+
+        return response()->json([
+            'message' => 'Horario y politica de evaluacion actualizados',
+            'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects'])),
+        ]);
+    }
+```
+
+## exportEvaluationPdf
+
+Visibilidad: `public`. Líneas originales 1214–1236.
+
+```php
+    public function exportEvaluationPdf(Request $request, $id)
+    {
+        $evaluation = $this->reportEvaluationQuery()->findOrFail($id);
+        if ($guard = $this->guardEvaluationReport($evaluation)) return $guard;
+
+        if (!app()->bound('dompdf.wrapper') && !class_exists(\Dompdf\Dompdf::class)) {
+            return response()->json([
+                'error' => 'DomPDF no esta instalado. Ejecuta composer install o instala barryvdh/laravel-dompdf en el despliegue.',
+            ], 501);
+        }
+
+        $anonymizeTeachers = $this->shouldAnonymizeTeacherReport($request);
+        $report = $this->evaluationReportData($evaluation, $anonymizeTeachers);
+        $pdf = app('dompdf.wrapper');
+        $pdf->setOptions([
+            'isRemoteEnabled' => true,
+            'defaultFont' => 'DejaVu Sans',
+        ]);
+        $pdf->loadHTML(view('reports.evaluation-pdf', $report)->render());
+
+        $suffix = $anonymizeTeachers ? '_docentes' : '';
+        return $pdf->download('reporte_evaluacion_' . $evaluation->id . $suffix . '.pdf');
+    }
+```
+
+## exportRoomPdf
+
+Visibilidad: `public`. Líneas originales 1238–1260.
+
+```php
+    public function exportRoomPdf(Request $request, $id)
+    {
+        $room = $this->reportRoomQuery()->findOrFail($id);
+        if ($guard = $this->guardRoomReport($room)) return $guard;
+
+        if (!app()->bound('dompdf.wrapper') && !class_exists(\Dompdf\Dompdf::class)) {
+            return response()->json([
+                'error' => 'DomPDF no esta instalado. Ejecuta composer install o instala barryvdh/laravel-dompdf en el despliegue.',
+            ], 501);
+        }
+
+        $anonymizeTeachers = $this->shouldAnonymizeTeacherReport($request);
+        $report = $this->roomReportData($room, $anonymizeTeachers);
+        $pdf = app('dompdf.wrapper');
+        $pdf->setOptions([
+            'isRemoteEnabled' => true,
+            'defaultFont' => 'DejaVu Sans',
+        ]);
+        $pdf->loadHTML(view('reports.room-pdf', $report)->render());
+
+        $suffix = $anonymizeTeachers ? '_docentes' : '';
+        return $pdf->download('reporte_sala_' . $room->id . $suffix . '.pdf');
+    }
+```
+
+## managers
+
+Visibilidad: `public`. Líneas originales 1262–1276.
+
+```php
+    public function managers()
+    {
+        if ($guard = $this->guardEvaluationManager()) return $guard;
+
+        $managerIds = $this->evaluationManagerIds();
+        $teachers = User::teachers()
+            ->where('activo', true)
+            ->orderBy('nombres')
+            ->get(['id', 'nombres', 'apa', 'ama', 'email']);
+
+        return response()->json([
+            'manager_ids' => $managerIds,
+            'teachers' => $teachers,
+        ]);
+    }
+```
+
+## reportEvaluationQuery
+
+Visibilidad: `private`. Líneas originales 1278–1290.
+
+```php
+    private function reportEvaluationQuery()
+    {
+        return Evaluation::with([
+            'project.students',
+            'project.advisors',
+            'room.teachers',
+            'room.responsibleTeacher',
+            'scores.teacher',
+            'scores.criterion',
+            'scores.attempt',
+            'attempts.teacher',
+        ]);
+    }
+```
+
+## reportRoomQuery
+
+Visibilidad: `private`. Líneas originales 1292–1304.
+
+```php
+    private function reportRoomQuery()
+    {
+        return EvaluationRoom::with([
+            'teachers:id,nombres,apa,ama,perfil_id',
+            'responsibleTeacher:id,nombres,apa,ama,perfil_id',
+            'evaluations.project.students',
+            'evaluations.project.advisors',
+            'evaluations.scores.teacher',
+            'evaluations.scores.criterion',
+            'evaluations.scores.attempt',
+            'evaluations.attempts.teacher',
+        ]);
+    }
+```
+
+## shouldAnonymizeTeacherReport
+
+Visibilidad: `private`. Líneas originales 1306–1310.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `anonymize_teachers`, `audience`.
+
+```php
+    private function shouldAnonymizeTeacherReport(Request $request): bool
+    {
+        return $request->boolean('anonymize_teachers')
+            || $request->query('audience') === 'teachers';
+    }
+```
+
+## teacherReportLabels
+
+Visibilidad: `private`. Líneas originales 1312–1325.
+
+```php
+    private function teacherReportLabels($teachers, bool $anonymizeTeachers): array
+    {
+        return collect($teachers)
+            ->filter()
+            ->values()
+            ->mapWithKeys(function ($teacher, int $index) use ($anonymizeTeachers) {
+                $label = $anonymizeTeachers
+                    ? 'Docente ' . ($index + 1)
+                    : $this->fullName($teacher);
+
+                return [(string) $teacher->id => $label ?: 'Docente ' . ($index + 1)];
+            })
+            ->all();
+    }
+```
+
+## guardEvaluationReport
+
+Visibilidad: `private`. Líneas originales 1327–1339.
+
+```php
+    private function guardEvaluationReport(Evaluation $evaluation)
+    {
+        $user = auth('api')->user();
+        if ($this->isEvaluationManager($user) || $this->isRoomResponsible($evaluation->room, $user)) {
+            return null;
+        }
+
+        if ($this->canUserScoreEvaluation($evaluation, $user)) {
+            return null;
+        }
+
+        return response()->json(['error' => 'No autorizado para exportar esta evaluacion.'], 403);
+    }
+```
+
+## guardRoomReport
+
+Visibilidad: `private`. Líneas originales 1341–1354.
+
+```php
+    private function guardRoomReport(EvaluationRoom $room)
+    {
+        $user = auth('api')->user();
+        if ($this->isEvaluationManager($user) || $this->isRoomResponsible($room, $user)) {
+            return null;
+        }
+
+        $teacherIds = $room->teachers->pluck('id')->map(fn ($id) => (string) $id);
+        if ($teacherIds->contains((string) $user->id)) {
+            return null;
+        }
+
+        return response()->json(['error' => 'No autorizado para exportar esta sala.'], 403);
+    }
+```
+
+## evaluationReportData
+
+Visibilidad: `private`. Líneas originales 1356–1446.
+
+```php
+    private function evaluationReportData(Evaluation $evaluation, bool $anonymizeTeachers = false, array $teacherLabelsOverride = []): array
+    {
+        $scores = $this->activeScoresForEvaluation($evaluation);
+        $labels = $this->criteriaLabelsForEvaluation($evaluation);
+        $orderedCriteria = $this->criteriaForEvaluation($evaluation)
+            ->pluck('pregunta', 'clave')
+            ->all();
+        $criteriaLabels = array_replace($orderedCriteria, $labels);
+
+        $teachers = $scores
+            ->map(fn ($score) => $score->teacher)
+            ->filter()
+            ->unique('id')
+            ->values();
+        $teacherLabels = $teacherLabelsOverride ?: $this->teacherReportLabels($teachers, $anonymizeTeachers);
+        $titulationAptSummary = $this->titulationAptSummary($evaluation);
+
+        $matrix = collect($criteriaLabels)->map(function ($label, $criterion) use ($evaluation, $teachers, $scores) {
+            $teacherScores = [];
+            $percentages = [];
+
+            foreach ($teachers as $teacher) {
+                $score = $scores
+                    ->where('criterio', $criterion)
+                    ->firstWhere('teacher_id', $teacher->id);
+
+                if ($score) {
+                    $percentage = $this->scorePercentage($score, (int) $evaluation->semestre);
+                    $percentages[] = $percentage;
+                    $teacherScores[] = [
+                        'teacher_id' => $teacher->id,
+                        'value' => $score->puntaje . '/' . $this->maxScoreForScore($score, (int) $evaluation->semestre),
+                        'percentage' => $percentage,
+                        'level' => $this->levelLabels[$score->nivel] ?? $score->nivel,
+                    ];
+                } else {
+                    $teacherScores[] = [
+                        'teacher_id' => $teacher->id,
+                        'value' => '-',
+                        'percentage' => null,
+                        'level' => '-',
+                    ];
+                }
+            }
+
+            return [
+                'criterion' => $criterion,
+                'label' => $label,
+                'teacher_scores' => $teacherScores,
+                'average' => count($percentages) ? round(array_sum($percentages) / count($percentages), 2) : 0,
+            ];
+        })->values()->all();
+
+        $comments = $teachers->map(function ($teacher) use ($evaluation, $scores, $teacherLabels) {
+            $attempt = $evaluation->attempts->firstWhere('teacher_id', $teacher->id);
+            $criterionComments = $scores
+                ->where('teacher_id', $teacher->id)
+                ->filter(fn ($score) => filled($score->comentario))
+                ->map(fn ($score) => [
+                    'criterion' => $this->criteriaLabelsForEvaluation($evaluation)[$score->criterio] ?? $score->criterio,
+                    'comment' => $score->comentario,
+                ])
+                ->values()
+                ->all();
+
+            return [
+                'teacher_id' => $teacher->id,
+                'teacher_name' => $teacherLabels[(string) $teacher->id] ?? $this->fullName($teacher),
+                'general_comment' => $attempt?->general_comment,
+                'apto_titulacion' => $this->attemptTitulationVote($attempt),
+                'criterion_comments' => $criterionComments,
+            ];
+        })->values()->all();
+
+        $chartLabels = collect($matrix)->pluck('label')->map(fn ($label) => Str::limit($label, 32))->all();
+        $chartValues = collect($matrix)->pluck('average')->all();
+
+        return [
+            'evaluation' => $evaluation,
+            'project' => $evaluation->project,
+            'students' => $evaluation->project?->students ?? collect(),
+            'teachers' => $teachers,
+            'teacherLabels' => $teacherLabels,
+            'matrix' => $matrix,
+            'comments' => $comments,
+            'titulationAptSummary' => $titulationAptSummary,
+            'globalAverage' => $this->scoreCollectionAverage($scores, (int) $evaluation->semestre),
+            'chartUrl' => $this->quickChartUrl($chartLabels, $chartValues),
+            'generatedAt' => now(),
+        ];
+    }
+```
+
+## roomReportData
+
+Visibilidad: `private`. Líneas originales 1448–1496.
+
+```php
+    private function roomReportData(EvaluationRoom $room, bool $anonymizeTeachers = false): array
+    {
+        $roomTeachers = collect($room->teachers ?? collect());
+        if ($room->responsibleTeacher) {
+            $roomTeachers = $roomTeachers->push($room->responsibleTeacher);
+        }
+        $roomTeachers = $roomTeachers->filter()->unique('id')->values();
+        $roomTeacherLabels = $this->teacherReportLabels($roomTeachers, $anonymizeTeachers);
+        $evaluations = $room->evaluations
+            ->sortBy(fn ($evaluation) => (int) ($evaluation->presentation_order ?? 0))
+            ->values();
+        $evaluationReports = $evaluations
+            ->map(fn ($evaluation) => $this->evaluationReportData($evaluation, $anonymizeTeachers, $roomTeacherLabels))
+            ->values();
+        $evaluated = $evaluations->filter(fn ($evaluation) => $evaluation->scores->isNotEmpty());
+
+        $projectRows = $evaluationReports->map(function ($report) {
+            $evaluation = $report['evaluation'];
+            $project = $report['project'];
+
+            return [
+                'evaluation_id' => $evaluation->id,
+                'order' => $evaluation->presentation_order,
+                'project_title' => $project?->title ?? 'Proyecto sin titulo',
+                'students' => $report['students']->map(fn ($student) => $this->fullName($student))->filter()->join(', '),
+                'teachers_count' => $report['teachers']->count(),
+                'average' => $report['globalAverage'],
+                'status' => $evaluation->sequence_status ?? $evaluation->estado,
+                'result' => $evaluation->resultado,
+                'titulation_apt_result' => $report['titulationAptSummary']['label'],
+            ];
+        })->all();
+
+        $chartLabels = collect($projectRows)->pluck('project_title')->map(fn ($title) => Str::limit($title, 30))->all();
+        $chartValues = collect($projectRows)->pluck('average')->all();
+
+        return [
+            'room' => $room,
+            'roomTeacherLabels' => $roomTeacherLabels,
+            'evaluaciones' => $evaluations,
+            'evaluationReports' => $evaluationReports,
+            'projectRows' => $projectRows,
+            'roomAverage' => $evaluated->count()
+                ? round($evaluated->avg(fn ($evaluation) => $this->scoreCollectionAverage($evaluation->scores, (int) $evaluation->semestre)), 2)
+                : 0,
+            'chartUrl' => $this->quickChartUrl($chartLabels, $chartValues),
+            'generatedAt' => now(),
+        ];
+    }
+```
+
+## quickChartUrl
+
+Visibilidad: `private`. Líneas originales 1498–1526.
+
+```php
+    private function quickChartUrl(array $labels, array $values): string
+    {
+        $config = [
+            'type' => 'bar',
+            'data' => [
+                'labels' => $labels,
+                'datasets' => [[
+                    'label' => 'Promedio por criterio',
+                    'data' => $values,
+                    'backgroundColor' => '#2563eb',
+                ]],
+            ],
+            'options' => [
+                'legend' => ['display' => false],
+                'scales' => [
+                    'yAxes' => [[
+                        'ticks' => ['beginAtZero' => true, 'max' => 100],
+                    ]],
+                ],
+            ],
+        ];
+
+        return 'https://quickchart.io/chart?' . http_build_query([
+            'width' => 760,
+            'height' => 320,
+            'format' => 'png',
+            'c' => json_encode($config),
+        ]);
+    }
+```
+
+## writePowerBiEvaluationRow
+
+Visibilidad: `private`. Líneas originales 1528–1573.
+
+```php
+    private function writePowerBiEvaluationRow(
+        mixed $handle,
+        EvaluationRoom $room,
+        Evaluation $evaluation,
+        ?User $teacher = null,
+        ?float $teacherAverage = null,
+        ?EvaluationScore $score = null,
+        ?string $teacherGeneralComment = null,
+        ?string $criterionLabel = null
+    ): void {
+        $students = $evaluation->project?->students ?? collect();
+        $titulationAptSummary = $this->titulationAptSummary($evaluation);
+
+        fputcsv($handle, [
+            $room->id,
+            $this->csvCell($room->nombre),
+            $this->csvCell($room->salon),
+            $room->semestre,
+            optional($room->fecha_evaluacion)->format('Y-m-d H:i:s'),
+            $evaluation->presentation_order,
+            $evaluation->id,
+            $evaluation->project_id,
+            $this->csvCell($evaluation->project?->title),
+            $this->csvCell($students->map(fn ($student) => $this->fullName($student))->filter()->join(' | ')),
+            $students->count(),
+            $this->csvCell($evaluation->sequence_status),
+            $this->csvCell($evaluation->estado),
+            $this->csvCell($evaluation->resultado),
+            $this->scoreCollectionAverage($evaluation->scores, (int) $evaluation->semestre),
+            $teacher?->id,
+            $this->csvCell($teacher ? $this->fullName($teacher) : null),
+            $teacherAverage,
+            $this->csvCell($score?->criterio),
+            $this->csvCell($criterionLabel),
+            $this->csvCell($score ? ($this->levelLabels[$score->nivel] ?? $score->nivel) : null),
+            $score?->puntaje,
+            $score ? $this->scorePercentage($score, (int) $evaluation->semestre) : null,
+            $this->csvCell($score?->comentario),
+            $this->csvCell($teacherGeneralComment),
+            $this->csvCell($evaluation->room_feedback),
+            optional($evaluation->feedback_at)->format('Y-m-d H:i:s'),
+            $titulationAptSummary['result'] === null
+                ? null
+                : ($titulationAptSummary['result'] ? 1 : 0),
+        ], ';');
+    }
+```
+
+## syncTitulationAptResult
+
+Visibilidad: `private`. Líneas originales 1575–1585.
+
+```php
+    private function syncTitulationAptResult(Evaluation $evaluation): void
+    {
+        if ((int) $evaluation->semestre !== 8 || !Schema::hasColumn('evaluaciones', 'apto_titulacion')) {
+            return;
+        }
+
+        $summary = $this->titulationAptSummary($evaluation);
+        if ($summary['result'] !== null) {
+            $evaluation->update(['apto_titulacion' => (bool) $summary['result']]);
+        }
+    }
+```
+
+## titulationAptSummary
+
+Visibilidad: `private`. Líneas originales 1587–1632.
+
+```php
+    private function titulationAptSummary(Evaluation $evaluation): array
+    {
+        if ((int) $evaluation->semestre !== 8) {
+            return [
+                'applies' => false,
+                'yes' => 0,
+                'no' => 0,
+                'total' => 0,
+                'required_yes' => 0,
+                'result' => null,
+                'label' => 'No aplica',
+            ];
+        }
+
+        $votes = collect();
+        if (Schema::hasColumn('evaluaciones', 'apto_titulacion')) {
+            $attempts = $evaluation->relationLoaded('attempts')
+                ? $evaluation->attempts
+                : $evaluation->attempts()->get();
+
+            $votes = $attempts
+                ->filter(fn ($attempt) => $attempt->apto_titulacion !== null)
+                ->map(fn ($attempt) => (bool) $attempt->apto_titulacion)
+                ->values();
+        }
+
+        if ($votes->isEmpty() && $evaluation->apto_titulacion !== null) {
+            $votes = collect([(bool) $evaluation->apto_titulacion]);
+        }
+
+        $total = $votes->count();
+        $yes = $votes->filter()->count();
+        $no = $total - $yes;
+        $requiredYes = $total > 0 ? (int) floor($total / 2) + 1 : 0;
+        $result = $total > 0 ? $yes >= $requiredYes : null;
+
+        return [
+            'applies' => true,
+            'yes' => $yes,
+            'no' => $no,
+            'total' => $total,
+            'required_yes' => $requiredYes,
+            'result' => $result,
+            'label' => $result === null ? 'Sin votos' : ($result ? 'Apto' : 'No apto'),
+        ];
+    }
+```
+
+## attemptTitulationVote
+
+Visibilidad: `private`. Líneas originales 1634–1641.
+
+```php
+    private function attemptTitulationVote(?EvaluationAttempt $attempt): ?bool
+    {
+        if (!$attempt || !Schema::hasColumn('evaluaciones', 'apto_titulacion')) {
+            return null;
+        }
+
+        return $attempt->apto_titulacion === null ? null : (bool) $attempt->apto_titulacion;
+    }
+```
+
+## fullName
+
+Visibilidad: `private`. Líneas originales 1643–1646.
+
+```php
+    private function fullName(User $user): string
+    {
+        return trim(collect([$user->nombres, $user->apa, $user->ama])->filter()->join(' '));
+    }
+```
+
+## csvCell
+
+Visibilidad: `private`. Líneas originales 1648–1655.
+
+```php
+    private function csvCell(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return preg_replace('/\s+/', ' ', trim($value));
+    }
+```
+
+## rubricScoreModes
+
+Visibilidad: `private`. Líneas originales 1657–1663.
+
+```php
+    private function rubricScoreModes(): array
+    {
+        $modes = CareerSetting::valueFor('rubric_score_modes', []);
+        $defaults = ['5' => 'levels', '6' => 'levels', '7' => 'levels', '8' => 'levels'];
+
+        return array_replace($defaults, array_intersect_key((array) $modes, $defaults));
+    }
+```
+
+## rubricScoreModeForSemester
+
+Visibilidad: `private`. Líneas originales 1665–1668.
+
+```php
+    private function rubricScoreModeForSemester(int $semester): string
+    {
+        return $this->rubricScoreModes()[(string) $semester] ?? 'levels';
+    }
+```
+
+## maxScoreForSemester
+
+Visibilidad: `private`. Líneas originales 1670–1673.
+
+```php
+    private function maxScoreForSemester(int $semester): int
+    {
+        return $this->rubricScoreModeForSemester($semester) === 'numeric' ? 5 : 4;
+    }
+```
+
+## pointsForLevel
+
+Visibilidad: `private`. Líneas originales 1675–1689.
+
+```php
+    private function pointsForLevel(string $level, string $mode): int
+    {
+        if ($mode === 'numeric') {
+            return match ($level) {
+                'totalmente_en_desacuerdo' => 1,
+                'en_desacuerdo' => 2,
+                'neutral' => 3,
+                'de_acuerdo' => 4,
+                'totalmente_de_acuerdo' => 5,
+                default => 1,
+            };
+        }
+
+        return $this->levels[$level] ?? 0;
+    }
+```
+
+## pointsForStoredLevel
+
+Visibilidad: `private`. Líneas originales 1691–1698.
+
+```php
+    private function pointsForStoredLevel(string $submittedLevel, string $storageLevel, string $mode): int
+    {
+        if ($submittedLevel !== $storageLevel && $this->isLegacyLevel($storageLevel)) {
+            return $this->legacyLevels[$storageLevel];
+        }
+
+        return $this->pointsForLevel($submittedLevel, $mode);
+    }
+```
+
+## storageLevelForScore
+
+Visibilidad: `private`. Líneas originales 1700–1714.
+
+```php
+    private function storageLevelForScore(string $level): string
+    {
+        if ($this->supportsModernScoreLevels()) {
+            return $level;
+        }
+
+        return match ($level) {
+            'totalmente_de_acuerdo' => 'mucho',
+            'de_acuerdo' => 'bastante',
+            'neutral' => 'poco',
+            'en_desacuerdo' => 'poco',
+            'totalmente_en_desacuerdo' => 'nada',
+            default => $level,
+        };
+    }
+```
+
+## supportsModernScoreLevels
+
+Visibilidad: `private`. Líneas originales 1716–1731.
+
+```php
+    private function supportsModernScoreLevels(): bool
+    {
+        static $supports = null;
+        if ($supports !== null) {
+            return $supports;
+        }
+
+        try {
+            $column = DB::selectOne("SHOW COLUMNS FROM respuestas_evaluacion LIKE 'valor'") ?? DB::selectOne("SHOW COLUMNS FROM respuestas_evaluacion LIKE 'nivel'");
+            $type = strtolower((string) ($column->Type ?? $column->type ?? ''));
+            return $supports = str_contains($type, 'char') || str_contains($type, 'text') || str_contains($type, 'totalmente_de_acuerdo');
+        } catch (\Throwable $e) {
+            report($e);
+            return $supports = true;
+        }
+    }
+```
+
+## supportsEvaluationArchive
+
+Visibilidad: `private`. Líneas originales 1733–1742.
+
+```php
+    private function supportsEvaluationArchive(): bool
+    {
+        return (
+            Schema::hasColumn('evaluaciones', 'archivada_en')
+            && Schema::hasColumn('evaluaciones', 'archivada_por')
+        ) || (
+            Schema::hasColumn('evaluaciones', 'archived_at')
+            && Schema::hasColumn('evaluaciones', 'archived_by')
+        );
+    }
+```
+
+## supportsEvaluationAttempts
+
+Visibilidad: `private`. Líneas originales 1744–1747.
+
+```php
+    private function supportsEvaluationAttempts(): bool
+    {
+        return Schema::hasTable('dictamenes_docentes');
+    }
+```
+
+## supportsEvaluationResponses
+
+Visibilidad: `private`. Líneas originales 1749–1752.
+
+```php
+    private function supportsEvaluationResponses(): bool
+    {
+        return Schema::hasTable('dictamenes_docentes') && Schema::hasTable('respuestas_evaluacion');
+    }
+```
+
+## isLegacyLevel
+
+Visibilidad: `private`. Líneas originales 1754–1757.
+
+```php
+    private function isLegacyLevel(?string $level): bool
+    {
+        return $level !== null && array_key_exists($level, $this->legacyLevels);
+    }
+```
+
+## maxScoreForScore
+
+Visibilidad: `private`. Líneas originales 1759–1766.
+
+```php
+    private function maxScoreForScore(EvaluationScore $score, int $semester): int
+    {
+        if ($this->isLegacyLevel($score->nivel)) {
+            return 3;
+        }
+
+        return ($score->attempt?->evaluation?->modo_puntaje ?? $this->rubricScoreModeForSemester($semester)) === 'numeric' ? 5 : 4;
+    }
+```
+
+## scoreModeForScore
+
+Visibilidad: `private`. Líneas originales 1768–1775.
+
+```php
+    private function scoreModeForScore(EvaluationScore $score, int $semester): string
+    {
+        if ($this->isLegacyLevel($score->nivel)) {
+            return 'legacy';
+        }
+
+        return $score->attempt?->evaluation?->modo_puntaje ?? $this->rubricScoreModeForSemester($semester);
+    }
+```
+
+## scorePercentage
+
+Visibilidad: `private`. Líneas originales 1777–1782.
+
+```php
+    private function scorePercentage(EvaluationScore $score, int $semester): float
+    {
+        $maxScore = max(1, $this->maxScoreForScore($score, $semester));
+
+        return round(($score->puntaje / $maxScore) * 100, 2);
+    }
+```
+
+## scoreCollectionAverage
+
+Visibilidad: `private`. Líneas originales 1784–1791.
+
+```php
+    private function scoreCollectionAverage($scores, int $semester): float
+    {
+        if (!$scores || $scores->count() === 0) {
+            return 0;
+        }
+
+        return round($scores->avg(fn ($score) => $this->scorePercentage($score, $semester)), 2);
+    }
+```
+
+## updateManagers
+
+Visibilidad: `public`. Líneas originales 1793–1819.
+
+```php
+    public function updateManagers(Request $request)
+    {
+        $user = auth('api')->user();
+        if (!$user->canManageProjects()) {
+            return response()->json(['error' => 'Solo administracion puede asignar responsables de evaluaciones.'], 403);
+        }
+
+        $validated = $request->validate([
+            'teacher_ids' => 'present|array',
+            'teacher_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)],
+        ]);
+
+        $teacherIds = collect($validated['teacher_ids'])
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        foreach ($teacherIds as $id) app(\App\Services\AcademicWorkflowService::class)->teacher($id);
+        app(\App\Services\AcademicWorkflowService::class)->audit('evaluadores.responsables', 'carrera', app(\App\Services\AcademicWorkflowService::class)->careerId(), $this->evaluationManagerIds(), $teacherIds);
+        CareerSetting::setValue('evaluation_manager_teacher_ids', $teacherIds, 'array', 'Docentes con acceso completo a gestion de evaluaciones');
+
+        return response()->json([
+            'message' => 'Responsables de evaluaciones actualizados',
+            'manager_ids' => $teacherIds,
+        ]);
+    }
+```
+
+## studentSchedule
+
+Visibilidad: `public`. Líneas originales 1821–1840.
+
+```php
+    public function studentSchedule()
+    {
+        $student = auth('api')->user();
+        $evaluations = Evaluation::with(['project.students', 'room'])
+            ->whereHas('project.students', fn ($query) => $query->where('usuarios.id', $student->id))
+            ->whereNotNull('evaluation_room_id')
+            ->orderBy('fecha_exposicion')
+            ->get()
+            ->map(fn ($evaluation) => [
+                'project_title' => $evaluation->project?->title,
+                'room_name' => $evaluation->room?->nombre ?? $evaluation->sala,
+                'classroom' => $evaluation->room?->salon,
+                'presentation_minutes' => $evaluation->room?->project_presentation_minutes,
+                'evaluation_minutes' => $evaluation->room?->teacher_evaluation_minutes,
+                'date' => optional($evaluation->fecha_exposicion)->toDateTimeString(),
+                'semester' => $evaluation->semestre,
+            ]);
+
+        return response()->json($evaluations);
+    }
+```
+
+## stageForSemester
+
+Visibilidad: `private`. Líneas originales 1842–1849.
+
+```php
+    private function stageForSemester(int $semester): string
+    {
+        return match ($semester) {
+            5 => 'propuesta',
+            8 => 'titulacion',
+            default => 'avance',
+        };
+    }
+```
+
+## shapeCriterion
+
+Visibilidad: `private`. Líneas originales 1851–1862.
+
+```php
+    private function shapeCriterion(RubricCriterion $criterion): array
+    {
+        return [
+            'id' => $criterion->id,
+            'semestre' => $criterion->semestre,
+            'project_id' => $criterion->project_id,
+            'scope' => $criterion->project_id ? 'project' : 'general',
+            'key' => $criterion->clave,
+            'label' => $criterion->pregunta,
+            'orden' => $criterion->orden,
+        ];
+    }
+```
+
+## criteriaForEvaluation
+
+Visibilidad: `private`. Líneas originales 1864–1887.
+
+```php
+    private function criteriaForEvaluation(Evaluation $evaluation)
+    {
+        if ($evaluation->criterios_snapshot !== null) return collect($evaluation->criterios_snapshot)->map(fn ($row) => (new RubricCriterion)->newFromBuilder($row));
+        if (!Schema::hasTable('criterios_rubrica') || !Schema::hasTable('rubricas')) {
+            return collect();
+        }
+
+        return RubricCriterion::query()
+            ->select('criterios_rubrica.*', 'rubricas.semestre as semestre')
+            ->join('rubricas', 'rubricas.id', '=', 'criterios_rubrica.rubrica_id')
+            ->where('rubricas.carrera_id', app(CareerContext::class)->careerId())
+            ->where('rubricas.semestre', $evaluation->semestre)
+            ->where('criterios_rubrica.activo', true)
+            ->where(function ($query) use ($evaluation) {
+                $query->whereNull('criterios_rubrica.proyecto_id');
+                if ((int) $evaluation->semestre === 8 && $evaluation->project_id) {
+                    $query->orWhere('criterios_rubrica.proyecto_id', $evaluation->project_id);
+                }
+            })
+            ->orderByRaw('CASE WHEN criterios_rubrica.proyecto_id IS NULL THEN 0 ELSE 1 END')
+            ->orderBy('criterios_rubrica.orden')
+            ->orderBy('criterios_rubrica.id')
+            ->get();
+    }
+```
+
+## activeScoresForEvaluation
+
+Visibilidad: `private`. Líneas originales 1889–1902.
+
+```php
+    private function activeScoresForEvaluation(Evaluation $evaluation)
+    {
+        if (!$this->supportsEvaluationResponses()) {
+            return collect();
+        }
+
+        $activeCriteria = $this->criteriaForEvaluation($evaluation)->pluck('clave');
+
+        if (!$evaluation->relationLoaded('scores')) {
+            $evaluation->load('scores.teacher', 'scores.criterion', 'scores.attempt');
+        }
+
+        return $evaluation->scores->whereIn('criterio', $activeCriteria);
+    }
+```
+
+## criteriaLabelsForEvaluation
+
+Visibilidad: `private`. Líneas originales 1904–1914.
+
+```php
+    private function criteriaLabelsForEvaluation(Evaluation $evaluation): array
+    {
+        $cacheKey = 'evaluation:'.$evaluation->id;
+        if (isset($this->criteriaLabelCache[$cacheKey])) {
+            return $this->criteriaLabelCache[$cacheKey];
+        }
+
+        return $this->criteriaLabelCache[$cacheKey] = $this->criteriaForEvaluation($evaluation)
+            ->pluck('pregunta', 'clave')
+            ->all();
+    }
+```
+
+## criteriaLabelsForSemester
+
+Visibilidad: `private`. Líneas originales 1916–1933.
+
+```php
+    private function criteriaLabelsForSemester(int $semester): array
+    {
+        if (isset($this->criteriaLabelCache[$semester])) {
+            return $this->criteriaLabelCache[$semester];
+        }
+
+        if (!Schema::hasTable('criterios_rubrica') || !Schema::hasTable('rubricas')) {
+            return $this->criteriaLabelCache[$semester] = [];
+        }
+
+        return $this->criteriaLabelCache[$semester] = RubricCriterion::query()
+            ->join('rubricas', 'rubricas.id', '=', 'criterios_rubrica.rubrica_id')
+            ->where('rubricas.carrera_id', app(CareerContext::class)->careerId())
+            ->where('rubricas.semestre', $semester)
+            ->where('criterios_rubrica.activo', true)
+            ->pluck('criterios_rubrica.pregunta', 'criterios_rubrica.clave')
+            ->all();
+    }
+```
+
+## shapeEvaluation
+
+Visibilidad: `private`. Líneas originales 1935–2047.
+
+```php
+    private function shapeEvaluation(Evaluation $evaluation): array
+    {
+        if (!$evaluation->relationLoaded('attempts')) {
+            $evaluation->setRelation('attempts', collect());
+        }
+
+        $currentUser = auth('api')->user();
+        $scores = $this->activeScoresForEvaluation($evaluation);
+        $labels = $this->criteriaLabelsForEvaluation($evaluation);
+        $scoreMode = $evaluation->modo_puntaje ?? $this->rubricScoreModeForSemester((int) $evaluation->semestre);
+        $maxScore = $scoreMode === 'numeric' ? 5 : 4;
+        $globalAverage = $this->scoreCollectionAverage($scores, (int) $evaluation->semestre);
+
+        $teacherBreakdown = $scores
+            ->groupBy('teacher_id')
+            ->sortKeys()
+            ->values()
+            ->map(function ($teacherScores, $teacherIndex) use ($labels, $evaluation, $currentUser, $scoreMode, $maxScore) {
+                $teacher = $teacherScores->first()->teacher;
+                $attempt = $evaluation->attempts?->firstWhere('teacher_id', $teacher?->id);
+                $canViewScoreDetail = $this->canViewTeacherScoreDetail($currentUser, $teacher?->id);
+                $isCurrentTeacher = $currentUser && (string) $currentUser->id === (string) $teacher?->id;
+                $canRevealIdentity = $isCurrentTeacher || $this->isEvaluationManager($currentUser);
+                $teacherName = trim(($teacher?->nombres ?? '') . ' ' . ($teacher?->apa ?? '') . ' ' . ($teacher?->ama ?? '')) ?: 'Docente';
+                return [
+                    'teacher_id' => $teacher?->id,
+                    'teacher_name' => $canRevealIdentity ? $teacherName : 'Docente ' . ($teacherIndex + 1),
+                    'teacher_is_anonymous' => !$canRevealIdentity,
+                    'average' => $this->scoreCollectionAverage($teacherScores, (int) $evaluation->semestre),
+                    'score_mode' => $teacherScores->every(fn ($score) => $this->isLegacyLevel($score->nivel))
+                        ? 'legacy'
+                        : $scoreMode,
+                    'max_score' => $teacherScores->every(fn ($score) => $this->isLegacyLevel($score->nivel))
+                        ? 3
+                        : $maxScore,
+                    'general_comment' => $attempt?->general_comment,
+                    'apto_titulacion' => $this->attemptTitulationVote($attempt),
+                    'can_view_score_detail' => $canViewScoreDetail,
+                    'scores' => $canViewScoreDetail ? $teacherScores->map(fn ($score) => [
+                        'criterio' => $score->criterio,
+                        'criterio_label' => $labels[$score->criterio] ?? $score->criterio,
+                        'nivel' => $score->nivel,
+                        'nivel_label' => $this->levelLabels[$score->nivel] ?? $score->nivel,
+                        'puntaje' => $score->puntaje,
+                        'puntaje_max' => $this->maxScoreForScore($score, (int) $evaluation->semestre),
+                        'score_mode' => $this->scoreModeForScore($score, (int) $evaluation->semestre),
+                        'comentario' => $score->comentario,
+                    ])->values() : collect(),
+                ];
+            })
+            ->values();
+        $expectedEvaluatorIds = $evaluation->room
+            ? $evaluation->room->teachers->pluck('id')->map(fn ($id) => (string) $id)->unique()->values()
+            : collect();
+        $completedEvaluatorIds = $teacherBreakdown->pluck('teacher_id')->filter()->map(fn ($id) => (string) $id)->unique()->values();
+        $expectedEvaluatorsCount = $expectedEvaluatorIds->count();
+        $evaluatedByAll = $expectedEvaluatorsCount > 0 && $expectedEvaluatorIds->diff($completedEvaluatorIds)->isEmpty();
+        $isCompleted = $evaluation->sequence_status === 'evaluado'
+            || $evaluation->estado === 'finalizada'
+            || $evaluation->finalized_at !== null;
+        $currentTeacherAttempt = $evaluation->attempts->firstWhere('teacher_id', auth('api')->id());
+        $titulationAptSummary = $this->titulationAptSummary($evaluation);
+        $documentReadiness = $this->evaluationDocumentReadiness($evaluation->project);
+        $canCompleteEvaluation = (
+            $this->isRoomResponsible($evaluation->room, $currentUser)
+            || $this->isEvaluationManager($currentUser)
+        ) && !$evaluation->room?->sequence_locked && !$isCompleted && $completedEvaluatorIds->isNotEmpty();
+
+        return [
+            'id' => $evaluation->id,
+            'project_id' => $evaluation->project_id,
+            'evaluation_room_id' => $evaluation->evaluation_room_id,
+            'project' => $evaluation->project,
+            'semestre' => $evaluation->semestre,
+            'etapa' => $evaluation->etapa,
+            'sala' => $evaluation->sala,
+            'room' => $evaluation->room ? $this->shapeRoom($evaluation->room) : null,
+            'fecha_exposicion' => optional($evaluation->fecha_exposicion)->toDateTimeString(),
+            'presentation_order' => $evaluation->presentation_order,
+            'sequence_status' => $evaluation->sequence_status,
+            'estado' => $evaluation->estado,
+            'resultado' => $evaluation->resultado,
+            'room_feedback' => $evaluation->room_feedback,
+            'feedback_at' => optional($evaluation->feedback_at)->toDateTimeString(),
+            'finalized_at' => optional($evaluation->finalized_at)->toDateTimeString(),
+            'archived_at' => optional($evaluation->archived_at)->toDateTimeString(),
+            'archived_by' => $evaluation->archived_by,
+            'apto_titulacion' => $evaluation->apto_titulacion,
+            'titulation_apt_summary' => $titulationAptSummary,
+            'global_average' => $globalAverage,
+            'criteria' => $this->criteriaForEvaluation($evaluation)->map(fn ($c) => $this->shapeCriterion($c))->values(),
+            'score_mode' => $scoreMode,
+            'max_score' => $maxScore,
+            'global_average_color' => $globalAverage < 70 ? 'danger' : ($globalAverage <= 85 ? 'warning' : 'success'),
+            'evaluators_count' => $teacherBreakdown->count(),
+            'expected_evaluators_count' => $expectedEvaluatorsCount,
+            'evaluated_by_all' => $evaluatedByAll,
+            'is_completed' => $isCompleted,
+            'completed_manually' => $isCompleted && !$evaluatedByAll,
+            'evaluation_badge_color' => $isCompleted ? 'success' : ($evaluation->sequence_status === 'activo' ? 'primary' : 'secondary'),
+            'teacher_breakdown' => $teacherBreakdown,
+            'current_teacher_attempts' => optional($currentTeacherAttempt)->attempts_count ?? 0,
+            'current_teacher_apto_titulacion' => $this->attemptTitulationVote($currentTeacherAttempt),
+            'current_teacher_has_scores' => $scores->where('teacher_id', auth('api')->id())->isNotEmpty(),
+            'max_attempts' => $evaluation->room?->max_attempts ?? 1,
+            'document_readiness' => $documentReadiness,
+            'can_score_now' => $this->canScoreEvaluation($evaluation, auth('api')->user()),
+            'score_block_reason' => $this->scoreBlockReason($evaluation, auth('api')->user()),
+            'is_room_responsible' => $this->isRoomResponsible($evaluation->room, auth('api')->user()),
+            'can_manage_evaluations' => $this->isEvaluationManager(auth('api')->user()),
+            'can_mark_completed' => $canCompleteEvaluation,
+        ];
+    }
+```
+
+## canViewTeacherScoreDetail
+
+Visibilidad: `private`. Líneas originales 2049–2058.
+
+```php
+    private function canViewTeacherScoreDetail($user, ?string $teacherId): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        return $this->isEvaluationManager($user)
+            || (int) $user->perfil_id === 2
+            || ((string) $user->id === (string) $teacherId);
+    }
+```
+
+## roomRules
+
+Visibilidad: `private`. Líneas originales 2060–2206.
+
+Parámetros consultados directamente (no equivale a lista de campos obligatorios): `project_ids`, `project_order`.
+
+```php
+    private function roomRules(Request $request): array
+    {
+        $ignoreId = $request->route('id');
+        $startRules = ['required', 'date'];
+        if ($ignoreId && is_array($request->input('project_ids'))) {
+            $archivedProjectIds = Evaluation::query()
+                ->where('evaluation_room_id', $ignoreId)
+                ->where('estado', 'archivada')
+                ->pluck('project_id')
+                ->map(fn ($id) => (int) $id);
+            $requestedOrder = $request->input('project_order', []);
+            $activeProjectIds = collect($request->input('project_ids', []))
+                ->map(fn ($id) => (int) $id)
+                ->reject(fn ($id) => $archivedProjectIds->contains($id))
+                ->unique()
+                ->sortBy(fn ($id) => (int) ($requestedOrder[$id] ?? $requestedOrder[(string) $id] ?? PHP_INT_MAX))
+                ->values();
+            $request->merge([
+                'project_ids' => $activeProjectIds->all(),
+                'project_order' => $activeProjectIds
+                    ->mapWithKeys(fn ($id, $index) => [(string) $id => $index + 1])
+                    ->all(),
+            ]);
+        }
+        $responsibleRules = [$ignoreId ? 'nullable' : 'required', Rule::exists('usuarios', 'id')->where('activo', true)];
+        $projectIdsRules = $ignoreId ? 'present|array' : 'required|array|min:1';
+        $projectOrderRules = $ignoreId ? 'present|array' : 'required|array|min:1';
+        if (!$ignoreId) {
+            $startRules[] = 'after_or_equal:now';
+        }
+        $validated = $request->validate([
+            'nombre' => 'required|string|max:80',
+            'salon' => 'nullable|string|max:120',
+            'salon_id' => 'required|integer|exists:salones_institucionales,id',
+            'periodo_id' => 'nullable|integer|exists:periodos_academicos,id',
+            'semestre' => 'required|integer|in:5,6,7,8',
+            'responsible_teacher_id' => $responsibleRules,
+            'fecha_evaluacion' => $startRules,
+            'fecha_fin_evaluacion' => 'required|date|after:fecha_evaluacion',
+            'teacher_evaluation_minutes' => 'required|integer|min:1|max:240',
+            'project_presentation_minutes' => 'required|integer|min:1|max:240',
+            'max_attempts' => 'required|integer|min:1|max:10',
+            'teacher_ids' => 'required|array|min:1',
+            'teacher_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)],
+            'project_ids' => $projectIdsRules,
+            'project_ids.*' => 'integer|distinct|exists:proyectos,id',
+            'project_order' => $projectOrderRules,
+            'project_order.*' => 'integer|min:1|distinct',
+        ]);
+        $validated['etapa'] = $this->stageForSemester((int) $validated['semestre']);
+
+        $teacherIds = collect($validated['teacher_ids'])->map(fn ($id) => (string) $id)->unique();
+        foreach ($teacherIds as $teacherId) app(\App\Services\AcademicWorkflowService::class)->teacher($teacherId);
+        if (empty($validated['responsible_teacher_id']) && $teacherIds->count() === 1) {
+            $validated['responsible_teacher_id'] = $teacherIds->first();
+        }
+        if (empty($validated['responsible_teacher_id'])) {
+            throw ValidationException::withMessages([
+                'responsible_teacher_id' => ['Selecciona un encargado entre los docentes activos de la sala.'],
+            ]);
+        }
+        if (!$teacherIds->contains((string) $validated['responsible_teacher_id'])) {
+            throw ValidationException::withMessages([
+                'responsible_teacher_id' => ['El encargado de sala debe formar parte de los evaluadores asignados.'],
+            ]);
+        }
+
+        $rubric = Rubric::query()
+            ->where('semestre', (int) $validated['semestre'])
+            ->where('activa', true)
+            ->orderByDesc('id')
+            ->first();
+        if (!$rubric) {
+            throw ValidationException::withMessages([
+                'semestre' => ['No existe una rubrica activa para el semestre y la carrera seleccionados.'],
+            ]);
+        }
+        $validated['rubrica_id'] = $rubric->id;
+
+        $startsAt = \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion']);
+        $endsAt = \Illuminate\Support\Carbon::parse($validated['fecha_fin_evaluacion']);
+        if ($ignoreId) {
+            $existingRoom = EvaluationRoom::findOrFail($ignoreId);
+            $originalStart = $existingRoom->fecha_evaluacion;
+            if ($originalStart && $originalStart->isPast() && !$startsAt->equalTo($originalStart)) {
+                throw ValidationException::withMessages([
+                    'fecha_evaluacion' => ['No puedes cambiar la hora de inicio después de que la sala comenzó; únicamente puedes extender su hora de finalización.'],
+                ]);
+            }
+            if ($originalStart && !$startsAt->equalTo($originalStart) && $startsAt->isPast()) {
+                throw ValidationException::withMessages([
+                    'fecha_evaluacion' => ['La nueva hora de inicio no puede ser anterior al momento actual.'],
+                ]);
+            }
+        }
+
+        $duplicateName = $this->overlappingRoomQuery(
+            EvaluationRoom::query()->where('estado', '!=', 'finalizada'),
+            $startsAt,
+            $endsAt
+        )
+            ->whereRaw('LOWER(nombre) = ?', [mb_strtolower($validated['nombre'])])
+            ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+            ->exists();
+        if ($duplicateName) {
+            throw ValidationException::withMessages(['nombre' => ['Ya existe una sala activa con ese nombre en ese horario.']]);
+        }
+
+        $projectIds = collect($validated['project_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        if ($projectIds->count() !== count($validated['project_ids'] ?? [])) {
+            throw ValidationException::withMessages(['project_ids' => ['No puedes asignar el mismo proyecto mas de una vez en la sala.']]);
+        }
+
+        $careerProjectCount = Project::query()->whereIn('id', $projectIds)->count();
+        if ($careerProjectCount !== $projectIds->count()) {
+            throw ValidationException::withMessages([
+                'project_ids' => ['Uno o mas proyectos no pertenecen a la carrera activa.'],
+            ]);
+        }
+
+        $orders = $projectIds->map(function ($projectId) use ($validated) {
+            return (int) ($validated['project_order'][$projectId]
+                ?? $validated['project_order'][(string) $projectId]
+                ?? 0);
+        })->sort()->values();
+        $expectedOrders = $projectIds->isEmpty()
+            ? collect()
+            : collect(range(1, $projectIds->count()));
+        if ($orders->all() !== $expectedOrders->all()) {
+            throw ValidationException::withMessages([
+                'project_order' => ['El orden debe ser consecutivo, sin huecos ni repeticiones, desde 1 hasta el total de proyectos.'],
+            ]);
+        }
+
+        $duplicateProjectRoom = $projectIds->isNotEmpty() && $this->schedulableRoomQuery()
+            ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+            ->whereHas('projects', fn ($query) => $query->whereIn('proyectos.id', $projectIds))
+            ->exists();
+
+        if ($duplicateProjectRoom) {
+            throw ValidationException::withMessages([
+                'project_ids' => ['Uno o mas proyectos ya estan asignados a otra sala activa.'],
+            ]);
+        }
+
+        return $validated;
+    }
+```
+
+## schedulableRoomQuery
+
+Visibilidad: `private`. Líneas originales 2208–2222.
+
+```php
+    private function schedulableRoomQuery()
+    {
+        $query = EvaluationRoom::query()->where('estado', '!=', 'finalizada');
+
+        if ($this->supportsEvaluationArchive()) {
+            $query->where(function ($scope) {
+                $scope->whereDoesntHave('evaluations')
+                    ->orWhereHas('evaluations', fn ($evaluationQuery) => $evaluationQuery
+                        ->whereNull('archived_at')
+                        ->where('estado', '!=', 'archivada'));
+            });
+        }
+
+        return $query;
+    }
+```
+
+## overlappingRoomQuery
+
+Visibilidad: `private`. Líneas originales 2224–2239.
+
+```php
+    private function overlappingRoomQuery($query, $startsAt, $endsAt)
+    {
+        if (Schema::hasColumn('salas_evaluacion', 'termina_en')) {
+            return $query
+                ->where('fecha_evaluacion', '<', $endsAt)
+                ->whereRaw(
+                    'COALESCE(termina_en, DATE_ADD(inicia_en, INTERVAL 1 HOUR)) > ?',
+                    [$startsAt->toDateTimeString()]
+                );
+        }
+
+        return $query->whereBetween('fecha_evaluacion', [
+            $startsAt->copy()->startOfHour(),
+            $startsAt->copy()->endOfHour(),
+        ]);
+    }
+```
+
+## syncRoomEvaluations
+
+Visibilidad: `private`. Líneas originales 2241–2331.
+
+```php
+    private function syncRoomEvaluations(EvaluationRoom $room, array $projectIds, array $projectOrder): void
+    {
+        $orderedProjectIds = collect($projectIds)
+            ->map(fn ($id) => (int) $id)
+            ->sortBy(fn ($id) => (int) ($projectOrder[$id] ?? $projectOrder[(string) $id] ?? PHP_INT_MAX))
+            ->values();
+        $existing = Evaluation::query()
+            ->where('evaluation_room_id', $room->id)
+            ->lockForUpdate()
+            ->get()
+            ->keyBy(fn ($evaluation) => (int) $evaluation->project_id);
+        $activeExisting = $existing->reject(fn ($evaluation) => $evaluation->estado === 'archivada');
+        $removed = $activeExisting->keys()->diff($orderedProjectIds);
+
+        if ($removed->isNotEmpty()) {
+            $evaluatedIds = $activeExisting->only($removed)->pluck('id');
+            if (EvaluationAttempt::whereIn('evaluation_id', $evaluatedIds)->exists()) {
+                throw ValidationException::withMessages([
+                    'project_ids' => ['No puedes retirar un proyecto que ya contiene rubricas capturadas.'],
+                ]);
+            }
+            abort_if(Evaluation::whereIn('id', $evaluatedIds)->where(fn ($q) => $q->whereNotNull('autorizacion_id')->orWhereNotNull('presentacion_autorizacion_id'))->exists(), 409, 'Una evaluación autorizada conserva su historial; finaliza la sala antes de programar otro intento.');
+            $archiveOrder = max(65000, (int) $existing->where('estado', 'archivada')->max('presentation_order') + 1);
+            foreach ($evaluatedIds as $removedId) {
+                abort_if($archiveOrder > 65535, 409, 'La sala alcanzó el límite de cambios; crea una nueva sala.');
+                Evaluation::where('id', $removedId)->update(['estado' => 'archivada', 'presentation_order' => $archiveOrder++]);
+            }
+        }
+
+        // Evita choques con uq_evaluacion_sala_orden al intercambiar posiciones.
+        $activeExisting->except($removed->all())->values()->each(function ($evaluation, $index) {
+            DB::table('evaluaciones')->where('id', $evaluation->id)->update([
+                'orden_presentacion' => 60000 + $index,
+            ]);
+        });
+
+        foreach ($orderedProjectIds as $projectId) {
+            $order = (int) ($projectOrder[$projectId] ?? $projectOrder[(string) $projectId]);
+            $evaluation = $existing->get($projectId);
+            if ($evaluation) {
+                abort_if($evaluation->estado === 'archivada', 409, 'La evaluación archivada se conserva; solicita un nuevo intento.');
+                $evaluation->update([
+                    'presentation_order' => $order,
+                    'fecha_exposicion' => $room->fecha_evaluacion,
+                    // Preserve captured results and lifecycle when updating room metadata.
+                ]);
+                continue;
+            }
+
+            $semester = (int) $room->rubric->semestre;
+            $previousIds = DB::table('evaluaciones as e')->join('salas_evaluacion as s', 's.id', '=', 'e.sala_id')
+                ->join('rubricas as r', 'r.id', '=', 's.rubrica_id')->where('e.proyecto_id', $projectId)
+                ->where('s.id', '!=', $room->id)->where('r.semestre', $semester)->pluck('e.id');
+            $until = $room->late_evaluation_until ?? $room->fecha_fin_evaluacion;
+            $authorizations = app(\App\Services\AcademicAuthorizationService::class);
+            $authorization = $authorizations->valid('reintento', $projectId, (int) $room->periodo_id)
+                ->whereIn('evaluacion_id', $previousIds)->where('vigente_hasta', '>=', $until)->lockForUpdate()->first();
+            $project = Project::findOrFail($projectId);
+            $stage = app(\App\Services\AcademicWorkflowService::class)->projectSemester($project, (int) $room->periodo_id) !== $semester
+                ? $authorizations->valid('presentacion_semestre', $projectId, (int) $room->periodo_id)
+                    ->where('semestre_destino', $semester)->where('vigente_hasta', '>=', $until)->lockForUpdate()->first() : null;
+            foreach ([$authorization, $stage] as $approval) {
+                if ($approval) {
+                    DB::table('autorizaciones_academicas')->where('id', $approval->id)->update(['consumida_en' => now(), 'updated_at' => now()]);
+                    app(\App\Services\AcademicWorkflowService::class)->audit('autorizacion.utilizada', 'autorizacion', $approval->id, $approval, ['sala_id' => $room->id]);
+                }
+            }
+            $newEvaluation = Evaluation::create([
+                'modo_puntaje' => $this->rubricScoreModeForSemester($semester),
+                'autorizacion_id' => $authorization?->id,
+                'presentacion_autorizacion_id' => $stage?->id,
+                'carrera_id' => $room->carrera_id,
+                'project_id' => $projectId,
+                'evaluation_room_id' => $room->id,
+                'fecha_exposicion' => $room->fecha_evaluacion,
+                'presentation_order' => $order,
+                'estado' => 'programada',
+                'resultado' => 'pendiente',
+                'created_by' => auth('api')->id(),
+            ]);
+            $criteria = $this->criteriaForEvaluation($newEvaluation);
+            if ($criteria->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'project_ids' => ['Configura criterios activos en la rúbrica antes de programar la evaluación del proyecto '.$projectId.'.'],
+                ]);
+            }
+            $newEvaluation->update(['criterios_snapshot' => $criteria->map(fn ($c) => $c->getAttributes())->all()]);
+        }
+
+        $room->unsetRelation('projects');
+    }
+```
+
+## shapeRoom
+
+Visibilidad: `private`. Líneas originales 2333–2408.
+
+```php
+    private function shapeRoom(EvaluationRoom $room): array
+    {
+        $room->loadMissing(['teachers', 'responsibleTeacher', 'projects']);
+        $attemptsByEvaluation = EvaluationAttempt::query()
+            ->whereIn('evaluation_id', $room->projects->pluck('pivot.id')->filter())
+            ->whereNotNull('last_submitted_at')
+            ->get(['evaluation_id', 'teacher_id'])
+            ->groupBy(fn ($attempt) => (int) $attempt->evaluation_id);
+        $expectedTeacherIds = $room->teachers->pluck('id')->map(fn ($id) => (string) $id);
+        $projects = $room->projects->map(function ($project) use ($attemptsByEvaluation, $expectedTeacherIds, $room) {
+            $data = $project->toArray();
+            $data['presentation_order'] = (int) (($project->pivot->presentation_order ?? $project->pivot->orden_presentacion) ?? 0);
+            $data['evaluation_id'] = (int) $project->pivot->id;
+            $data['sequence_status'] = match ($project->pivot->estado) {
+                'en_evaluacion' => 'activo',
+                'finalizada', 'archivada' => 'evaluado',
+                default => 'pendiente',
+            };
+            $submittedIds = ($attemptsByEvaluation->get((int) $project->pivot->id) ?? collect())
+                ->pluck('teacher_id')->map(fn ($id) => (string) $id)->unique();
+            $data['submitted_evaluators_count'] = $expectedTeacherIds->intersect($submittedIds)->count();
+            $data['expected_evaluators_count'] = $expectedTeacherIds->count();
+            $data['pending_evaluators_count'] = $expectedTeacherIds->diff($submittedIds)->count();
+            $data['is_current'] = $room->sequence_locked
+                && (int) $room->current_order === (int) $data['presentation_order']
+                && $room->completed_at === null;
+
+            return $data;
+        })->values();
+        $remainingSeconds = $this->roomTimerRemainingSeconds($room);
+        $timerStatus = $room->timer_status;
+        if ($timerStatus === 'en_curso' && $remainingSeconds === 0) {
+            $timerStatus = 'finalizado';
+        }
+        $user = auth('api')->user();
+        $displayIdentifier = $this->roomDisplayIdentifier($room);
+
+        return [
+            'id' => $room->id,
+            'nombre' => $room->nombre,
+            'display_identifier' => $displayIdentifier,
+            'display_name' => trim($room->nombre . ' · ' . $displayIdentifier),
+            'salon' => $room->salon,
+            'periodo_id' => $room->periodo_id,
+            'salon_id' => $room->salon_id,
+            'semestre' => $room->semestre,
+            'responsible_teacher_id' => $room->responsible_teacher_id,
+            'responsible_teacher' => $room->responsibleTeacher,
+            'fecha_evaluacion' => optional($room->fecha_evaluacion)->toDateTimeString(),
+            'fecha_fin_evaluacion' => optional($room->fecha_fin_evaluacion)->toDateTimeString(),
+            'teacher_evaluation_minutes' => $room->teacher_evaluation_minutes,
+            'project_presentation_minutes' => $room->project_presentation_minutes,
+            'max_attempts' => $room->max_attempts,
+            'sequence_locked' => $room->sequence_locked,
+            'current_order' => $room->current_order,
+            'sequence_version' => $room->sequence_version,
+            'completed_at' => optional($room->completed_at)->toDateTimeString(),
+            'allow_late_evaluations' => $room->allow_late_evaluations,
+            'late_evaluation_until' => optional($room->late_evaluation_until)->toDateTimeString(),
+            'late_evaluation_reason' => $room->late_evaluation_reason,
+            'evaluation_window' => $this->roomEvaluationWindow($room),
+            'timer' => [
+                'status' => $timerStatus ?: 'detenido',
+                'order' => $room->timer_order,
+                'duration_seconds' => $room->timer_duration_seconds,
+                'remaining_seconds' => $remainingSeconds,
+                'started_at' => optional($room->timer_started_at)->toDateTimeString(),
+                'ends_at' => optional($room->timer_ends_at)->toDateTimeString(),
+            ],
+            'can_control_room' => $this->isRoomResponsible($room, $user) || $this->isEvaluationManager($user),
+            'can_edit_room' => $this->isEvaluationManager($user) && !$room->sequence_locked,
+            'teachers' => $room->teachers ?? collect(),
+            'projects' => $projects,
+            'proyectos' => $projects,
+        ];
+    }
+```
+
+## roomDisplayIdentifier
+
+Visibilidad: `private`. Líneas originales 2410–2421.
+
+```php
+    private function roomDisplayIdentifier(EvaluationRoom $room): string
+    {
+        $semester = (int) $room->semestre;
+        $semesterLabel = [
+            1 => '1ro', 2 => '2do', 3 => '3ro', 4 => '4to', 5 => '5to',
+            6 => '6to', 7 => '7mo', 8 => '8vo', 9 => '9no', 10 => '10mo',
+        ][$semester] ?? ($semester . 'to');
+        $date = $room->fecha_evaluacion ?? $room->created_at ?? now();
+        $half = $date->month <= 6 ? 1 : 2;
+
+        return sprintf('%s-%d-%s', $semesterLabel, $half, $date->format('y'));
+    }
+```
+
+## roomTimerRemainingSeconds
+
+Visibilidad: `private`. Líneas originales 2423–2437.
+
+```php
+    private function roomTimerRemainingSeconds(EvaluationRoom $room): int
+    {
+        if ($room->timer_status === 'finalizado') {
+            return 0;
+        }
+        if ($room->timer_status === 'en_curso' && $room->timer_ends_at) {
+            return max(0, $room->timer_ends_at->getTimestamp() - now()->getTimestamp());
+        }
+        if ($room->timer_remaining_seconds !== null) {
+            return max(0, (int) $room->timer_remaining_seconds);
+        }
+
+        return max(0, (int) ($room->timer_duration_seconds
+            ?: (((int) $room->project_presentation_minutes) * 60)));
+    }
+```
+
+## roomEvaluationWindow
+
+Visibilidad: `private`. Líneas originales 2439–2474.
+
+```php
+    private function roomEvaluationWindow(?EvaluationRoom $room): array
+    {
+        if (!$room || !$room->fecha_evaluacion || !$room->fecha_fin_evaluacion) {
+            return [
+                'status' => 'closed',
+                'is_open' => false,
+                'starts_at' => null,
+                'ends_at' => null,
+                'late_until' => null,
+            ];
+        }
+
+        $now = now();
+        $startsAt = $room->fecha_evaluacion;
+        $endsAt = $room->fecha_fin_evaluacion;
+        $lateUntil = $room->late_evaluation_until;
+        $status = 'closed';
+        $isOpen = false;
+        if ($now->lt($startsAt)) {
+            $status = 'scheduled';
+        } elseif ($now->lte($endsAt)) {
+            $status = 'open';
+            $isOpen = true;
+        } elseif ($room->allow_late_evaluations && $lateUntil && $now->lte($lateUntil)) {
+            $status = 'late_authorized';
+            $isOpen = true;
+        }
+
+        return [
+            'status' => $status,
+            'is_open' => $isOpen,
+            'starts_at' => $startsAt->toDateTimeString(),
+            'ends_at' => $endsAt->toDateTimeString(),
+            'late_until' => optional($lateUntil)->toDateTimeString(),
+        ];
+    }
+```
+
+## canScoreEvaluation
+
+Visibilidad: `private`. Líneas originales 2476–2488.
+
+```php
+    private function canScoreEvaluation(Evaluation $evaluation, $user): bool
+    {
+        if (!$this->canUserScoreEvaluation($evaluation, $user) || EvaluationAttempt::where('evaluation_id', $evaluation->id)->where('teacher_id', $user->id)->whereNotNull('last_submitted_at')->exists()) {
+            return false;
+        }
+
+        if (!$this->evaluationDocumentReadiness($evaluation->project)['all_students_released']) {
+            return false;
+        }
+
+        return $this->canProceedInRoomSequence($evaluation)
+            && $this->roomEvaluationWindow($evaluation->room)['is_open'];
+    }
+```
+
+## scoreBlockReason
+
+Visibilidad: `private`. Líneas originales 2490–2519.
+
+```php
+    private function scoreBlockReason(Evaluation $evaluation, $user): ?string
+    {
+        if ($user && EvaluationAttempt::where('evaluation_id', $evaluation->id)->where('teacher_id', $user->id)->whereNotNull('last_submitted_at')->exists()) return 'Tu resultado está registrado. Un nuevo intento requiere autorización y otra evaluación.';
+        if ($evaluation->sequence_status === 'evaluado'
+            || $evaluation->estado === 'finalizada'
+            || $evaluation->finalized_at !== null) {
+            return 'Esta evaluación ya fue finalizada.';
+        }
+
+        if (!$this->canUserScoreEvaluation($evaluation, $user)) {
+            return 'No estás asignado como evaluador de esta sala.';
+        }
+
+        if (!$this->evaluationDocumentReadiness($evaluation->project)['all_students_released']) {
+            return 'Falta la hoja de liberación o todavía hay estudiantes sin liberar.';
+        }
+
+        $window = $this->roomEvaluationWindow($evaluation->room);
+        if (!$window['is_open']) {
+            return $window['status'] === 'scheduled'
+                ? 'La evaluación estará disponible cuando inicie el horario de la sala.'
+                : 'El horario terminó; el encargado debe extenderlo o autorizar la evaluación fuera de horario.';
+        }
+
+        if (!$this->canProceedInRoomSequence($evaluation)) {
+            return 'Espera a que el encargado habilite este turno de exposición.';
+        }
+
+        return null;
+    }
+```
+
+## canProceedInRoomSequence
+
+Visibilidad: `private`. Líneas originales 2521–2539.
+
+```php
+    private function canProceedInRoomSequence(Evaluation $evaluation): bool
+    {
+        if (
+            $evaluation->sequence_status === 'evaluado'
+            || $evaluation->estado === 'finalizada'
+            || $evaluation->finalized_at !== null
+        ) {
+            return false;
+        }
+
+        $room = $evaluation->room;
+        if (!$room || !$room->sequence_locked) {
+            return true;
+        }
+
+        return $evaluation->sequence_status === 'activo'
+            && (int) $evaluation->presentation_order === (int) $room->current_order
+            && $room->completed_at === null;
+    }
+```
+
+## evaluationDocumentReadiness
+
+Visibilidad: `private`. Líneas originales 2541–2595.
+
+```php
+    private function evaluationDocumentReadiness(?Project $project): array
+    {
+        if (!$project) {
+            return [
+                'release_sheet_uploaded' => false,
+                'presentation_uploaded' => false,
+                'all_students_released' => false,
+                'students' => [],
+            ];
+        }
+
+        if (isset($this->evaluationDocumentReadinessCache[$project->id])) {
+            return $this->evaluationDocumentReadinessCache[$project->id];
+        }
+
+        $project->loadMissing('students:id,nombres,apa,ama');
+        $documents = RepositoryDocument::with('releaseStatuses')
+            ->where('project_id', $project->id)
+            ->where('activo', true)
+            ->whereIn('document_category', [
+                RepositoryDocument::CATEGORY_EVALUATION_RELEASE,
+                RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION,
+            ])
+            ->orderByDesc('created_at')
+            ->get();
+        $releaseSheet = $documents->firstWhere(
+            'document_category',
+            RepositoryDocument::CATEGORY_EVALUATION_RELEASE
+        );
+        $presentation = $documents->firstWhere(
+            'document_category',
+            RepositoryDocument::CATEGORY_EVALUATION_PRESENTATION
+        );
+        $releaseStatuses = $releaseSheet?->releaseStatuses
+            ?->keyBy(fn ($status) => (string) $status->alumno_id) ?? collect();
+        $students = $project->students->map(function ($student) use ($releaseStatuses) {
+            $status = $releaseStatuses->get((string) $student->id);
+
+            return [
+                'id' => $student->id,
+                'name' => trim("{$student->nombres} {$student->apa} {$student->ama}"),
+                'released' => (bool) ($status?->liberado ?? false),
+                'reviewed' => $status?->revisado_en !== null,
+            ];
+        })->values();
+
+        return $this->evaluationDocumentReadinessCache[$project->id] = [
+            'release_sheet_uploaded' => $releaseSheet !== null,
+            'presentation_uploaded' => $presentation !== null,
+            'all_students_released' => $releaseSheet !== null
+                && $students->isNotEmpty()
+                && $students->every(fn ($student) => $student['released']),
+            'students' => $students,
+        ];
+    }
+```
+
+## canUserScoreEvaluation
+
+Visibilidad: `private`. Líneas originales 2597–2612.
+
+```php
+    private function canUserScoreEvaluation(Evaluation $evaluation, $user): bool
+    {
+        if (!$user || !in_array((int) $user->perfil_id, [1, 2, 5, 6, 7], true)) {
+            return false;
+        }
+
+        $room = $evaluation->room;
+        if (!$room) {
+            return false;
+        }
+
+        $room->loadMissing('teachers');
+        $isAssignedEvaluator = $room->teachers->contains(fn ($teacher) => (string) $teacher->id === (string) $user->id);
+
+        return $isAssignedEvaluator;
+    }
+```
+
+## isRoomResponsible
+
+Visibilidad: `private`. Líneas originales 2614–2617.
+
+```php
+    private function isRoomResponsible(?EvaluationRoom $room, $user): bool
+    {
+        return $room && $room->responsible_teacher_id && (string) $room->responsible_teacher_id === (string) $user->id;
+    }
+```
+
+## evaluationManagerIds
+
+Visibilidad: `private`. Líneas originales 2619–2626.
+
+```php
+    private function evaluationManagerIds(): array
+    {
+        return collect(CareerSetting::valueFor('evaluation_manager_teacher_ids', []))
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+```
+
+## isEvaluationManager
+
+Visibilidad: `private`. Líneas originales 2628–2638.
+
+```php
+    private function isEvaluationManager($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+        if ($user->canManageProjects()) {
+            return true;
+        }
+
+        return (int) $user->perfil_id === 2 && in_array((string) $user->id, $this->evaluationManagerIds(), true);
+    }
+```
+
+## guardEvaluationManager
+
+Visibilidad: `private`. Líneas originales 2640–2648.
+
+```php
+    private function guardEvaluationManager($user = null)
+    {
+        $user = $user ?: auth('api')->user();
+        if ($this->isEvaluationManager($user)) {
+            return null;
+        }
+
+        return response()->json(['error' => 'No tienes permiso para gestionar evaluaciones.'], 403);
+    }
+```

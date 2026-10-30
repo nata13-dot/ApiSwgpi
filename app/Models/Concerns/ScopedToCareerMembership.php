@@ -36,7 +36,7 @@ trait ScopedToCareerMembership
 
         static::created(function ($user): void {
             $context = app(CareerContext::class);
-            if (!$context->careerId() || $user->globalProfileId() === 4) {
+            if (!$context->careerId() || $user->globalProfileId() === 4 || !$user->pendingProfileId()) {
                 return;
             }
 
@@ -46,8 +46,8 @@ trait ScopedToCareerMembership
                     'carrera_id' => $context->careerId(),
                 ],
                 [
-                    'perfil_id' => $user->globalProfileId(),
-                    'es_principal' => !$user->careerMemberships()->exists(),
+                    'perfil_id' => $user->pendingProfileId(),
+                    'es_principal' => !$user->careerMemberships()->where('es_principal', true)->exists(),
                     'activo' => array_key_exists('activo', $user->getAttributes())
                         ? (bool) $user->activo
                         : true,
@@ -73,7 +73,9 @@ trait ScopedToCareerMembership
         $careerId = app(CareerContext::class)->careerId();
         $profileIds = array_map('intval', (array) $profileIds);
         if (!$careerId) {
-            return $query->whereIn('usuarios.perfil_id', $profileIds);
+            return $query->whereHas('careerMemberships', fn ($membershipQuery) => $membershipQuery
+                ->where('es_principal', true)
+                ->whereIn('perfil_id', $profileIds));
         }
 
         return $query->whereHas('careerMemberships', fn ($membershipQuery) => $membershipQuery

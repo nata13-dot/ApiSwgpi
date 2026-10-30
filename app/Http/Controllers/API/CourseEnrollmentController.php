@@ -82,7 +82,8 @@ class CourseEnrollmentController extends Controller
         app(\App\Services\AcademicWorkflowService::class)->requireOpen((int) $course->group->periodo_id);
         $course->inscripcion_desde = $validated['starts_at'] ?? null;
         $course->inscripcion_hasta = $validated['ends_at'] ?? null;
-        $course->es_seguimiento_proyecto = $validated['enabled'];
+        // Cerrar admisión no desactiva el seguimiento ni las inscripciones existentes.
+        if ($validated['enabled']) $course->es_seguimiento_proyecto = true;
         if (!empty($validated['password'])) $course->clave_autoregistro = Hash::make($validated['password']);
         if (!$validated['enabled']) $course->clave_autoregistro = null;
         $course->clave_actualizada_en = now();

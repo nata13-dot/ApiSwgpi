@@ -55,8 +55,9 @@ class ContinuityReportService
                 ->leftJoin('usuario_carrera as membership', function ($join) {
                     $join->on('membership.carrera_id', '=', 'career.id')->where('membership.activo', true);
                 })
+                ->leftJoin('grupos_academicos as project_group', 'project_group.carrera_id', '=', 'career.id')
                 ->leftJoin('proyectos as project', function ($join) {
-                    $join->on('project.carrera_id', '=', 'career.id')->where('project.activo', true);
+                    $join->on('project.grupo_id', '=', 'project_group.id')->where('project.activo', true);
                 })
                 ->select([
                     'career.id', 'career.clave', 'career.nombre', 'career.activa',

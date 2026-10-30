@@ -20,6 +20,7 @@
         .score { white-space: normal; }
         .chart { text-align: center; margin-top: 8px; }
         .chart img { max-width: 100%; height: auto; border: 1px solid #e5e7eb; }
+        .limited-note { border: 1px solid #d97706; background: #fff7ed; color: #7c2d12; padding: 6px 8px; margin: 8px 0 12px; font-size: 11px; }
         .comment { border: 1px solid #d1d5db; padding: 6px; margin-bottom: 6px; page-break-inside: avoid; }
         .comment strong { display: block; margin-bottom: 4px; }
         .criterion-comment { margin: 4px 0 0 12px; }
@@ -27,18 +28,22 @@
 </head>
 <body>
     <h1>Reporte de Evaluacion</h1>
+    @if ($limitedReport ?? false)
+        <div class="limited-note">Versión con datos limitados: los evaluadores aparecen como "Docente 1, 2…" y sólo se incluyen sus comentarios generales. El reporte completo lo descargan la jefatura de carrera y la administración general.</div>
+    @endif
     <div class="muted">{{ $project?->title ?? 'Proyecto sin titulo' }}</div>
 
     <h2>Datos Generales</h2>
     <table class="summary">
         <tbody>
             <tr><td>Proyecto</td><td>{{ $project?->title ?? '-' }}</td></tr>
-            <tr><td>Equipo</td><td>{{ $students->map(fn ($student) => trim(collect([$student->nombres, $student->apa, $student->ama])->filter()->join(' ')))->filter()->join(', ') ?: '-' }}</td></tr>
+            <tr><td>Equipo</td><td>{{ collect($studentLabels ?? [])->filter()->join(', ') ?: '-' }}</td></tr>
             <tr><td>Semestre</td><td>{{ $evaluation->semestre }}</td></tr>
             <tr><td>Etapa</td><td>{{ ucfirst((string) $evaluation->etapa) }}</td></tr>
             <tr><td>Sala</td><td>{{ $evaluation->room?->nombre ?? $evaluation->sala ?? '-' }}</td></tr>
             <tr><td>Fecha de evaluacion</td><td>{{ optional($evaluation->fecha_exposicion)->format('d/m/Y H:i') ?? '-' }}</td></tr>
             <tr><td>Promedio global</td><td>{{ $globalAverage }}%</td></tr>
+            <tr><td>Resultado</td><td><strong style="color: {{ ['success' => '#15803d', 'warning' => '#b45309', 'danger' => '#b91c1c', 'secondary' => '#6b7280'][$verdict['tone']] }}">{{ $verdict['label'] }}</strong> <span class="muted">(aprobado desde 80 %, apenas cumple de 70 a 79 %)</span></td></tr>
             @if ($titulationAptSummary['applies'])
                 <tr>
                     <td>Recomendación del proyecto (sin efecto de egreso)</td>
@@ -55,7 +60,7 @@
             <tr>
                 <th>Criterio</th>
                 @foreach ($teachers as $teacher)
-                    <th>{{ $teacherLabels[(string) $teacher->id] ?? (trim(collect([$teacher->nombres, $teacher->apa])->filter()->join(' ')) ?: $teacher->id) }}</th>
+                    <th>{{ $teacherLabels[(string) $teacher->id] ?? (($limitedReport ?? false) ? 'Docente' : (trim(collect([$teacher->nombres, $teacher->apa])->filter()->join(' ')) ?: $teacher->id)) }}</th>
                 @endforeach
                 <th>Promedio</th>
             </tr>
@@ -85,7 +90,7 @@
         <img src="{{ $chartUrl }}" alt="Grafica de promedio por criterio">
     </div>
 
-    <h2>Comentarios por Docente</h2>
+    <h2>{{ ($limitedReport ?? false) ? 'Comentarios generales' : 'Comentarios por Docente' }}</h2>
     @forelse ($comments as $comment)
         <div class="comment">
             <strong>{{ $comment['teacher_name'] }}</strong>

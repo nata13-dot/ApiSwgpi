@@ -11,7 +11,7 @@ class ActivityNotificationController extends Controller
 {
     public function index(Request $request)
     {
-        if (!Schema::hasTable('notificaciones_actividad')) {
+        if (!\App\Support\SchemaCache::hasTable('notificaciones_actividad')) {
             return response()->json(['data' => [], 'unread_count' => 0]);
         }
 
@@ -38,7 +38,7 @@ class ActivityNotificationController extends Controller
 
     public function markAllRead()
     {
-        if (!Schema::hasTable('notificaciones_actividad')) {
+        if (!\App\Support\SchemaCache::hasTable('notificaciones_actividad')) {
             return response()->json(['message' => 'Notificaciones leidas']);
         }
 

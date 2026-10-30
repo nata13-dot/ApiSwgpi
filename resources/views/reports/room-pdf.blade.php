@@ -27,6 +27,7 @@
         .chart { text-align: center; margin-top: 8px; }
         .chart img { max-width: 100%; height: auto; border: 1px solid #e5e7eb; }
         .project-block { page-break-inside: avoid; margin-top: 14px; }
+        .limited-note { border: 1px solid #d97706; background: #fff7ed; color: #7c2d12; padding: 6px 8px; margin: 8px 0 12px; font-size: 11px; }
         .comment { border: 1px solid #d1d5db; padding: 6px; margin-bottom: 6px; page-break-inside: avoid; }
         .comment strong { display: block; margin-bottom: 3px; }
         .criterion-comment { margin: 3px 0 0 10px; }
@@ -35,6 +36,9 @@
 </head>
 <body>
     <h1>Reporte de Sala de Evaluacion</h1>
+    @if ($limitedReport ?? false)
+        <div class="limited-note">Versión con datos limitados: los evaluadores aparecen como "Docente 1, 2…" y sólo se incluyen sus comentarios generales. El reporte completo lo descargan la jefatura de carrera y la administración general.</div>
+    @endif
     <div class="muted">{{ $room->nombre }} · {{ $room->salon ?: 'Sin salon' }}</div>
 
     <h2>Datos Generales</h2>
@@ -44,8 +48,8 @@
             <tr><td>Salon</td><td>{{ $room->salon ?: '-' }}</td></tr>
             <tr><td>Semestre</td><td>{{ $room->semestre }}</td></tr>
             <tr><td>Fecha de evaluacion</td><td>{{ optional($room->fecha_evaluacion)->format('d/m/Y H:i') ?? '-' }}</td></tr>
-            <tr><td>Responsable</td><td>{{ $room->responsibleTeacher ? ($roomTeacherLabels[(string) $room->responsibleTeacher->id] ?? trim(collect([$room->responsibleTeacher->nombres, $room->responsibleTeacher->apa, $room->responsibleTeacher->ama])->filter()->join(' '))) : '-' }}</td></tr>
-            <tr><td>Docentes</td><td>{{ $room->teachers->map(fn ($teacher) => $roomTeacherLabels[(string) $teacher->id] ?? trim(collect([$teacher->nombres, $teacher->apa, $teacher->ama])->filter()->join(' ')))->filter()->join(', ') ?: '-' }}</td></tr>
+            <tr><td>Responsable</td><td>{{ $room->responsibleTeacher ? ($roomTeacherLabels[(string) $room->responsibleTeacher->id] ?? (($limitedReport ?? false) ? 'Docente' : trim(collect([$room->responsibleTeacher->nombres, $room->responsibleTeacher->apa, $room->responsibleTeacher->ama])->filter()->join(' ')))) : '-' }}</td></tr>
+            <tr><td>Docentes</td><td>{{ $room->teachers->map(fn ($teacher) => $roomTeacherLabels[(string) $teacher->id] ?? (($limitedReport ?? false) ? 'Docente' : trim(collect([$teacher->nombres, $teacher->apa, $teacher->ama])->filter()->join(' '))))->filter()->join(', ') ?: '-' }}</td></tr>
             <tr><td>Proyectos evaluados</td><td>{{ count($projectRows) }}</td></tr>
             <tr><td>Promedio global de sala</td><td>{{ $roomAverage }}%</td></tr>
             <tr><td>Fecha de reporte</td><td>{{ $generatedAt->format('d/m/Y H:i') }}</td></tr>
@@ -72,7 +76,7 @@
                     <td>{{ $project['project_title'] }}</td>
                     <td>{{ $project['students'] ?: '-' }}</td>
                     <td>{{ $project['teachers_count'] }}</td>
-                    <td><strong>{{ $project['average'] }}%</strong></td>
+                    <td><strong>{{ $project['average'] }}%</strong><br><span style="color: {{ ['success' => '#15803d', 'warning' => '#b45309', 'danger' => '#b91c1c', 'secondary' => '#6b7280'][$project['verdict']['tone']] }}">{{ $project['verdict']['label'] }}</span></td>
                     <td>{{ $project['titulation_apt_result'] }}</td>
                     <td>{{ $project['status'] ?: '-' }}</td>
                 </tr>
@@ -90,7 +94,7 @@
     <h2>Detalle por Proyecto</h2>
     @foreach ($evaluationReports as $report)
         <div class="project-block">
-            <h3>{{ $report['project']?->title ?? 'Proyecto sin titulo' }} · {{ $report['globalAverage'] }}%</h3>
+            <h3>{{ $report['project']?->title ?? 'Proyecto sin titulo' }} · {{ $report['globalAverage'] }}% · <span style="color: {{ ['success' => '#15803d', 'warning' => '#b45309', 'danger' => '#b91c1c', 'secondary' => '#6b7280'][$report['verdict']['tone']] }}">{{ $report['verdict']['label'] }}</span></h3>
             @if ($report['titulationAptSummary']['applies'])
                 <p class="muted">
                     Recomendación del proyecto (sin efecto de egreso): <strong>{{ $report['titulationAptSummary']['label'] }}</strong>
@@ -101,7 +105,7 @@
                     <tr>
                         <th>Criterio</th>
                         @foreach ($report['teachers'] as $teacher)
-                            <th>{{ $report['teacherLabels'][(string) $teacher->id] ?? (trim(collect([$teacher->nombres, $teacher->apa])->filter()->join(' ')) ?: $teacher->id) }}</th>
+                            <th>{{ $report['teacherLabels'][(string) $teacher->id] ?? (($limitedReport ?? false) ? 'Docente' : (trim(collect([$teacher->nombres, $teacher->apa])->filter()->join(' ')) ?: $teacher->id)) }}</th>
                         @endforeach
                         <th>Promedio</th>
                     </tr>

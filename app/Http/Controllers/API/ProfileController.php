@@ -31,7 +31,7 @@ class ProfileController extends Controller
             'nombres' => 'required|string|max:200',
             'apa' => 'required|string|max:100',
             'ama' => 'nullable|string|max:100',
-            'semestre' => 'required|integer|in:5,6,7,8,9',
+            'semestre' => ['required', 'integer', Rule::in(app(\App\Services\SemesterManagementService::class)->careerSemesters())],
             'grupo' => 'required|string|max:20',
             'photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
@@ -54,6 +54,27 @@ class ProfileController extends Controller
         ]);
     }
 
+    /** Primer inicio de sesión: la contraseña temporal (la matrícula) debe reemplazarse antes de usar el sistema. */
+    public function changeInitialPassword(Request $request)
+    {
+        $user = auth('api')->user();
+        $validated = $request->validate([
+            'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed', Rule::notIn([(string) $user->id])],
+        ], [
+            'password.not_in' => 'La nueva contraseña no puede ser tu matrícula o número de empleado.',
+            'password.min' => 'La nueva contraseña debe tener al menos 8 caracteres.',
+            'password.confirmed' => 'La confirmación de la contraseña no coincide.',
+        ]);
+        abort_if(Hash::check($validated['password'], $user->password), 422, 'La nueva contraseña debe ser distinta de la actual.');
+
+        $user->forceFill(['password' => Hash::make($validated['password']), 'debe_cambiar_contrasena' => false])->save();
+
+        return response()->json([
+            'message' => 'Contraseña actualizada',
+            'user' => $this->loadOptionalRelations($user->fresh()),
+        ]);
+    }
+
     public function update(Request $request)
     {
         $user = auth('api')->user();
@@ -69,13 +90,9 @@ class ProfileController extends Controller
                 : $normalized;
         };
 
-        $request->merge([
-            'direccion' => $request->filled('direccion') ? $this->normalizeAddress($request->input('direccion')) : null,
-        ]);
-
         $validated = $request->validate([
             'telefonos' => 'nullable|string|max:200',
-            'direccion' => ['nullable', 'string', 'min:10', 'max:1000', 'regex:/^(?=.*\d)[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\s#.,\-\/]+$/u'],
+            'especialidad' => 'nullable|string|max:255',
             'semestre' => 'prohibited',
             'grupo' => 'prohibited',
             'photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
@@ -88,6 +105,7 @@ class ProfileController extends Controller
                 throw ValidationException::withMessages(['current_password' => ['La contraseña actual no coincide.']]);
             }
             $validated['password'] = Hash::make($validated['password']);
+            $validated['debe_cambiar_contrasena'] = false;
         } else {
             unset($validated['password']);
         }
@@ -120,7 +138,7 @@ class ProfileController extends Controller
 
     private function loadOptionalRelations(User $user): User
     {
-        return Schema::hasTable('usuarios_telefonos')
+        return \App\Support\SchemaCache::hasTable('usuarios_telefonos')
             ? $user->loadMissing('phoneNumbers')
             : $user;
     }
@@ -160,12 +178,4 @@ class ProfileController extends Controller
             ->first(fn ($phone) => $phone !== '');
     }
 
-    private function normalizeAddress(?string $address): ?string
-    {
-        if (!$address) {
-            return null;
-        }
-
-        return preg_replace('/\s+/', ' ', trim($address));
-    }
 }

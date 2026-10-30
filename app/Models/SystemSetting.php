@@ -120,7 +120,7 @@ class SystemSetting extends Model
 
     private static function loadJsonValues(): array
     {
-        if (! Schema::hasColumn((new static())->getTable(), 'valor')) {
+        if (! \App\Support\SchemaCache::hasColumn((new static())->getTable(), 'valor')) {
             return [];
         }
 
@@ -207,10 +207,10 @@ class SystemSetting extends Model
     {
         $table = (new static())->getTable();
 
-        return Schema::hasTable($table)
-            && Schema::hasColumn($table, 'valor_texto')
-            && Schema::hasColumn($table, 'valor_entero')
-            && Schema::hasColumn($table, 'valor_booleano')
-            && Schema::hasColumn($table, 'valor_decimal');
+        return \App\Support\SchemaCache::hasTable($table)
+            && \App\Support\SchemaCache::hasColumn($table, 'valor_texto')
+            && \App\Support\SchemaCache::hasColumn($table, 'valor_entero')
+            && \App\Support\SchemaCache::hasColumn($table, 'valor_booleano')
+            && \App\Support\SchemaCache::hasColumn($table, 'valor_decimal');
     }
 }

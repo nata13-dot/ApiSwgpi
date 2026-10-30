@@ -64,6 +64,16 @@ npm run lint
 npm run build
 ```
 
+## Revisión adicional del 15 de octubre de 2026
+
+Se corrigieron tres casos adicionales relacionados con F06, F07, F10 y F11:
+
+- Cerrar el autorregistro sólo cierra la admisión y elimina la clave. Conserva la marca de seguimiento del curso, las inscripciones y el acceso de los alumnos inscritos a sus actividades.
+- Programar un proyecto sin criterios activos devuelve 422. La transacción revierte sala, evaluaciones y asignaciones; después de configurar la rúbrica puede repetirse la solicitud sin reservas residuales.
+- Una sala con evaluaciones no permite cambiar su rúbrica/etapa ni su periodo mediante edición. Devuelve 409 y conserva las instantáneas originales; una nueva etapa requiere una nueva sala y las autorizaciones aplicables.
+
+Regresiones añadidas: `closing_self_registration_preserves_course_and_enrolled_student_access`, `room_without_active_criteria_is_rejected_atomically_and_can_be_retried` y `room_edit_cannot_relabel_existing_evaluation_stage_or_period`, en la suite MySQL aislada. Resultado: 37 pruebas MySQL aprobadas (197 aserciones), más 48 pruebas existentes (245 aserciones); sintaxis PHP y revisión de diferencias correctas. Estas correcciones no requieren otra migración y no modifican datos productivos.
+
 ## Despliegue y recuperación
 
 1. **Diagnóstico de sólo lectura.** En la conexión destinada al despliegue, ejecutar `php artisan sgpi:diagnose-academic --baseline` y revisar `php artisan migrate:status`. Guardar conteos iniciales. No ejecutar todas las migraciones históricas sobre una importación normalizada: algunas describen tablas anteriores y no constituyen una reconstrucción segura del esquema actual.

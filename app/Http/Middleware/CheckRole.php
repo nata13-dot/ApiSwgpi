@@ -46,8 +46,9 @@ class CheckRole
         $grants = [
             'general_admin' => ['general_admin', 'user_governance', 'admin', 'teacher', 'academic_manager', 'project_manager'],
             'admin' => ['admin', 'teacher', 'academic_manager', 'project_manager'],
-            'career_head' => ['career_head', 'admin', 'teacher', 'academic_manager', 'project_manager'],
-            'career_head_assistant' => ['career_head_assistant', 'teacher', 'academic_manager', 'project_manager'],
+            // Jefatura y asistencia registran usuarios de su carrera (UserController limita qué perfiles).
+            'career_head' => ['career_head', 'admin', 'user_governance', 'teacher', 'academic_manager', 'project_manager'],
+            'career_head_assistant' => ['career_head_assistant', 'user_governance', 'teacher', 'academic_manager', 'project_manager'],
             'project_coordinator' => ['project_coordinator', 'teacher', 'project_manager'],
             'teacher' => ['teacher'],
             'student' => ['student'],

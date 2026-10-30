@@ -25,7 +25,7 @@ class ProposalWorkflowController extends Controller
         $defaultSubject = $this->defaultProposalSubject();
         $subjectGroups = SubjectGroup::with(['asignaturas'])
             ->where('periodo_id', app(\App\Services\AcademicWorkflowService::class)->period()?->id ?? 0)
-            ->whereBetween('semestre', [5, 9])
+            ->whereIn('semestre', app(\App\Services\SemesterManagementService::class)->careerSemesters())
             ->orderBy('semestre')
             ->orderBy('nombre')
             ->get()
@@ -111,8 +111,7 @@ class ProposalWorkflowController extends Controller
             throw ValidationException::withMessages(['teacher_id' => ['El responsable debe ser un docente activo.']]);
         }
 
-        $belongsToGroup = DB::table('cursos')
-            ->where('carrera_id', app(\App\Support\CareerContext::class)->careerId())
+        $belongsToGroup = \App\Support\CareerScope::constrain(DB::table('cursos'), 'cursos', app(\App\Support\CareerContext::class)->careerId())
             ->where('grupo_id', $validated['subject_group_id'])
             ->where('asignatura_id', $validated['asignatura_id'])
             ->exists();
@@ -165,7 +164,7 @@ class ProposalWorkflowController extends Controller
     private function assignmentsForGroup(SubjectGroup $group)
     {
         return DB::table('curso_docentes as cd')->join('cursos as c', 'c.id', '=', 'cd.curso_id')->where('c.grupo_id', $group->id)
-            ->where('c.carrera_id', $group->carrera_id)->where('cd.activo', true)->where('c.activo', true)
+            ->where('cd.activo', true)->where('c.activo', true)
             ->get(['cd.*', 'c.asignatura_id'])->map(function ($row) use ($group) {
                 $row->id = $row->curso_id.'-'.bin2hex($row->docente_id);
                 $row->teacher_id = $row->docente_id; $row->subject_group_id = $group->id;
@@ -187,7 +186,7 @@ class ProposalWorkflowController extends Controller
         $enrollment = $workflow->enrollment($student->id);
         $enrolledGroups = DB::table('curso_estudiantes as ce')->join('cursos as c', 'c.id', '=', 'ce.curso_id')
             ->where('ce.estudiante_id', $student->id)->where('ce.activo', true)->where('c.activo', true)
-            ->where('c.carrera_id', $workflow->careerId())->where('c.asignatura_id', $defaultSubject->id)->pluck('c.grupo_id');
+            ->whereIn('c.grupo_id', \App\Support\CareerScope::ids('grupos_academicos', $workflow->careerId()))->where('c.asignatura_id', $defaultSubject->id)->pluck('c.grupo_id');
         $groups = $enrollment ? SubjectGroup::where('activo', true)->where('periodo_id', $enrollment->periodo_id)->whereIn('id', $enrolledGroups)->orderBy('id')->get() : collect();
         $group = $groups->firstWhere('id', $enrollment?->grupo_id) ?? $groups->first();
 
@@ -296,7 +295,7 @@ class ProposalWorkflowController extends Controller
         if (!$teacher->canManageProjects()) {
             $allowed = DB::table('curso_docentes as cd')->join('cursos as c', 'c.id', '=', 'cd.curso_id')
                 ->where('cd.docente_id', $teacher->id)->where('cd.activo', true)->where('c.activo', true)
-                ->where('c.carrera_id', $project->carrera_id)->where('c.grupo_id', $project->grupo_id)->exists();
+                ->where('c.grupo_id', $project->grupo_id)->exists();
             if (!$allowed) {
                 return response()->json(['message' => 'Este proyecto no pertenece a tus grupos asignados.'], 403);
             }

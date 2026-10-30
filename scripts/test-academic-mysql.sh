@@ -16,6 +16,7 @@ for attempt in $(seq 1 100); do
   if mysqladmin --no-defaults --socket="$socket" -uroot ping >/dev/null 2>&1; then break; fi
   sleep .1
 done
-mysql --no-defaults --socket="$socket" -uroot -e 'CREATE DATABASE sgpi_test_academic CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;'
+# Igual que la base real: base general_ci con tablas unicode_ci (detecta mezclas de collation en rutinas).
+mysql --no-defaults --socket="$socket" -uroot -e 'CREATE DATABASE sgpi_test_academic CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;'
 SGPI_TEST_MYSQL_SOCKET="$socket" APP_ENV=testing DB_CONNECTION=sqlite DB_DATABASE=:memory: DB_URL='' CACHE_STORE=array \
   php vendor/bin/phpunit --stop-on-error tests/Integration/AcademicWorkflowsMySqlTest.php "$@"

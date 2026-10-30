@@ -1,0 +1,268 @@
+# BusinessValidationService
+
+Fuente: [app/Services/BusinessValidationService.php](../../../app/Services/BusinessValidationService.php). Corte: 19 de octubre de 2026.
+
+
+## Declaraciones y propiedades
+
+Las propiedades, constantes, dependencias y comentarios se transcriben a continuación. Los métodos se separan después.
+
+```php
+<?php
+
+namespace App\Services;
+
+use App\Models\Competencia;
+use App\Models\Project;
+use App\Models\Deliverable;
+use App\Models\Delivery;
+use App\Models\EvaluationRoom;
+use Illuminate\Database\Eloquent\Collection;
+
+/**
+ * Validador centralizado de reglas de negocio
+ * 
+ * Contiene todas las validaciones académicas del sistema SWGPI
+ */
+class BusinessValidationService
+{
+    /**
+     * Validar que los asesores asignados sean únicos por proyecto
+     * 
+     * Un proyecto no puede tener dos asesores iguales
+     * Solo puede haber 1 asesor primario y 1 asesor secundario
+     * 
+     * @param int $project_id ID del proyecto
+     * @param string|null $excluded_advisor ID del asesor a excluir (para updates)
+     * @return bool true si es válido, false si hay duplicados
+     */
+    
+    /**
+     * Validar que un entregable esté dentro del rango de fechas de su competencia
+     * 
+     * @param int $competencia_id ID de la competencia
+     * @param string $fecha_entregable Fecha del entregable (YYYY-MM-DD)
+     * @return bool true si está dentro del rango
+     */
+    
+    /**
+     * Validar que el usuario tiene acceso a un entregable
+     * 
+     * - Admin: acceso a todos
+     * - Docente: solo a sus proyectos (donde es asesor)
+     * - Estudiante: solo a los suyos (donde es miembro del proyecto)
+     * 
+     * @param int $deliverable_id ID del entregable
+     * @param string $user_id ID del usuario (perfil desde token)
+     * @param int $perfil_id Perfil activo dentro de la carrera.
+     * @return bool true si tiene acceso
+     */
+    
+    /**
+     * Validar que una competencia tiene fechas de rango válidas
+     * 
+     * @param \Carbon\Carbon|string $fecha_inicio Fecha inicio
+     * @param \Carbon\Carbon|string $fecha_fin Fecha fin
+     * @return bool true si inicio < fin
+     */
+    
+    /**
+     * Validar que una calificación está en rango válido (0-100)
+     * 
+     * @param mixed $calificacion Valor a validar
+     * @return bool true si está entre 0 y 100
+     */
+    
+    /**
+     * Obtener todos los errores de validación de un entregable
+     * 
+     * @param array $data Datos del entregable
+     * @return array Array de errores (vacío si no hay errores)
+     */
+    
+    /**
+     * Obtener todos los errores de validación de un proyecto
+     * 
+     * @param int $project_id ID del proyecto
+     * @param array $data Datos a validar
+     * @return array Array de errores
+     */
+}
+```
+
+## validateAsesoresUnicos
+
+Visibilidad: `public`. Líneas originales 29–46.
+
+```php
+    public static function validateAsesoresUnicos(int $project_id, ?string $excluded_advisor = null): bool
+    {
+        $query = Project::find($project_id)
+            ->advisors();
+        
+        if ($excluded_advisor) {
+            $query->where('usuarios.id', '!=', $excluded_advisor);
+        }
+        
+        $advisors = $query->get();
+        
+        // Verificar que no haya duplicados en el rol
+        $primarios = $advisors->where('pivot.rol_asesor', 'primario')->count();
+        $secundarios = $advisors->where('pivot.rol_asesor', 'secundario')->count();
+        
+        // Solo un asesor por tipo
+        return $primarios <= 1 && $secundarios <= 1;
+    }
+```
+
+## validateFechaEntregableEnCompetencia
+
+Visibilidad: `public`. Líneas originales 55–71.
+
+```php
+    public static function validateFechaEntregableEnCompetencia(
+        int $competencia_id,
+        string $fecha_entregable
+    ): bool
+    {
+        $competencia = Competencia::find($competencia_id);
+        
+        if (!$competencia || !$competencia->fecha_inicio || !$competencia->fecha_fin) {
+            return true; // Si competencia no tiene fechas, no validar
+        }
+        
+        $fecha = \strtotime($fecha_entregable);
+        $inicio = \strtotime($competencia->fecha_inicio);
+        $fin = \strtotime($competencia->fecha_fin);
+        
+        return $fecha >= $inicio && $fecha <= $fin;
+    }
+```
+
+## validateAccesoEntrega
+
+Visibilidad: `public`. Líneas originales 85–123.
+
+```php
+    public static function validateAccesoEntrega(
+        int $deliverable_id,
+        string $user_id,
+        int $perfil_id
+    ): bool
+    {
+        // Admin: acceso total
+        if (in_array($perfil_id, [1, 5, 6, 7], true)) {
+            return true;
+        }
+        
+        if (!Deliverable::whereKey($deliverable_id)->exists()) {
+            return false;
+        }
+
+        $projectIds = Delivery::where('entregable_id', $deliverable_id)->pluck('proyecto_id');
+        
+        // Docente: solo sus proyectos (donde es asesor)
+        if ($perfil_id === 2) {
+            return Project::whereIn('id', $projectIds)
+                ->whereHas('advisors', fn ($query) => $query->where('usuarios.id', $user_id))
+                ->exists()
+                || EvaluationRoom::whereHas('projects', fn ($query) => $query->whereIn('proyectos.id', $projectIds))
+                    ->where(function ($query) use ($user_id) {
+                        $query->where('responsible_teacher_id', $user_id)
+                            ->orWhereHas('teachers', fn ($teacherQuery) => $teacherQuery->where('usuarios.id', $user_id));
+                    })
+                    ->exists();
+        }
+        
+        // Estudiante: solo proyectos donde es miembro
+        if ($perfil_id === 3) {
+            return Project::whereIn('id', $projectIds)
+                ->whereHas('students', fn ($query) => $query->where('usuarios.id', $user_id))
+                ->exists();
+        }
+        
+        return false;
+    }
+```
+
+## validateRangoFechas
+
+Visibilidad: `public`. Líneas originales 132–138.
+
+```php
+    public static function validateRangoFechas($fecha_inicio, $fecha_fin): bool
+    {
+        $inicio = \strtotime((string)$fecha_inicio);
+        $fin = \strtotime((string)$fecha_fin);
+        
+        return $inicio < $fin;
+    }
+```
+
+## validateCalificacion
+
+Visibilidad: `public`. Líneas originales 146–150.
+
+```php
+    public static function validateCalificacion($calificacion): bool
+    {
+        $valor = (float)$calificacion;
+        return $valor >= 0 && $valor <= 100;
+    }
+```
+
+## validarEntregableCompleto
+
+Visibilidad: `public`. Líneas originales 158–178.
+
+```php
+    public static function validarEntregableCompleto(array $data): array
+    {
+        $errores = [];
+        
+        // Validar competencia
+        if (!empty($data['competencia_id'])) {
+            if (!self::validateFechaEntregableEnCompetencia(
+                $data['competencia_id'],
+                $data['fecha_limite'] ?? date('Y-m-d')
+            )) {
+                $errores[] = 'La fecha del entregable está fuera del rango de la competencia';
+            }
+        }
+        
+        // Validar calificación si existe
+        if (!empty($data['calificacion']) && !self::validateCalificacion($data['calificacion'])) {
+            $errores[] = 'La calificación debe estar entre 0 y 100';
+        }
+        
+        return $errores;
+    }
+```
+
+## validarProyectoCompleto
+
+Visibilidad: `public`. Líneas originales 187–207.
+
+```php
+    public static function validarProyectoCompleto(int $project_id, array $data): array
+    {
+        $errores = [];
+        
+        // Validar asesores únicos
+        if (!self::validateAsesoresUnicos($project_id)) {
+            $errores[] = 'No se puede asignar asesores duplicados al proyecto';
+        }
+        
+        // Validar año válido
+        if (!empty($data['year'])) {
+            $anio = (int)$data['year'];
+            $anio_actual = date('Y');
+            
+            if ($anio < $anio_actual - 5 || $anio > $anio_actual + 5) {
+                $errores[] = "El año debe estar entre " . ($anio_actual - 5) . " y " . ($anio_actual + 5);
+            }
+        }
+        
+        return $errores;
+    }
+```

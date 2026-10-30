@@ -85,13 +85,13 @@ class RepositoryFileService
                 'uploaded_by' => $user->id,
                 'created_at' => now(),
             ];
-            if (Schema::hasColumn('documento_versiones', 'nombre_original')) {
+            if (\App\Support\SchemaCache::hasColumn('documento_versiones', 'nombre_original')) {
                 $attributes['original_name'] = $prepared['original_name'];
             }
-            if (Schema::hasColumn('documento_versiones', 'disco')) {
+            if (\App\Support\SchemaCache::hasColumn('documento_versiones', 'disco')) {
                 $attributes['disk'] = $stored['disk'];
             }
-            if (Schema::hasColumn('documento_versiones', 'checksum_sha256')) {
+            if (\App\Support\SchemaCache::hasColumn('documento_versiones', 'checksum_sha256')) {
                 $attributes['checksum'] = $prepared['checksum_sha256'];
             }
 

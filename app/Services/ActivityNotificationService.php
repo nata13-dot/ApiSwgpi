@@ -16,7 +16,7 @@ class ActivityNotificationService
         string $message,
         string $url
     ): void {
-        if (!Schema::hasTable('notificaciones_actividad')) {
+        if (!\App\Support\SchemaCache::hasTable('notificaciones_actividad')) {
             return;
         }
 

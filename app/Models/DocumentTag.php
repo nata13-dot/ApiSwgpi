@@ -15,10 +15,10 @@ class DocumentTag extends Model
 
     public $timestamps = false;
 
-    protected $fillable = ['carrera_id', 'nombre', 'color', 'descripcion', 'activo'];
+    protected $fillable = ['carrera_id', 'nombre', 'color', 'descripcion', 'activa'];
 
     protected $casts = [
-        'activo' => 'boolean',
+        'activa' => 'boolean',
     ];
 
     // RELACIONES
@@ -30,6 +30,6 @@ class DocumentTag extends Model
     // SCOPES
     public function scopeActivas($query)
     {
-        return $query->where('activo', true);
+        return $query->where('activa', true);
     }
 }

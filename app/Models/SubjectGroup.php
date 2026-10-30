@@ -41,11 +41,15 @@ class SubjectGroup extends Model
         return $this->belongsTo(AcademicPeriod::class, 'periodo_id');
     }
 
+    // Catálogo pequeño: se lee una vez por petición en lugar de una consulta por grupo serializado.
     public function getPeriodoAttribute(): ?string
     {
-        return $this->relationLoaded('academicPeriod')
-            ? $this->academicPeriod?->nombre
-            : $this->academicPeriod()->value('nombre');
+        if ($this->relationLoaded('academicPeriod')) {
+            return $this->academicPeriod?->nombre;
+        }
+        $names = \App\Support\RequestMemo::remember('nombres-periodo', fn () => AcademicPeriod::query()->pluck('nombre', 'id')->all());
+
+        return $names[$this->periodo_id] ?? null;
     }
 
     public function asignaturas(): BelongsToMany

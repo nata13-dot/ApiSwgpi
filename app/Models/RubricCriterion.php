@@ -21,7 +21,7 @@ class RubricCriterion extends Model
     ];
 
     protected $fillable = [
-        'rubrica_id', 'semestre', 'project_id', 'clave', 'pregunta', 'orden', 'activo',
+        'rubrica_id', 'semestre', 'project_id', 'clave', 'pregunta', 'escala', 'orden', 'activo',
     ];
 
     protected $casts = [

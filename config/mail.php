@@ -37,6 +37,13 @@ return [
 
     'mailers' => [
 
+        // Encola en la micro API de correo; el envío por Gmail lo hace su trabajador.
+        'swgpi' => [
+            'transport' => 'swgpi',
+            'endpoint' => env('SWGPI_MAILER_URL', 'http://127.0.0.1:8025'),
+            'key' => env('SWGPI_MAILER_KEY'),
+        ],
+
         'smtp' => [
             'transport' => 'smtp',
             'scheme' => env('MAIL_SCHEME'),

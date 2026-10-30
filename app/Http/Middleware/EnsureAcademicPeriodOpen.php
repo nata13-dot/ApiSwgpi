@@ -12,6 +12,8 @@ class EnsureAcademicPeriodOpen
     {
         if ($request->isMethodSafe()) return $next($request);
         $path = preg_replace('#^api/#', '', $request->path());
+        // Las rúbricas son configuración de la carrera: se preparan aunque no haya periodo abierto.
+        if (preg_match('#^evaluations/(rubric-criteria|rubrics/initialize)(/|$)#', $path)) return $next($request);
         if (!preg_match('#^(evaluations(?:/|$)|deliverables(?:/|$)|projects(?:/|$)|proposal/(projects|windows|assignments|exceptions)|residencies(?:/|$)|course-enrollments(?:/|$)|repositorio/(evaluation-documents|thesis-documents)|semester-management/exceptions|academic-operations/(authorizations|enrollments|project-periods))#', $path)) return $next($request);
         $workflow = app(AcademicWorkflowService::class);
         $workflow->ready();

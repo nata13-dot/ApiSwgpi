@@ -49,7 +49,7 @@ class CareerExportController extends Controller
                 ['ID', 'Título', 'Tipo', 'Estado', 'Semestre', 'Grupo', 'Activo'],
                 DB::table('proyectos as project')
                     ->leftJoin('grupos_academicos as group', 'group.id', '=', 'project.grupo_id')
-                    ->where('project.carrera_id', $career->id)->orderBy('project.id')
+                    ->where('group.carrera_id', $career->id)->orderBy('project.id')
                     ->get(['project.id', 'project.titulo', 'project.tipo', 'project.estado', 'group.semestre', 'group.clave_grupo as grupo', 'project.activo'])
                     ->map(fn ($row) => (array) $row)->all(),
             ],
@@ -102,9 +102,9 @@ class CareerExportController extends Controller
                 DB::table('usuario_carrera')->where('carrera_id', $career->id)->where('perfil_id', 3)->where('activo', true)->count(),
                 DB::table('asignaturas')->where('carrera_id', $career->id)->where('activo', true)->count(),
                 DB::table('grupos_academicos')->where('carrera_id', $career->id)->where('activo', true)->count(),
-                DB::table('proyectos')->where('carrera_id', $career->id)->where('activo', true)->count(),
-                DB::table('evaluaciones')->where('carrera_id', $career->id)->count(),
-                DB::table('documentos')->where('carrera_id', $career->id)->count(),
+                \App\Support\CareerScope::constrain(DB::table('proyectos'), 'proyectos', $career->id)->where('activo', true)->count(),
+                \App\Support\CareerScope::constrain(DB::table('evaluaciones'), 'evaluaciones', $career->id)->count(),
+                \App\Support\CareerScope::constrainOptional(DB::table('documentos'), 'documentos', $career->id)->count(),
             ];
         })->all();
 

@@ -23,7 +23,7 @@ class CareerSetupController extends Controller
             'subjects.*.description' => 'nullable|string|max:2000',
             'groups' => 'present|array|max:100',
             'groups.*.name' => 'required|string|max:255',
-            'groups.*.semester' => 'required|integer|in:5,6,7,8,9',
+            'groups.*.semester' => ['required', 'integer', \Illuminate\Validation\Rule::in(app(\App\Services\SemesterManagementService::class)->careerSemesters())],
             'groups.*.group' => 'required|string|max:20',
             'groups.*.period' => ['required', 'string', 'regex:/^20\d{2}-[12]$/'],
             'groups.*.subject_codes' => 'required|array|min:1',
@@ -92,6 +92,7 @@ class CareerSetupController extends Controller
                     ->first();
                 $createdGroups += $model ? 0 : 1;
                 $updatedGroups += $model ? 1 : 0;
+                app(\App\Services\SemesterManagementService::class)->assertSemesterInPeriod((int) $group['semester'], $period, 'groups');
                 $model = SubjectGroup::updateOrCreate(
                     [
                         'carrera_id' => $careerId,
@@ -101,9 +102,7 @@ class CareerSetupController extends Controller
                     ],
                     ['nombre' => trim($group['name']), 'activo' => true]
                 );
-                $model->asignaturas()->sync(
-                    $codes->mapWithKeys(fn ($code) => [$subjectIds[$code] => ['carrera_id' => $careerId]])->all()
-                );
+                $model->asignaturas()->sync($codes->map(fn ($code) => $subjectIds[$code])->all());
             }
 
             return compact('createdSubjects', 'updatedSubjects', 'createdGroups', 'updatedGroups');

@@ -17,7 +17,7 @@ class ResidencyController extends Controller
     private function query()
     {
         $user = auth('api')->user();
-        return DB::table('residencias')->where('carrera_id', $this->workflow->careerId())
+        return \App\Support\CareerScope::constrain(DB::table('residencias'), 'residencias', $this->workflow->careerId())
             ->when($user->isStudent(), fn ($q) => $q->where('estudiante_id', $user->id))
             ->when(!$user->isStudent() && !$user->canManageProjects(), fn ($q) => $q->where('asesor_id', $user->id));
     }
@@ -71,7 +71,7 @@ class ResidencyController extends Controller
             DB::table('usuarios')->where('id', $data['student_id'])->lockForUpdate()->first();
             abort_if(DB::table('residencias')->where('estudiante_id', $data['student_id'])->where('periodo_id', $data['period_id'])->exists(), 409, 'Ya existe un expediente individual en este periodo.');
             $id = DB::table('residencias')->insertGetId([
-                'carrera_id' => $this->workflow->careerId(), 'periodo_id' => $data['period_id'], 'estudiante_id' => $data['student_id'],
+                'periodo_id' => $data['period_id'], 'estudiante_id' => $data['student_id'],
                 'proyecto_id' => $data['project_id'], 'empresa_id' => $data['company_id'], 'asesor_id' => $data['advisor_id'],
                 'origen' => $data['origin'], 'cambios_propuestos' => $data['changes'], 'created_at' => now(), 'updated_at' => now(),
             ]);

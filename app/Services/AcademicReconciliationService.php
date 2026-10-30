@@ -22,7 +22,7 @@ class AcademicReconciliationService
             $legacy = DB::table('grupo_estudiantes')->where('estudiante_id', $student->id)->where('activo', true)
                 ->whereIn('grupo_id', $groups->pluck('id'))->pluck('grupo_id')->map(fn ($id) => (int) $id)->all();
             $columns = null;
-            if (Schema::hasColumn('usuarios', 'semestre') && Schema::hasColumn('usuarios', 'grupo')) {
+            if (\App\Support\SchemaCache::hasColumn('usuarios', 'semestre') && \App\Support\SchemaCache::hasColumn('usuarios', 'grupo')) {
                 $columns = DB::table('usuarios')->where('id', $student->id)->first(['semestre', 'grupo']);
                 if ($columns->semestre && $columns->grupo) {
                     $legacy = array_merge($legacy, $groups->filter(fn ($g) => (int) $g->semestre === (int) $columns->semestre && $g->grupo === $columns->grupo)->pluck('id')->all());
@@ -32,15 +32,15 @@ class AcademicReconciliationService
                 ->where('ce.estudiante_id', $student->id)->where('ce.activo', true)->whereIn('c.grupo_id', $groups->pluck('id'))->pluck('c.grupo_id')->all();
             $legacy = array_merge($legacy, $courseGroups);
             $candidates = array_values(array_unique($legacy)); sort($candidates);
-            $existing = DB::table('matriculas_academicas')->where(['carrera_id' => $career, 'periodo_id' => $period->id, 'estudiante_id' => $student->id])->first();
+            $existing = \App\Support\CareerScope::enrollments($career, $period->id)->where('m.estudiante_id', $student->id)->first();
             return ['student_id' => $student->id, 'name' => $student->nombres, 'candidates' => $candidates, 'legacy' => $columns,
                 'current' => $existing, 'group_id' => $existing?->grupo_id ?? (count($candidates) === 1 ? $candidates[0] : null),
                 'issue' => count($candidates) > 1 ? 'Fuentes contradictorias' : (count($candidates) === 0 && !$existing ? 'Sin grupo verificable' : null)];
         })->all();
         $legacyExceptions = DB::table('autorizaciones_excepcionales as e')->join('proyectos as p', 'p.id', '=', 'e.proyecto_id')
-            ->where('p.carrera_id', $career)->where('e.tipo', 'presentacion_semestre')->where('e.activa', true)
+            ->join('grupos_academicos as g', 'g.id', '=', 'p.grupo_id')->where('g.carrera_id', $career)->where('e.tipo', 'presentacion_semestre')->where('e.activa', true)
             ->get(['e.id', 'e.proyecto_id', 'e.usuario_id', 'e.valor', 'e.motivo']);
-        $rooms = DB::table('salas_evaluacion')->where('carrera_id', $career)
+        $rooms = \App\Support\CareerScope::constrain(DB::table('salas_evaluacion'), 'salas_evaluacion', $career)
             ->where(fn ($q) => $q->whereNull('periodo_id')->orWhereNull('salon_id'))->orderBy('id')->get()->map(function ($room) {
                 $room->candidate_periods = DB::table('evaluaciones as e')->join('proyectos as p', 'p.id', '=', 'e.proyecto_id')
                     ->join('grupos_academicos as g', 'g.id', '=', 'p.grupo_id')->where('e.sala_id', $room->id)->distinct()->pluck('g.periodo_id');
@@ -66,12 +66,16 @@ class AcademicReconciliationService
                 abort_unless($students->has($row['student_id']), 422);
                 if (empty($row['group_id'])) {
                     abort_unless(trim($row['reason'] ?? '') !== '', 422, 'Explica la exclusión del alumno en este periodo.');
-                    DB::table('matriculas_academicas')->where(['carrera_id' => $career, 'periodo_id' => $period->id, 'estudiante_id' => $row['student_id']])->update(['estado' => 'inactiva', 'version' => DB::raw('version + 1'), 'updated_at' => now()]);
+                    DB::table('matriculas_academicas')->whereIn('id', \App\Support\CareerScope::enrollments($career, $period->id)->where('m.estudiante_id', $row['student_id'])->select('m.id'))
+                        ->update(['estado' => 'inactiva', 'version' => DB::raw('version + 1'), 'updated_at' => now()]);
                     continue;
                 }
                 $group = SubjectGroup::where('periodo_id', $period->id)->where('activo', true)->findOrFail($row['group_id']);
-                DB::table('matriculas_academicas')->updateOrInsert(['carrera_id' => $career, 'periodo_id' => $period->id, 'estudiante_id' => $row['student_id']],
-                    ['grupo_id' => $group->id, 'estado' => 'activa', 'version' => 1, 'created_at' => now(), 'updated_at' => now()]);
+                // La matrícula del alumno en el periodo se identifica por el grupo (que da carrera y periodo).
+                $current = \App\Support\CareerScope::enrollments($career, $period->id)->where('m.estudiante_id', $row['student_id'])->value('m.id');
+                $values = ['grupo_id' => $group->id, 'estado' => 'activa', 'version' => 1, 'updated_at' => now()];
+                $current ? DB::table('matriculas_academicas')->where('id', $current)->update($values)
+                    : DB::table('matriculas_academicas')->insert($values + ['estudiante_id' => $row['student_id'], 'created_at' => now()]);
             }
             $roomRows = collect($data['room_resolutions'] ?? []);
             abort_unless($roomRows->count() === $report['rooms']->count() && $roomRows->pluck('room_id')->unique()->count() === $roomRows->count(), 422, 'Confirma el periodo y salón de cada sala histórica.');
@@ -86,13 +90,16 @@ class AcademicReconciliationService
             }
             // Preserve originals; legacy exceptions are not silently granted broader project scope.
             abort_unless(empty($report['legacy_exceptions']->all()) || ($data['acknowledge_legacy_exceptions'] ?? false), 422, 'Las excepciones heredadas requieren revisión y nueva autorización explícita.');
-            $projects = DB::table('proyectos')->where('carrera_id', $career)->whereIn('grupo_id', $report['groups']->pluck('id'))->get(['id', 'grupo_id']);
-            foreach ($projects as $project) DB::table('proyecto_periodos')->insertOrIgnore([
-                'carrera_id' => $career, 'periodo_id' => $period->id, 'proyecto_id' => $project->id, 'grupo_id' => $project->grupo_id,
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
+            // Los grupos del reporte ya son de esta carrera y periodo.
+            $projects = DB::table('proyectos')->whereIn('grupo_id', $report['groups']->pluck('id'))->get(['id', 'grupo_id']);
+            foreach ($projects as $project) {
+                $linked = DB::table('proyecto_periodos as pp')->join('grupos_academicos as g', 'g.id', '=', 'pp.grupo_id')
+                    ->where('pp.proyecto_id', $project->id)->where('g.periodo_id', $period->id)->exists();
+                if (!$linked) DB::table('proyecto_periodos')->insert(['proyecto_id' => $project->id, 'grupo_id' => $project->grupo_id, 'created_at' => now(), 'updated_at' => now()]);
+            }
             DB::table('carrera_periodos')->updateOrInsert(['carrera_id' => $career, 'periodo_id' => $period->id],
                 ['estado' => 'preparacion', 'conciliado' => true, 'created_at' => $state->created_at ?? now(), 'updated_at' => now()]);
+            AcademicWorkflowService::forgetPeriods();
             $this->workflow->audit('periodo.conciliado', 'periodo', $period->id, $report, $data);
         });
     }

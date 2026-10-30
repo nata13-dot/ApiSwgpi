@@ -36,14 +36,20 @@ class User extends Authenticatable implements JWTSubject
         'semestre',
         'grupo',
         'telefonos',
+        'perfil_id',
     ];
+
+    // El perfil vive en usuario_carrera; al crear un usuario se guarda aquí hasta registrar su membresía.
+    private ?int $pendingProfileId = null;
+    private ?int $principalProfileId = null;
+    private ?bool $generalAdministrator = null;
 
     const CREATED_AT = 'creado_en';
     const UPDATED_AT = 'actualizado_en';
 
     protected $fillable = [
         'id', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo', 'contrasena',
-        'telefono', 'curp', 'direccion', 'foto_ruta', 'perfil_completado_en', 'perfil_id', 'activo',
+        'telefono', 'especialidad', 'foto_ruta', 'perfil_completado_en', 'perfil_id', 'activo', 'debe_cambiar_contrasena',
         'apa', 'ama', 'email', 'password', 'photo_path', 'profile_completed_at',
     ];
 
@@ -55,7 +61,8 @@ class User extends Authenticatable implements JWTSubject
         'contrasena' => 'hashed',
         'creado_en' => 'datetime',
         'actualizado_en' => 'datetime',
-        'perfil_id' => 'integer',
+        'es_administrador_general' => 'boolean',
+        'debe_cambiar_contrasena' => 'boolean',
         'semestre' => 'integer',
         'perfil_completado_en' => 'datetime',
     ];
@@ -69,6 +76,7 @@ class User extends Authenticatable implements JWTSubject
         'semestre',
         'grupo',
         'telefonos',
+        'perfil_id',
     ];
 
     public function getAuthPassword()
@@ -88,13 +96,66 @@ class User extends Authenticatable implements JWTSubject
         if ($context->user()?->id === $this->id && $context->profileId()) {
             return (int) $context->profileId();
         }
+        if ($value !== null) {
+            return (int) $value;
+        }
+        if ($this->pendingProfileId !== null || !$this->exists) {
+            return (int) $this->pendingProfileId;
+        }
 
-        return (int) $value;
+        // Al serializar listas sin scope de carrera: un solo mapa por petición, no una consulta por usuario.
+        $profiles = \App\Support\RequestMemo::remember('perfiles-principales', fn () => UserCareer::query()
+            ->orderByDesc('activo')->orderByDesc('es_principal')->orderBy('id')
+            ->get(['usuario_id', 'perfil_id'])->unique('usuario_id')->pluck('perfil_id', 'usuario_id')->all());
+
+        return (int) ($profiles[$this->getKey()] ?? 0);
+    }
+
+    public static function forgetPrincipalProfiles(): void
+    {
+        \App\Support\RequestMemo::forget('perfiles-principales');
+    }
+
+    public function setPerfilIdAttribute($value): void
+    {
+        $this->pendingProfileId = $value === null || $value === '' ? null : (int) $value;
+    }
+
+    public function pendingProfileId(): ?int
+    {
+        return $this->pendingProfileId;
     }
 
     public function globalProfileId(): int
     {
-        return (int) ($this->getRawOriginal('perfil_id') ?? $this->attributes['perfil_id'] ?? 0);
+        // Mientras el administrador general simula un nivel, todo el sistema lo trata como ese perfil.
+        $context = app(CareerContext::class);
+        if ($context->simulatedProfile() && $context->user()?->getKey() === $this->getKey()) {
+            return $context->simulatedProfile();
+        }
+
+        return $this->isGeneralAdministrator() ? 4 : ($this->pendingProfileId ?? $this->principalProfileId());
+    }
+
+    private function isGeneralAdministrator(): bool
+    {
+        if (array_key_exists('es_administrador_general', $this->attributes)) {
+            return (bool) $this->attributes['es_administrador_general'];
+        }
+
+        return $this->generalAdministrator ??= $this->exists && (bool) static::withoutGlobalScopes()
+            ->whereKey($this->getKey())->value('es_administrador_general');
+    }
+
+    private function principalProfileId(): int
+    {
+        if (!$this->exists) {
+            return 0;
+        }
+
+        // Mismo orden que ResolveCareerContext: membresía activa, principal primero.
+        return $this->principalProfileId ??= (int) UserCareer::where('usuario_id', $this->getKey())
+            ->orderByDesc('activo')->orderByDesc('es_principal')->orderBy('id')->value('perfil_id');
     }
 
     public function getPasswordAttribute()
@@ -168,7 +229,7 @@ class User extends Authenticatable implements JWTSubject
 
     public function getSemestreAttribute(): ?int
     {
-        if (app(CareerContext::class)->careerId() && \Illuminate\Support\Facades\Schema::hasTable('matriculas_academicas')) {
+        if (app(CareerContext::class)->careerId() && \App\Support\SchemaCache::hasTable('matriculas_academicas')) {
             $enrollment = app(\App\Services\AcademicWorkflowService::class)->enrollment($this->id);
             return $enrollment?->semestre;
         }
@@ -194,7 +255,7 @@ class User extends Authenticatable implements JWTSubject
 
     public function getGrupoAttribute(): ?string
     {
-        if (app(CareerContext::class)->careerId() && \Illuminate\Support\Facades\Schema::hasTable('matriculas_academicas')) {
+        if (app(CareerContext::class)->careerId() && \App\Support\SchemaCache::hasTable('matriculas_academicas')) {
             $enrollment = app(\App\Services\AcademicWorkflowService::class)->enrollment($this->id);
             return $enrollment?->clave_grupo;
         }

@@ -51,8 +51,11 @@ class EvaluationAgendaService
             $target = (int) $data['semestre'];
             abort_unless(in_array($target, [5, 6, 7, 8], true), 422, 'Etapa no evaluable en salas.');
             if ($semester !== $target) {
-                $linked = $room ? DB::table('evaluaciones')->where('sala_id', $room->id)->where('proyecto_id', $id)->value('presentacion_autorizacion_id') : null;
-                $approval = DB::table('autorizaciones_academicas')->where('carrera_id', $this->workflow->careerId())
+                $linked = $room ? DB::table('autorizaciones_academicas as a')
+                    ->join('evaluaciones as e', 'e.id', '=', 'a.consumida_por_evaluacion_id')
+                    ->where('e.sala_id', $room->id)->where('e.proyecto_id', $id)->where('a.tipo', 'presentacion_semestre')->value('a.id') : null;
+                // La carrera de la autorización es la de su proyecto.
+                $approval = DB::table('autorizaciones_academicas')
                     ->where('periodo_id', $period)->where('proyecto_id', $id)->where('tipo', 'presentacion_semestre')
                     ->where('estado', 'aprobada')->where('semestre_destino', $target)->where('vigente_hasta', '>=', max(now(), $end))
                     ->where(fn ($q) => $q->whereNull('consumida_en')->when($linked, fn ($q) => $q->orWhere('id', $linked)))

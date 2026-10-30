@@ -25,11 +25,17 @@ class ResolveCareerContext
         $careerId = $this->careerIdFromToken();
         $membership = null;
 
+        $simulated = null;
         if ($user->globalProfileId() === 4) {
             $career = $careerId
                 ? Career::query()->whereKey($careerId)->where('activa', true)->first()
                 : Career::query()->where('activa', true)->orderBy('id')->first();
             $profileId = 4;
+            // Simulación de nivel: sólo con un token de sólo lectura emitido para el propio administrador.
+            $simulated = $this->simulatedProfileFromToken();
+            if ($simulated) {
+                $profileId = $simulated;
+            }
         } else {
             $memberships = $user->careerMemberships()
                 ->where('activo', true)
@@ -50,12 +56,24 @@ class ResolveCareerContext
             ], 403);
         }
 
-        $this->context->set($user, $career, (int) $profileId);
+        $this->context->set($user, $career, (int) $profileId, $simulated);
         $request->attributes->set('career_id', (int) $career->id);
         $request->attributes->set('career_profile_id', (int) $profileId);
         $request->attributes->set('career', $career);
 
         return $next($request);
+    }
+
+    private function simulatedProfileFromToken(): ?int
+    {
+        try {
+            $payload = JWTAuth::parseToken()->getPayload();
+            $profile = (int) $payload->get('simulated_profile');
+
+            return $payload->get('read_only') && in_array($profile, \App\Support\Profiles::ASSIGNABLE, true) ? $profile : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function careerIdFromToken(): ?int

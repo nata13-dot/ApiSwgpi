@@ -314,14 +314,29 @@ class AuthController extends Controller
             'grupo' => $user->grupo ?? null,
             'photo_path' => $user->photo_path,
             'profile_completed_at' => $user->profile_completed_at,
+            'must_change_password' => (bool) $user->debe_cambiar_contrasena,
+            'view_as' => $this->viewAsSession(),
         ];
-        $managerIds = collect(CareerSetting::valueForCareer($career?->id, 'evaluation_manager_teacher_ids', []))
-            ->map(fn ($id) => (string) $id)
-            ->all();
-        $payload['is_evaluation_manager'] = in_array($activeProfileId, [1, 4], true)
-            || in_array((string) $user->id, $managerIds, true);
+        // Gestionan salas y evaluaciones el administrador general, jefatura, asistencia y coordinación.
+        $payload['is_evaluation_manager'] = in_array($activeProfileId, [1, 4, 5, 6, 7], true);
 
         return $payload;
+    }
+
+    /** Datos del administrador general cuando la sesión es un "ver como" de sólo lectura. */
+    private function viewAsSession(): ?array
+    {
+        try {
+            $adminId = JWTAuth::parseToken()->getPayload()->get('view_as_by');
+        } catch (\Throwable) {
+            return null;
+        }
+        if (!$adminId) return null;
+        $admin = User::withoutGlobalScopes()->find($adminId);
+        $simulated = app(\App\Support\CareerContext::class)->simulatedProfile();
+
+        return ['by_id' => $adminId, 'by_name' => trim(($admin->nombres ?? '').' '.($admin->apellido_paterno ?? '')), 'read_only' => true,
+            'simulated_profile' => $simulated, 'simulated_label' => $simulated ? \App\Support\Profiles::label($simulated) : null];
     }
 
     private function issueToken(User $user, bool $remember, int $careerId, int $profileId): string
