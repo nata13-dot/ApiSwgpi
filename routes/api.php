@@ -14,6 +14,7 @@ use App\Http\Controllers\API\EvaluationController;
 use App\Http\Controllers\API\SubjectGroupController;
 use App\Http\Controllers\API\ProfileController;
 use App\Http\Controllers\API\ProposalWorkflowController;
+use App\Http\Controllers\API\SelfRegistrationController;
 use App\Http\Controllers\API\SystemSettingController;
 use App\Http\Controllers\API\ActivityNotificationController;
 use App\Http\Controllers\API\SemesterManagementController;
@@ -39,6 +40,9 @@ Route::post('/auth/password/request-token', [AuthController::class, 'requestPass
 Route::post('/auth/password/verify-token', [AuthController::class, 'verifyPasswordResetToken'])->middleware('throttle:password-recovery');
 Route::post('/auth/password/reset', [AuthController::class, 'resetPasswordWithToken'])->middleware('throttle:password-recovery');
 Route::get('/settings/public', [SystemSettingController::class, 'public']);
+Route::get('/self-registration', [SelfRegistrationController::class, 'index']);
+Route::post('/self-registration', [SelfRegistrationController::class, 'request'])->middleware('throttle:self-registration');
+Route::post('/self-registration/verify', [SelfRegistrationController::class, 'verify'])->middleware('throttle:self-registration');
 Route::get('/users-template.csv', [UserController::class, 'blankCsvTemplate']);
 Route::get('/users-template.xls', [UserController::class, 'usersExcelTemplate']);
 Route::get('/projects-template.xls', [ProjectController::class, 'projectsExcelTemplate']);
@@ -142,6 +146,8 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         // Simular un nivel de perfil (sin entrar a la cuenta de ninguna persona).
         Route::post('/view-level', [\App\Http\Controllers\API\ViewAsController::class, 'start']);
         Route::put('/careers/{career}', [CareerManagementController::class, 'update']);
+        Route::get('/self-registration-rules', [SelfRegistrationController::class, 'rules']);
+        Route::put('/self-registration-rules/{career}', [SelfRegistrationController::class, 'updateRule']);
         Route::get('/career-memberships', [CareerManagementController::class, 'memberships']);
         Route::post('/career-memberships', [CareerManagementController::class, 'storeMembership']);
         Route::put('/career-memberships/{membership}', [CareerManagementController::class, 'updateMembership']);
@@ -222,6 +228,14 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     Route::get('/proposal/students/search', [ProposalWorkflowController::class, 'searchStudents']);
     Route::get('/proposal/teacher-projects', [ProposalWorkflowController::class, 'teacherProjects']);
     Route::post('/proposal/projects/{id}/review', [ProposalWorkflowController::class, 'review']);
+    Route::middleware('role:student')->group(function () {
+        Route::get('/proposal/group-projects', [ProposalWorkflowController::class, 'groupProjects']);
+        Route::post('/proposal/register', [ProposalWorkflowController::class, 'register']);
+        Route::put('/proposal/mine', [ProposalWorkflowController::class, 'updateMine']);
+        Route::post('/proposal/projects/{id}/join-requests', [ProposalWorkflowController::class, 'requestJoin'])->middleware('throttle:10,1');
+        Route::delete('/proposal/join-requests/{id}', [ProposalWorkflowController::class, 'cancelJoin']);
+        Route::put('/proposal/join-requests/{id}', [ProposalWorkflowController::class, 'answerJoin']);
+    });
     Route::middleware('role:admin,teacher,project_manager')->group(function () {
         Route::get('/proposal/window-groups', [ProposalWorkflowController::class, 'windowGroups']);
         Route::post('/proposal/windows', [ProposalWorkflowController::class, 'storeWindow']);
@@ -234,6 +248,10 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     // Coordinación de proyectos: administrador, jefatura, asistencia y coordinación.
     Route::middleware('role:admin,project_manager')->group(function () {
         Route::get('/proposal/config', [ProposalWorkflowController::class, 'configIndex']);
+        Route::get('/proposal/settings', [ProposalWorkflowController::class, 'settings']);
+        Route::put('/proposal/settings/self-registration', [ProposalWorkflowController::class, 'updateSelfRegistration']);
+        Route::put('/proposal/settings/proposal-window', [ProposalWorkflowController::class, 'updateProposalWindow']);
+        Route::put('/proposal/settings/validators', [ProposalWorkflowController::class, 'updateValidators']);
         Route::post('/proposal/assignments', [ProposalWorkflowController::class, 'storeAssignment']);
         Route::delete('/proposal/assignments/{id}', [ProposalWorkflowController::class, 'destroyAssignment']);
         Route::post('/proposal/exceptions', [ProposalWorkflowController::class, 'storeException']);

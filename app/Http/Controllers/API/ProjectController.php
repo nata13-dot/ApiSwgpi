@@ -39,11 +39,9 @@ class ProjectController extends Controller
                 });
 
             $user = auth('api')->user();
-            if (!$user || (int) $user->perfil_id === 2) {
-                $query->where(function ($scope) {
-                    $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
-                });
-            }
+            $query->where(function ($scope) {
+                $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
+            });
             if ($user && (int) $user->perfil_id === 2) {
                 $query->whereHas('advisors', fn ($q) => $q->where('usuarios.id', $user->id));
             }
@@ -84,11 +82,10 @@ class ProjectController extends Controller
             });
 
         $user = auth('api')->user();
-        if (!$user || (int) $user->perfil_id === 2) {
-            $query->where(function ($scope) {
-                $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
-            });
-        }
+        // Las propuestas sólo pasan al resto del sistema cuando se aprueban; antes viven en Propuestas.
+        $query->where(function ($scope) {
+            $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
+        });
         if ($user && (int) $user->perfil_id === 2) {
             $query->where(function ($scope) use ($user) {
                 $scope->whereHas('advisors', fn ($q) => $q->where('usuarios.id', $user->id));

@@ -89,7 +89,7 @@ class SystemSettingController extends Controller
             'allowed_file_types.*' => ['string', Rule::in(config('uploads.default_extensions'))],
             'max_project_members' => 'required|integer|min:1|max:10',
             'global_notice' => 'nullable|string|max:1000',
-            'proposal_registration_enabled' => 'required|boolean',
+            'proposal_registration_enabled' => 'nullable|boolean',
             'font_scale' => 'required|integer|min:85|max:125',
             'grayscale_mode' => 'required|boolean',
         ]);

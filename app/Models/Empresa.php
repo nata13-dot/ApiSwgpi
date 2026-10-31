@@ -17,6 +17,8 @@ class Empresa extends Model
         'giro',
         'contacto_nombre',
         'contacto_cargo',
+        'contacto_telefono',
+        'contacto_correo',
         'direccion',
         'estado_validacion', 'solicitada_por', 'validada_por', 'comentario_validacion', 'validada_en',
     ];

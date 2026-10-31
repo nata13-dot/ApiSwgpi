@@ -47,6 +47,8 @@ class Project extends Model
         'company_giro',
         'company_contact_name',
         'company_contact_position',
+        'company_contact_phone',
+        'company_contact_email',
         'company_address',
         'company_rfc',
     ];
@@ -72,11 +74,13 @@ class Project extends Model
         'company_giro',
         'company_contact_name',
         'company_contact_position',
+        'company_contact_phone',
+        'company_contact_email',
         'company_address',
         'company_rfc',
     ];
 
-    protected $fillable = ['career_id', 'title', 'description', 'created_by', 'activo', 'tipo', 'modalidad', 'is_thesis', 'is_proposal', 'subject_group_id', 'empresa_id', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
+    protected $fillable = ['career_id', 'title', 'description', 'objetivo_general', 'created_by', 'activo', 'tipo', 'modalidad', 'is_thesis', 'is_proposal', 'subject_group_id', 'empresa_id', 'proposal_status', 'proposal_reviewed_by', 'proposal_review_comment', 'proposal_reviewed_at', 'revision_allowed_until'];
 
     protected $casts = [
         'activo' => 'boolean',
@@ -124,6 +128,11 @@ class Project extends Model
     {
         return $this->belongsToMany(Deliverable::class, 'entregas', 'proyecto_id', 'entregable_id')
             ->withPivot(['documento_id', 'enviado_por', 'entregado_en', 'calificacion', 'comentarios_docente']);
+    }
+
+    public function objectives(): HasMany
+    {
+        return $this->hasMany(ProjectObjective::class, 'proyecto_id')->orderBy('orden');
     }
 
     public function deliveries(): HasMany
@@ -343,6 +352,16 @@ class Project extends Model
     public function getCompanyContactPositionAttribute(): ?string
     {
         return $this->empresa?->contacto_cargo;
+    }
+
+    public function getCompanyContactPhoneAttribute(): ?string
+    {
+        return $this->empresa?->contacto_telefono;
+    }
+
+    public function getCompanyContactEmailAttribute(): ?string
+    {
+        return $this->empresa?->contacto_correo;
     }
 
     public function getCompanyAddressAttribute(): ?string

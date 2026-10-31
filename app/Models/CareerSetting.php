@@ -14,6 +14,10 @@ final class CareerSetting
         'evaluation_manager_teacher_ids',
         'rubric_score_modes',
         'basic_semesters_enabled',
+        'self_registration_until',
+        'self_registration_rule',
+        'proposal_registration_until',
+        'proposal_validator_teacher_ids',
     ];
 
     public static function all(): array
@@ -24,7 +28,7 @@ final class CareerSetting
     }
 
     // Estas claves no son JSON libre: viven en su propia tabla o columna.
-    private const TABLE_BACKED = ['evaluation_manager_teacher_ids', 'rubric_score_modes'];
+    private const TABLE_BACKED = ['evaluation_manager_teacher_ids', 'rubric_score_modes', 'proposal_validator_teacher_ids'];
     public const STORED_KEYS = ['system_notices', 'proposal_registration_enabled', 'max_project_members'];
 
     private static array $memoized = [];
@@ -39,6 +43,9 @@ final class CareerSetting
             ->all() + [
                 'evaluation_manager_teacher_ids' => DB::table('carrera_responsables_evaluacion')
                     ->where('carrera_id', $careerId)->orderBy('docente_id')->pluck('docente_id')->all(),
+                'proposal_validator_teacher_ids' => \App\Support\SchemaCache::hasTable('carrera_validadores_propuesta')
+                    ? DB::table('carrera_validadores_propuesta')->where('carrera_id', $careerId)->orderBy('docente_id')->pluck('docente_id')->all()
+                    : [],
                 'rubric_score_modes' => DB::table('rubricas')->where('carrera_id', $careerId)->whereNotNull('semestre')
                     ->orderBy('semestre')->pluck('modo_puntaje', 'semestre')->mapWithKeys(fn ($mode, $semester) => [(string) $semester => $mode])->all(),
             ];
@@ -107,9 +114,10 @@ final class CareerSetting
                 return;
             }
 
+            $table = $key === 'proposal_validator_teacher_ids' ? 'carrera_validadores_propuesta' : 'carrera_responsables_evaluacion';
             $teacherIds = array_values(array_unique(array_map('strval', $value)));
-            DB::table('carrera_responsables_evaluacion')->where('carrera_id', $careerId)->whereNotIn('docente_id', $teacherIds)->delete();
-            DB::table('carrera_responsables_evaluacion')->insertOrIgnore(array_map(
+            DB::table($table)->where('carrera_id', $careerId)->whereNotIn('docente_id', $teacherIds)->delete();
+            DB::table($table)->insertOrIgnore(array_map(
                 fn ($teacherId) => ['carrera_id' => $careerId, 'docente_id' => $teacherId],
                 $teacherIds
             ));

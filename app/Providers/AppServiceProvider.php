@@ -35,7 +35,12 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by($request->ip().'|'.$identity);
         });
 
-        RateLimiter::for('password-recovery', function (Request $request) {
+        RateLimiter::for('self-registration', function (Request $request) {
+            $identity = mb_strtolower((string) ($request->input('email') ?? 'unknown'));
+            return [Limit::perMinute(5)->by($request->ip().'|'.$identity), Limit::perHour(30)->by('self-registration|'.$request->ip())];
+        });
+
+                RateLimiter::for('password-recovery', function (Request $request) {
             $identity = mb_strtolower((string) ($request->input('email') ?? $request->input('correo') ?? 'unknown'));
             return Limit::perMinute(3)->by($request->ip().'|'.$identity);
         });
