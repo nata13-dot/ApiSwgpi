@@ -1,161 +1,81 @@
-<!doctype html>
-<html lang="es">
-<head>
-    <meta charset="utf-8">
-    <title>Reporte de Sala</title>
-    <style>
-        @page { margin: 18px 16px; size: letter landscape; }
-        body { font-family: DejaVu Sans, sans-serif; color: #111827; font-size: 8.8px; }
-        h1 { font-size: 18px; margin: 0 0 5px; }
-        h2 { font-size: 12px; margin: 15px 0 6px; color: #1f2937; }
-        h3 { font-size: 11px; margin: 14px 0 6px; color: #374151; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #d1d5db; padding: 4px; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
-        th { background: #e5eefc; font-weight: bold; }
-        .muted { color: #6b7280; }
-        .summary td:first-child { width: 30%; font-weight: bold; background: #f9fafb; }
-        .projects-table { table-layout: fixed; }
-        .projects-table th:nth-child(1), .projects-table td:nth-child(1) { width: 7%; }
-        .projects-table th:nth-child(4), .projects-table td:nth-child(4),
-        .projects-table th:nth-child(5), .projects-table td:nth-child(5),
-        .projects-table th:nth-child(6), .projects-table td:nth-child(6),
-        .projects-table th:nth-child(7), .projects-table td:nth-child(7) { width: 10%; }
-        .matrix-table { table-layout: fixed; }
-        .matrix-table th, .matrix-table td { font-size: 7px; line-height: 1.25; }
-        .matrix-table th:first-child, .matrix-table td:first-child { width: 18%; font-weight: bold; }
-        .matrix-table th:last-child, .matrix-table td:last-child { width: 8%; }
-        .chart { text-align: center; margin-top: 8px; }
-        .chart img { max-width: 100%; height: auto; border: 1px solid #e5e7eb; }
-        .project-block { page-break-inside: avoid; margin-top: 14px; }
-        .limited-note { border: 1px solid #d97706; background: #fff7ed; color: #7c2d12; padding: 6px 8px; margin: 8px 0 12px; font-size: 11px; }
-        .comment { border: 1px solid #d1d5db; padding: 6px; margin-bottom: 6px; page-break-inside: avoid; }
-        .comment strong { display: block; margin-bottom: 3px; }
-        .criterion-comment { margin: 3px 0 0 10px; }
-        .score { white-space: normal; }
-    </style>
-</head>
-<body>
-    <h1>Reporte de Sala de Evaluacion</h1>
-    @if ($limitedReport ?? false)
-        <div class="limited-note">Versión con datos limitados: los evaluadores aparecen como "Docente 1, 2…" y sólo se incluyen sus comentarios generales. El reporte completo lo descargan la jefatura de carrera y la administración general.</div>
-    @endif
-    <div class="muted">{{ $room->nombre }} · {{ $room->salon ?: 'Sin salon' }}</div>
+@php
+    $teacherName = fn ($teacher) => $roomTeacherLabels[(string) $teacher->id]
+        ?? (($limitedReport ?? false) ? 'Docente' : trim(collect([$teacher->nombres, $teacher->apa, $teacher->ama])->filter()->join(' ')));
+    $tally = collect($projectRows)->countBy(fn ($row) => $row['verdict']['tone']);
+    $roomVerdict = \App\Support\RubricScale::verdict(count($projectRows) ? (float) $roomAverage : null);
+@endphp
+@extends('reports.layout', [
+    'documentTitle' => 'Reporte de sala de evaluación',
+    'documentSubtitle' => $room->nombre.($room->salon ? ' · Salón '.$room->salon : '').' · '.$room->semestre.'° semestre',
+    'documentKind' => ($limitedReport ?? false) ? 'Versión para docentes' : 'Sala de evaluación',
+    'landscape' => true,
+])
 
-    <h2>Datos Generales</h2>
+@section('content')
+    @if ($limitedReport ?? false)
+        <div class="note">Versión con datos limitados: los evaluadores aparecen como «Docente 1, 2…» y sólo se incluyen sus comentarios generales. El reporte completo lo descargan la jefatura de carrera y la administración general.</div>
+    @endif
+
+    <table class="kpis"><tr>
+        <td class="{{ $roomVerdict['tone'] }}"><span class="label">Promedio de la sala</span><span class="value">{{ $roomAverage }}%</span><span class="hint">Proyectos con calificaciones</span></td>
+        <td><span class="label">Proyectos</span><span class="value">{{ count($projectRows) }}</span><span class="hint">En el orden de exposición</span></td>
+        <td class="success"><span class="label">Aprobados</span><span class="value">{{ $tally['success'] ?? 0 }}</span><span class="hint">80 % o más</span></td>
+        <td class="warning"><span class="label">Apenas cumplen</span><span class="value">{{ $tally['warning'] ?? 0 }}</span><span class="hint">70 a 79 %</span></td>
+        <td class="danger"><span class="label">Reprobados</span><span class="value">{{ $tally['danger'] ?? 0 }}</span><span class="hint">Menos de 70 %</span></td>
+    </tr></table>
+
+    <h2>Datos generales</h2>
     <table class="summary">
-        <tbody>
-            <tr><td>Sala</td><td>{{ $room->nombre }}</td></tr>
-            <tr><td>Salon</td><td>{{ $room->salon ?: '-' }}</td></tr>
-            <tr><td>Semestre</td><td>{{ $room->semestre }}</td></tr>
-            <tr><td>Fecha de evaluacion</td><td>{{ optional($room->fecha_evaluacion)->format('d/m/Y H:i') ?? '-' }}</td></tr>
-            <tr><td>Responsable</td><td>{{ $room->responsibleTeacher ? ($roomTeacherLabels[(string) $room->responsibleTeacher->id] ?? (($limitedReport ?? false) ? 'Docente' : trim(collect([$room->responsibleTeacher->nombres, $room->responsibleTeacher->apa, $room->responsibleTeacher->ama])->filter()->join(' ')))) : '-' }}</td></tr>
-            <tr><td>Docentes</td><td>{{ $room->teachers->map(fn ($teacher) => $roomTeacherLabels[(string) $teacher->id] ?? (($limitedReport ?? false) ? 'Docente' : trim(collect([$teacher->nombres, $teacher->apa, $teacher->ama])->filter()->join(' '))))->filter()->join(', ') ?: '-' }}</td></tr>
-            <tr><td>Proyectos evaluados</td><td>{{ count($projectRows) }}</td></tr>
-            <tr><td>Promedio global de sala</td><td>{{ $roomAverage }}%</td></tr>
-            <tr><td>Fecha de reporte</td><td>{{ $generatedAt->format('d/m/Y H:i') }}</td></tr>
-        </tbody>
+        <tr><th>Fecha de evaluación</th><td>{{ optional($room->fecha_evaluacion)->format('d/m/Y H:i') ?? '—' }}</td></tr>
+        <tr><th>Responsable</th><td>{{ $room->responsibleTeacher ? $teacherName($room->responsibleTeacher) : '—' }}</td></tr>
+        <tr><th>Docentes</th><td>{{ $room->teachers->map($teacherName)->filter()->join(', ') ?: '—' }}</td></tr>
     </table>
 
-    <h2>Proyectos Evaluados</h2>
-    <table class="projects-table">
+    <h2>Proyectos evaluados</h2>
+    <table class="data" style="table-layout: fixed">
         <thead>
             <tr>
-                <th>Orden</th>
-                <th>Proyecto</th>
-                <th>Equipo</th>
-                <th>Docentes</th>
-                <th>Promedio</th>
-                <th>Recomendación del proyecto</th>
-                <th>Estado</th>
+                <th style="width: 5%" class="center">#</th>
+                <th style="width: 33%">Proyecto</th>
+                <th style="width: 28%">Equipo</th>
+                <th style="width: 7%" class="center">Docentes</th>
+                <th style="width: 13%">Promedio</th>
+                <th style="width: 14%">Recomendación</th>
             </tr>
         </thead>
         <tbody>
             @forelse ($projectRows as $project)
                 <tr>
-                    <td>{{ $project['order'] ?: '-' }}</td>
-                    <td>{{ $project['project_title'] }}</td>
-                    <td>{{ $project['students'] ?: '-' }}</td>
-                    <td>{{ $project['teachers_count'] }}</td>
-                    <td><strong>{{ $project['average'] }}%</strong><br><span style="color: {{ ['success' => '#15803d', 'warning' => '#b45309', 'danger' => '#b91c1c', 'secondary' => '#6b7280'][$project['verdict']['tone']] }}">{{ $project['verdict']['label'] }}</span></td>
-                    <td>{{ $project['titulation_apt_result'] }}</td>
-                    <td>{{ $project['status'] ?: '-' }}</td>
+                    <td class="center">{{ $project['order'] ?: '—' }}</td>
+                    <td><strong>{{ $project['project_title'] }}</strong></td>
+                    <td>{{ $project['students'] ?: '—' }}</td>
+                    <td class="center">{{ $project['teachers_count'] }}</td>
+                    <td><strong class="text-{{ $project['verdict']['tone'] }}">{{ $project['average'] }}%</strong> <span class="badge {{ $project['verdict']['tone'] }}">{{ $project['verdict']['label'] }}</span></td>
+                    <td>{{ $project['titulation_apt_result'] ?: '—' }}</td>
                 </tr>
             @empty
-                <tr><td colspan="7" class="muted">No hay proyectos evaluados en esta sala.</td></tr>
+                <tr><td colspan="6" class="muted center">No hay proyectos evaluados en esta sala.</td></tr>
             @endforelse
         </tbody>
     </table>
 
-    <h2>Grafica de Promedio por Proyecto</h2>
-    <div class="chart">
-        <img src="{{ $chartUrl }}" alt="Grafica de promedio por proyecto">
-    </div>
+    <h2>Promedio por proyecto</h2>
+    @include('reports.partials.bars', ['items' => $chartItems])
 
-    <h2>Detalle por Proyecto</h2>
-    @foreach ($evaluationReports as $report)
-        <div class="project-block">
-            <h3>{{ $report['project']?->title ?? 'Proyecto sin titulo' }} · {{ $report['globalAverage'] }}% · <span style="color: {{ ['success' => '#15803d', 'warning' => '#b45309', 'danger' => '#b91c1c', 'secondary' => '#6b7280'][$report['verdict']['tone']] }}">{{ $report['verdict']['label'] }}</span></h3>
-            @if ($report['titulationAptSummary']['applies'])
-                <p class="muted">
-                    Recomendación del proyecto (sin efecto de egreso): <strong>{{ $report['titulationAptSummary']['label'] }}</strong>
-                </p>
-            @endif
-            <table class="matrix-table">
-                <thead>
-                    <tr>
-                        <th>Criterio</th>
-                        @foreach ($report['teachers'] as $teacher)
-                            <th>{{ $report['teacherLabels'][(string) $teacher->id] ?? (($limitedReport ?? false) ? 'Docente' : (trim(collect([$teacher->nombres, $teacher->apa])->filter()->join(' ')) ?: $teacher->id)) }}</th>
-                        @endforeach
-                        <th>Promedio</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach ($report['matrix'] as $row)
-                        <tr>
-                            <td>{{ $row['label'] }}</td>
-                            @foreach ($row['teacher_scores'] as $score)
-                                <td class="score">
-                                    @if ($score['percentage'] === null)
-                                        -
-                                    @else
-                                        {{ $score['value'] }}<br>
-                                        <span class="muted">{{ $score['percentage'] }}% · {{ $score['level'] }}</span>
-                                    @endif
-                                </td>
-                            @endforeach
-                            <td class="score"><strong>{{ $row['average'] }}%</strong></td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-
+    @foreach ($evaluationReports as $index => $report)
+        <div style="page-break-before: always">
+            <h2>{{ $index + 1 }}. {{ $report['project']?->title ?? 'Proyecto sin título' }}</h2>
+            <p>
+                <strong class="text-{{ $report['verdict']['tone'] }}">{{ $report['globalAverage'] }}%</strong>
+                <span class="badge {{ $report['verdict']['tone'] }}">{{ $report['verdict']['label'] }}</span>
+                @if ($report['titulationAptSummary']['applies'])
+                    <span class="muted"> · Recomendación (sin efecto de egreso): <strong>{{ $report['titulationAptSummary']['label'] }}</strong></span>
+                @endif
+            </p>
+            <p class="muted">Equipo: {{ collect($report['studentLabels'] ?? [])->filter()->join(', ') ?: '—' }}</p>
+            @include('reports.partials.matrix', ['matrix' => $report['matrix'], 'teachers' => $report['teachers'], 'teacherLabels' => $report['teacherLabels']])
             <h3>Comentarios</h3>
-            @forelse ($report['comments'] as $comment)
-                <div class="comment">
-                    <strong>{{ $comment['teacher_name'] }}</strong>
-                    @if ($report['titulationAptSummary']['applies'])
-                        <div class="muted">
-                            Recomendación del proyecto (sin efecto de egreso):
-                            @if ($comment['apto_titulacion'] === null)
-                                Sin respuesta
-                            @else
-                                {{ $comment['apto_titulacion'] ? 'Si' : 'No' }}
-                            @endif
-                        </div>
-                    @endif
-                    <div>{{ $comment['general_comment'] ?: 'Sin comentario general.' }}</div>
-                    @foreach ($comment['criterion_comments'] as $criterionComment)
-                        <div class="criterion-comment">
-                            <span class="muted">{{ $criterionComment['criterion'] }}:</span>
-                            {{ $criterionComment['comment'] }}
-                        </div>
-                    @endforeach
-                </div>
-            @empty
-                <p class="muted">Sin comentarios registrados.</p>
-            @endforelse
+            @include('reports.partials.comments', ['comments' => $report['comments'], 'titulationAptSummary' => $report['titulationAptSummary']])
         </div>
     @endforeach
-</body>
-</html>
+@endsection

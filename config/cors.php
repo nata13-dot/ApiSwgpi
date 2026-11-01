@@ -69,7 +69,8 @@ return [
         'X-SGPI-Remember',
     ],
 
-    'exposed_headers' => [],
+    // Los fronts leen el nombre real del archivo descargado y la huella de los respaldos.
+    'exposed_headers' => ['Content-Disposition', 'X-Checksum-SHA256'],
 
     'max_age' => 600,
 

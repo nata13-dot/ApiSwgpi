@@ -173,12 +173,10 @@ class SelfRegistrationController extends Controller
     public function updateRule(Request $request, Career $career)
     {
         $validated = $request->validate([
-            'email_prefix' => ['required', 'string', 'max:10', 'regex:/^[a-z0-9._-]*$/i'],
-            'allow_b' => 'required|boolean',
             'number_prefix' => 'nullable|string|max:8|regex:/^\d*$/',
             'digits' => 'required|integer|min:4|max:12',
             'domain' => ['required', 'string', 'max:120', 'regex:/^[a-z0-9.-]+\.[a-z]{2,}$/i'],
-        ], [], ['email_prefix' => 'prefijo del correo', 'number_prefix' => 'inicio del número de control', 'digits' => 'dígitos', 'domain' => 'dominio']);
+        ], [], ['number_prefix' => 'inicio del número de control', 'digits' => 'dígitos', 'domain' => 'dominio']);
         if (strlen((string) ($validated['number_prefix'] ?? '')) > (int) $validated['digits']) {
             throw ValidationException::withMessages(['number_prefix' => ['El inicio no puede ser más largo que el número de control.']]);
         }

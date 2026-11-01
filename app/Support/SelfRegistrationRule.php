@@ -6,13 +6,16 @@ use App\Models\CareerSetting;
 
 /**
  * Formato del número de control y del correo institucional que una carrera acepta en el autoregistro.
- * El correo es el prefijo seguido del número de control completo: 22240022 → l22240022@smartin.tecnm.mx,
- * b20240087 → lb20240087@smartin.tecnm.mx. La administración general ajusta la regla de cada carrera.
+ * El correo siempre empieza con «l» seguida del número de control completo: 22240022 → l22240022@smartin.tecnm.mx,
+ * b22240022 → lb22240022@smartin.tecnm.mx. El número de control puede ir sólo con dígitos o con una b al inicio,
+ * en todas las carreras. La administración general ajusta por carrera los dígitos, el inicio del número y el dominio.
  */
 final class SelfRegistrationRule
 {
+    public const EMAIL_PREFIX = 'l';
+
     public const DEFAULT = [
-        'email_prefix' => 'l',
+        'email_prefix' => self::EMAIL_PREFIX,
         'allow_b' => true,
         'number_prefix' => '',
         'digits' => 8,
@@ -29,8 +32,8 @@ final class SelfRegistrationRule
         $rule = array_replace(self::DEFAULT, array_intersect_key($rule, self::DEFAULT));
 
         return [
-            'email_prefix' => strtolower(trim((string) $rule['email_prefix'])),
-            'allow_b' => (bool) $rule['allow_b'],
+            'email_prefix' => self::EMAIL_PREFIX,
+            'allow_b' => true,
             'number_prefix' => preg_replace('/\D/', '', (string) $rule['number_prefix']),
             'digits' => max(4, min(12, (int) $rule['digits'])),
             'domain' => strtolower(ltrim(trim((string) $rule['domain']), '@')),
@@ -70,17 +73,21 @@ final class SelfRegistrationRule
         return $text;
     }
 
-    public static function example(array $rule): string
+    public static function example(array $rule, bool $withB = false): string
     {
         $number = str_pad($rule['number_prefix'], $rule['digits'], '0');
         $number = substr($number, 0, $rule['digits'] - 2) . '22';
 
-        return $rule['email_prefix'] . $number . '@' . $rule['domain'];
+        return $rule['email_prefix'] . ($withB ? 'b' : '') . $number . '@' . $rule['domain'];
     }
 
     /** Lo que ven los formularios para guiar al alumno. */
     public static function publicPayload(array $rule): array
     {
-        return $rule + ['example' => self::example($rule), 'description' => 'Número de control de ' . self::describeNumber($rule) . '.'];
+        return $rule + [
+            'example' => self::example($rule),
+            'example_b' => $rule['allow_b'] ? self::example($rule, true) : null,
+            'description' => 'Número de control de ' . self::describeNumber($rule) . '.',
+        ];
     }
 }

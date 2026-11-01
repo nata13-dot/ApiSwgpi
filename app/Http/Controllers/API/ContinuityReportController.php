@@ -17,7 +17,7 @@ class ContinuityReportController extends Controller
 
     public function pdf(Request $request, ContinuityReportService $reports)
     {
-        abort_unless(app()->bound('dompdf.wrapper') || class_exists(\Dompdf\Dompdf::class), 501, 'El generador PDF no está disponible.');
+        abort_unless(\App\Support\PdfReport::available(), 501, 'El generador PDF no está disponible.');
         $data = $reports->build();
         $data['generated_by'] = trim(($request->user('api')->nombres ?? '').' '.($request->user('api')->apellido_paterno ?? ''));
 
@@ -34,11 +34,7 @@ class ContinuityReportController extends Controller
             'creado_en' => now(),
         ]);
 
-        $pdf = app('dompdf.wrapper');
-        $pdf->setOptions(['isRemoteEnabled' => false, 'defaultFont' => 'DejaVu Sans']);
-        $pdf->loadHTML(view('reports.continuity-pdf', $data)->render());
-
-        return $pdf->download('continuidad_operativa_'.now()->format('Ymd_His').'.pdf');
+        return \App\Support\PdfReport::download('reports.continuity-pdf', $data, 'continuidad_operativa_'.now()->format('Ymd_His').'.pdf');
     }
 
     public function history(Request $request, ContinuityReportService $reports)

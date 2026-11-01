@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 
 class DatabaseBackupService
@@ -38,25 +39,23 @@ class DatabaseBackupService
         $temporaryPath = $directory.'/'.$baseName.'.sql.tmp';
         $finalName = $baseName.'.sql.gz';
         $finalPath = $directory.'/'.$finalName;
+        @set_time_limit(360);
 
         try {
-            $arguments = [
-                'mysqldump',
-                '--host='.(string) ($connection['host'] ?? '127.0.0.1'),
-                '--port='.(string) ($connection['port'] ?? '3306'),
-                '--user='.(string) ($connection['username'] ?? 'root'),
+            $this->run([
+                $this->binary(['mysqldump', 'mariadb-dump']),
+                ...$this->connectionArguments($connection),
                 '--single-transaction',
                 '--routines',
                 '--triggers',
                 '--no-tablespaces',
+                '--default-character-set=utf8mb4',
                 '--result-file='.$temporaryPath,
                 (string) ($connection['database'] ?? ''),
-            ];
-            $process = new Process($arguments, base_path(), [
-                'MYSQL_PWD' => (string) ($connection['password'] ?? ''),
-            ]);
-            $process->setTimeout(300);
-            $process->mustRun();
+            ], $connection, 'generar el respaldo');
+            if (!is_file($temporaryPath) || filesize($temporaryPath) === 0) {
+                throw new \RuntimeException('La copia de la base de datos quedó vacía.');
+            }
             $this->gzip($temporaryPath, $finalPath);
 
             $recordId = DB::table('respaldos_base_datos')->insertGetId([
@@ -95,7 +94,12 @@ class DatabaseBackupService
             throw new \RuntimeException('No se pudo comprimir el respaldo.');
         }
         while (!feof($input)) {
-            gzwrite($output, fread($input, 1024 * 1024));
+            $chunk = fread($input, 1024 * 1024);
+            if ($chunk === false || ($chunk !== '' && gzwrite($output, $chunk) === false)) {
+                fclose($input);
+                gzclose($output);
+                throw new \RuntimeException('No se pudo comprimir el respaldo: revisa el espacio libre en disco.');
+            }
         }
         fclose($input);
         gzclose($output);
@@ -116,6 +120,7 @@ class DatabaseBackupService
         $temporarySql = storage_path('app/private/database-backups/'.$temporaryDatabase.'.sql.tmp');
         $tablesFound = 0;
         $rowsVerified = 0;
+        @set_time_limit(360);
 
         try {
             if (!hash_equals((string) $backup->checksum_sha256, hash_file('sha256', $backup->ruta_privada))) {
@@ -123,7 +128,13 @@ class DatabaseBackupService
             }
             $this->gunzip($backup->ruta_privada, $temporarySql);
 
-            DB::statement("CREATE DATABASE `{$temporaryDatabase}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            try {
+                DB::statement("CREATE DATABASE `{$temporaryDatabase}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            } catch (\Illuminate\Database\QueryException $exception) {
+                $user = config('database.connections.'.config('database.default').'.username');
+                throw new \RuntimeException("El usuario de base de datos «{$user}» no puede crear la base temporal del simulacro. "
+                    ."Concede el permiso con: GRANT ALL PRIVILEGES ON `sgpi\\_restore\\_check\\_%`.* TO '{$user}'@'localhost';", 0, $exception);
+            }
             $this->runMysqlImport($temporaryDatabase, $temporarySql);
 
             $existing = DB::table('information_schema.tables')
@@ -210,10 +221,13 @@ class DatabaseBackupService
             'available' => $available,
             'missing' => $missing,
             'altered' => $altered,
-            'verified' => DB::table('verificaciones_restauracion')
-                ->where('estado', 'correcto')
+            // Sólo cuentan las copias que siguen guardadas: una depurada ya no sirve para restaurar.
+            'verified' => DB::table('verificaciones_restauracion as verification')
+                ->join('respaldos_base_datos as backup', 'backup.id', '=', 'verification.respaldo_id')
+                ->whereNull('backup.eliminado_en')
+                ->where('verification.estado', 'correcto')
                 ->distinct()
-                ->count('respaldo_id'),
+                ->count('verification.respaldo_id'),
             'total_bytes' => $totalBytes,
             'disk_free_bytes' => is_dir($directory) ? disk_free_space($directory) : null,
             'retention_days' => $retentionDays,
@@ -288,6 +302,11 @@ class DatabaseBackupService
             ->get();
     }
 
+    /**
+     * Descomprime la copia para el simulacro. Quita las cláusulas DEFINER (crear disparadores o vistas a nombre de
+     * otro usuario exige privilegios SUPER que la cuenta de la aplicación no tiene) y la marca de "sandbox" que
+     * agregan las versiones recientes de mariadb-dump y que el cliente de MySQL no reconoce.
+     */
     private function gunzip(string $source, string $destination): void
     {
         $input = gzopen($source, 'rb');
@@ -295,8 +314,12 @@ class DatabaseBackupService
         if (!$input || !$output) {
             throw new \RuntimeException('No se pudo descomprimir el respaldo.');
         }
-        while (!gzeof($input)) {
-            fwrite($output, gzread($input, 1024 * 1024));
+        while (($line = gzgets($input)) !== false) {
+            if (str_starts_with($line, '/*M!999999')) {
+                continue;
+            }
+            $line = preg_replace('/\sDEFINER\s*=\s*(`[^`]*`|\'[^\']*\'|[^\s@]+)@(`[^`]*`|\'[^\']*\'|\S+)/i', '', $line);
+            fwrite($output, $line);
         }
         gzclose($input);
         fclose($output);
@@ -305,19 +328,60 @@ class DatabaseBackupService
 
     private function runMysqlImport(string $database, string $sqlPath): void
     {
-        $connectionName = config('database.default');
-        $connection = config("database.connections.{$connectionName}", []);
-        $process = new Process([
-            'mysql',
+        $connection = config('database.connections.'.config('database.default'), []);
+        $this->run([
+            $this->binary(['mysql', 'mariadb']),
+            ...$this->connectionArguments($connection),
+            '--default-character-set=utf8mb4',
+            '--database='.$database,
+            '--execute=SOURCE '.$sqlPath,
+        ], $connection, 'restaurar la copia en la base temporal');
+    }
+
+    /** El cliente de MariaDB 11 ya no instala los alias mysql/mysqldump: se usa el primero que exista. */
+    private function binary(array $candidates): string
+    {
+        $finder = new ExecutableFinder();
+        foreach ($candidates as $candidate) {
+            if ($path = $finder->find($candidate, null, ['/usr/bin', '/usr/local/bin', '/usr/local/mysql/bin'])) {
+                return $path;
+            }
+        }
+
+        throw new \RuntimeException('No se encontró '.implode(' ni ', $candidates).' en el servidor. Instala el cliente de MySQL o MariaDB.');
+    }
+
+    private function connectionArguments(array $connection): array
+    {
+        if (!empty($connection['unix_socket'])) {
+            return ['--socket='.$connection['unix_socket'], '--user='.(string) ($connection['username'] ?? 'root')];
+        }
+
+        return [
             '--host='.(string) ($connection['host'] ?? '127.0.0.1'),
             '--port='.(string) ($connection['port'] ?? '3306'),
             '--user='.(string) ($connection['username'] ?? 'root'),
-            '--database='.$database,
-            '--execute=SOURCE '.$sqlPath,
-        ], base_path(), [
-            'MYSQL_PWD' => (string) ($connection['password'] ?? ''),
-        ]);
+        ];
+    }
+
+    /** Ejecuta la herramienta y, si falla, conserva sólo su mensaje de error (sin la línea de comandos). */
+    private function run(array $arguments, array $connection, string $task): void
+    {
+        $process = new Process($arguments, base_path(), ['MYSQL_PWD' => (string) ($connection['password'] ?? '')]);
         $process->setTimeout(300);
-        $process->mustRun();
+        try {
+            $process->run();
+        } catch (\Symfony\Component\Process\Exception\ProcessTimedOutException) {
+            throw new \RuntimeException("Se agotó el tiempo (5 minutos) al {$task}.");
+        }
+        if (!$process->isSuccessful()) {
+            $detail = trim($process->getErrorOutput()) ?: trim($process->getOutput()) ?: 'código de salida '.$process->getExitCode();
+            $user = (string) ($connection['username'] ?? '');
+            // Los procedimientos los crea root al importar la base; la cuenta de la aplicación necesita leerlos.
+            if (str_contains($detail, 'insufficient privileges to SHOW CREATE')) {
+                $detail .= " Concede la lectura de rutinas con: GRANT SELECT ON mysql.proc TO '{$user}'@'localhost';";
+            }
+            throw new \RuntimeException("No se pudo {$task}: ".Str::limit($detail, 700));
+        }
     }
 }

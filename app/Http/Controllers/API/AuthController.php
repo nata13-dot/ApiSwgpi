@@ -33,7 +33,8 @@ class AuthController extends Controller
                 'carrera_id' => 'nullable|integer|exists:carreras,id',
             ]);
 
-            $user = User::find($credentials['id']);
+            // Los números de control con b se guardan en minúsculas; se ignoran espacios accidentales.
+            $user = User::find(strtolower(trim($credentials['id'])));
 
             if (!$user || !Hash::check($credentials['password'], $user->password)) {
                 return response()->json(['error' => 'Credenciales inválidas'], 401);

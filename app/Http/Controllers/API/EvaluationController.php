@@ -1242,7 +1242,7 @@ class EvaluationController extends Controller
         $evaluation = $this->reportEvaluationQuery()->findOrFail($id);
         if ($guard = $this->guardEvaluationReport($evaluation)) return $guard;
 
-        if (!app()->bound('dompdf.wrapper') && !class_exists(\Dompdf\Dompdf::class)) {
+        if (!\App\Support\PdfReport::available()) {
             return response()->json([
                 'error' => 'DomPDF no esta instalado. Ejecuta composer install o instala barryvdh/laravel-dompdf en el despliegue.',
             ], 501);
@@ -1250,15 +1250,8 @@ class EvaluationController extends Controller
 
         $anonymizeTeachers = $this->shouldAnonymizeTeacherReport($request);
         $report = $this->evaluationReportData($evaluation, $anonymizeTeachers);
-        $pdf = app('dompdf.wrapper');
-        $pdf->setOptions([
-            'isRemoteEnabled' => true,
-            'defaultFont' => 'DejaVu Sans',
-        ]);
-        $pdf->loadHTML(view('reports.evaluation-pdf', $report)->render());
-
         $suffix = $anonymizeTeachers ? '_limitado' : '';
-        return $pdf->download('reporte_evaluacion_' . $evaluation->id . $suffix . '.pdf');
+        return \App\Support\PdfReport::download('reports.evaluation-pdf', $report, 'reporte_evaluacion_' . $evaluation->id . $suffix . '.pdf');
     }
 
     public function exportRoomPdf(Request $request, $id)
@@ -1266,7 +1259,7 @@ class EvaluationController extends Controller
         $room = $this->reportRoomQuery()->findOrFail($id);
         if ($guard = $this->guardRoomReport($room)) return $guard;
 
-        if (!app()->bound('dompdf.wrapper') && !class_exists(\Dompdf\Dompdf::class)) {
+        if (!\App\Support\PdfReport::available()) {
             return response()->json([
                 'error' => 'DomPDF no esta instalado. Ejecuta composer install o instala barryvdh/laravel-dompdf en el despliegue.',
             ], 501);
@@ -1274,15 +1267,8 @@ class EvaluationController extends Controller
 
         $anonymizeTeachers = $this->shouldAnonymizeTeacherReport($request);
         $report = $this->roomReportData($room, $anonymizeTeachers);
-        $pdf = app('dompdf.wrapper');
-        $pdf->setOptions([
-            'isRemoteEnabled' => true,
-            'defaultFont' => 'DejaVu Sans',
-        ]);
-        $pdf->loadHTML(view('reports.room-pdf', $report)->render());
-
         $suffix = $anonymizeTeachers ? '_limitado' : '';
-        return $pdf->download('reporte_sala_' . $room->id . $suffix . '.pdf');
+        return \App\Support\PdfReport::download('reports.room-pdf', $report, 'reporte_sala_' . $room->id . $suffix . '.pdf');
     }
 
     public function managers()
@@ -1473,8 +1459,7 @@ class EvaluationController extends Controller
             ];
         })->values()->all();
 
-        $chartLabels = collect($matrix)->pluck('label')->map(fn ($label) => Str::limit($label, 32))->all();
-        $chartValues = collect($matrix)->pluck('average')->all();
+        $chartItems = $this->chartItems(collect($matrix)->map(fn ($row) => ['label' => $row['label'], 'value' => $row['average']]));
         // El resultado sólo cuenta para los integrantes liberados; los demás no presentaron.
         $releasedIds = collect($this->evaluationDocumentReadiness($evaluation->project, $evaluation->room)['students'] ?? [])
             ->where('released', true)->pluck('id')->map(fn ($id) => (string) $id)->all();
@@ -1494,7 +1479,7 @@ class EvaluationController extends Controller
             'limitedReport' => $anonymizeTeachers,
             'globalAverage' => $this->scoreCollectionAverage($scores, (int) $evaluation->semestre),
             'verdict' => \App\Support\RubricScale::verdict($scores->isEmpty() ? null : $this->scoreCollectionAverage($scores, (int) $evaluation->semestre)),
-            'chartUrl' => $this->quickChartUrl($chartLabels, $chartValues),
+            'chartItems' => $chartItems,
             'generatedAt' => now(),
         ];
     }
@@ -1533,8 +1518,6 @@ class EvaluationController extends Controller
             ];
         })->all();
 
-        $chartLabels = collect($projectRows)->pluck('project_title')->map(fn ($title) => Str::limit($title, 30))->all();
-        $chartValues = collect($projectRows)->pluck('average')->all();
 
         return [
             'room' => $room,
@@ -1546,39 +1529,20 @@ class EvaluationController extends Controller
             'roomAverage' => $evaluated->count()
                 ? round($evaluated->avg(fn ($evaluation) => $this->scoreCollectionAverage($evaluation->scores, (int) $evaluation->semestre)), 2)
                 : 0,
-            'chartUrl' => $this->quickChartUrl($chartLabels, $chartValues),
+            'chartItems' => $this->chartItems(collect($projectRows)->map(fn ($row) => [
+                'label' => trim(($row['order'] ? $row['order'].'. ' : '').Str::limit($row['project_title'], 70)),
+                'value' => $row['verdict']['key'] === 'sin_resultado' ? null : $row['average'],
+            ])),
             'generatedAt' => now(),
         ];
     }
 
-    private function quickChartUrl(array $labels, array $values): string
+    /** Barras de los PDF: se dibujan en HTML para no depender de un servicio externo de gráficas. */
+    private function chartItems(\Illuminate\Support\Collection $rows): array
     {
-        $config = [
-            'type' => 'bar',
-            'data' => [
-                'labels' => $labels,
-                'datasets' => [[
-                    'label' => 'Promedio por criterio',
-                    'data' => $values,
-                    'backgroundColor' => '#2563eb',
-                ]],
-            ],
-            'options' => [
-                'legend' => ['display' => false],
-                'scales' => [
-                    'yAxes' => [[
-                        'ticks' => ['beginAtZero' => true, 'max' => 100],
-                    ]],
-                ],
-            ],
-        ];
-
-        return 'https://quickchart.io/chart?' . http_build_query([
-            'width' => 760,
-            'height' => 320,
-            'format' => 'png',
-            'c' => json_encode($config),
-        ]);
+        return $rows->map(fn ($row) => $row + [
+            'tone' => \App\Support\RubricScale::verdict($row['value'] === null ? null : (float) $row['value'])['tone'],
+        ])->values()->all();
     }
 
     private function writePowerBiEvaluationRow(

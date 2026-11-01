@@ -35,7 +35,9 @@ class ContinuityReportService
         $controls = [
             ['name' => 'Integridad multicarrera', 'passed' => $integrity['healthy'], 'detail' => "{$integrity['checks_passed']}/{$integrity['checks_total']} verificaciones correctas"],
             ['name' => 'Almacenamiento de respaldos', 'passed' => $storage['healthy'], 'detail' => "{$storage['available']} disponibles, {$storage['altered']} alterados"],
-            ['name' => 'Respaldo reciente', 'passed' => (bool) $recentBackup, 'detail' => $latestBackup?->creado_en ?: 'Sin respaldos'],
+            ['name' => 'Respaldo reciente', 'passed' => (bool) $recentBackup, 'detail' => $latestBackup
+                ? 'Último: '.Carbon::parse($latestBackup->creado_en)->format('d/m/Y H:i')." (vigencia máxima {$policy['max_backup_age_hours']} h)"
+                : 'Sin respaldos'],
             ['name' => 'Restauración comprobada', 'passed' => $storage['verified'] > 0, 'detail' => "{$storage['verified']} copias verificadas"],
         ];
         $passed = collect($controls)->where('passed', true)->count();

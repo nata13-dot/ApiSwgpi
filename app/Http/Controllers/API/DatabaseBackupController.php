@@ -42,10 +42,13 @@ class DatabaseBackupController extends Controller
 
     public function store(Request $request, DatabaseBackupService $backups)
     {
-        return response()->json([
-            'message' => 'Respaldo generado correctamente.',
-            'backup' => $backups->create('manual', $request->user('api')?->id),
-        ], 201);
+        try {
+            $backup = $backups->create('manual', $request->user('api')?->id);
+        } catch (\Throwable $exception) {
+            return $this->failure($exception, 'No se pudo generar el respaldo.');
+        }
+
+        return response()->json(['message' => 'Respaldo generado correctamente.', 'backup' => $backup], 201);
     }
 
     public function download(int $backup)
@@ -61,10 +64,27 @@ class DatabaseBackupController extends Controller
 
     public function verify(Request $request, int $backup, DatabaseBackupService $backups)
     {
-        return response()->json([
-            'message' => 'El respaldo puede restaurarse correctamente.',
-            'verification' => $backups->verify($backup, $request->user('api')?->id),
-        ]);
+        try {
+            $verification = $backups->verify($backup, $request->user('api')?->id);
+        } catch (\Throwable $exception) {
+            return $this->failure($exception, 'La prueba de restauración falló.');
+        }
+
+        return response()->json(['message' => 'El respaldo puede restaurarse correctamente.', 'verification' => $verification]);
+    }
+
+    /**
+     * El servicio ya dejó el intento fallido en el historial; aquí se devuelve el motivo en lugar del
+     * "Server Error" genérico de producción. Los errores de SQL se resumen para no exponer consultas.
+     */
+    private function failure(\Throwable $exception, string $title)
+    {
+        report($exception);
+        $detail = $exception instanceof \Illuminate\Database\QueryException
+            ? 'Error de base de datos ('.$exception->getCode().').'
+            : $exception->getMessage();
+
+        return response()->json(['message' => "{$title} {$detail}", 'error' => "{$title} {$detail}"], 422);
     }
 
     public function health(Request $request, DatabaseBackupService $backups)
