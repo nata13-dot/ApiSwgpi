@@ -287,8 +287,9 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
 
     // Gobierno de identidades: exclusivamente Administrador General.
     Route::middleware('role:user_governance')->group(function () {
-        Route::get('/users/{id}', [UserController::class, 'show']);
+        // Antes de /users/{id}: si no, "credential-email-template" se toma como un id de usuario.
         Route::get('/users/credential-email-template', [UserController::class, 'credentialEmailTemplate']);
+        Route::get('/users/{id}', [UserController::class, 'show']);
         Route::post('/users/send-credentials', [UserController::class, 'sendCredentialEmails']);
         Route::post('/users/import-excel', [UserController::class, 'importExcel']);
         Route::post('/users', [UserController::class, 'store']);

@@ -869,7 +869,7 @@ class UserController extends Controller
             }
         }
 
-        return $query->orderBy('perfil_id')->orderBy('nombres')->limit(201);
+        return $query->orderBy('nombres')->limit(201);
     }
 
     private function templateUsesPasswordTag(string $template): bool
