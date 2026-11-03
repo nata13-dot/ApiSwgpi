@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Mail\SelfRegistrationCodeMail;
+use App\Mail\SelfRegistrationResultMail;
 use App\Models\Career;
 use App\Models\CareerSetting;
 use App\Models\SubjectGroup;
@@ -21,8 +22,9 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Autoregistro de alumnos. La jefatura (o la administración general) lo abre por carrera hasta una fecha;
- * el alumno captura sus datos, recibe un código en su correo institucional y la cuenta se crea al
- * capturarlo, ya inscrita en el grupo que eligió del periodo abierto.
+ * el alumno captura sus datos y confirma su correo institucional con un código. La solicitud queda en
+ * revisión y la cuenta se crea sólo cuando la aprueba la jefatura, su asistencia o la administración
+ * general, ya inscrita en el grupo que eligió del periodo abierto.
  */
 class SelfRegistrationController extends Controller
 {
@@ -70,6 +72,9 @@ class SelfRegistrationController extends Controller
             throw ValidationException::withMessages(['grupo_id' => ['Elige un grupo del periodo abierto de tu carrera.']]);
         }
         $this->ensureAvailable($id, $email);
+        if (DB::table('autoregistros_pendientes')->where('estado', 'por_aprobar')->where(fn ($q) => $q->where('matricula', $id)->orWhere('correo', $email))->exists()) {
+            throw ValidationException::withMessages(['id' => ['Ya hay una solicitud en revisión con ese número de control o correo.']]);
+        }
 
         $code = (string) random_int(100000, 999999);
         $name = trim($validated['nombres']);
@@ -116,7 +121,10 @@ class SelfRegistrationController extends Controller
 
         $email = strtolower(trim($validated['email']));
         $pending = DB::table('autoregistros_pendientes')->where('correo', $email)->first();
-        if (!$pending || Carbon::parse($pending->expira_en)->isPast()) {
+        if ($pending?->estado === 'por_aprobar') {
+            return response()->json(['message' => 'Tu solicitud ya está en revisión.', 'id' => $pending->matricula, 'status' => 'por_aprobar']);
+        }
+        if (!$pending || $pending->estado !== 'codigo' || Carbon::parse($pending->expira_en)->isPast()) {
             throw ValidationException::withMessages(['code' => ['El código venció o no existe. Vuelve a enviar tus datos para recibir uno nuevo.']]);
         }
         if ((int) $pending->intentos >= self::MAX_ATTEMPTS) {
@@ -129,17 +137,60 @@ class SelfRegistrationController extends Controller
         }
 
         $this->ensureAvailable($pending->matricula, $email);
+        DB::table('autoregistros_pendientes')->where('id', $pending->id)->update(['estado' => 'por_aprobar', 'codigo' => '', 'verificado_en' => now()]);
+
+        return response()->json(['message' => 'Confirmamos tu correo. Tu solicitud quedó en revisión; te avisaremos por correo cuando la jefatura de tu carrera la responda.', 'id' => $pending->matricula, 'status' => 'por_aprobar']);
+    }
+
+    /** Solicitudes con el correo ya confirmado. La jefatura y su asistencia sólo ven las de su carrera. */
+    public function requests(Request $request)
+    {
+        $validated = $request->validate(['status' => 'nullable|in:por_aprobar,rechazada']);
+        $user = auth('api')->user();
+        // Las rechazadas no se conservan más de 90 días, ni los códigos que nunca se confirmaron.
+        DB::table('autoregistros_pendientes')->where('estado', 'rechazada')->where('revisado_en', '<', now()->subDays(90))->delete();
+        DB::table('autoregistros_pendientes')->where('estado', 'codigo')->where('expira_en', '<', now()->subDay())->delete();
+
+        $rows = DB::table('autoregistros_pendientes')
+            ->where('estado', $validated['status'] ?? 'por_aprobar')
+            ->when(!$user->isGeneralAdmin(), fn ($q) => $q->where('carrera_id', app(CareerContext::class)->careerId()))
+            ->orderBy('verificado_en')
+            ->get();
+        $careers = Career::whereIn('id', $rows->pluck('carrera_id')->unique())->get(['id', 'nombre', 'nombre_corto'])->keyBy('id');
+        $groups = SubjectGroup::withoutGlobalScopes()
+            ->whereIn('id', $rows->map(fn ($row) => (int) (json_decode($row->datos, true)['grupo_id'] ?? 0))->unique())
+            ->get(['id', 'nombre', 'semestre', 'clave_grupo'])->keyBy('id');
+
+        return response()->json($rows->map(function ($row) use ($careers, $groups) {
+            $data = json_decode($row->datos, true);
+            $group = $groups[(int) ($data['grupo_id'] ?? 0)] ?? null;
+
+            // Los datos guardados incluyen el hash de la contraseña: sólo se devuelve lo necesario para revisar.
+            return [
+                'id' => $row->id, 'matricula' => $row->matricula, 'correo' => $row->correo,
+                'nombres' => $data['nombres'] ?? '', 'apa' => $data['apa'] ?? '', 'ama' => $data['ama'] ?? null,
+                'carrera' => $careers[$row->carrera_id]->nombre ?? null,
+                'grupo' => $group ? ['nombre' => $group->nombre, 'semestre' => $group->semestre, 'clave' => $group->clave_grupo] : null,
+                'estado' => $row->estado, 'verificado_en' => $row->verificado_en, 'revisado_en' => $row->revisado_en, 'motivo' => $row->motivo_rechazo,
+            ];
+        })->values());
+    }
+
+    public function approve(int $id)
+    {
+        $pending = $this->reviewable($id);
+        $this->ensureAvailable($pending->matricula, $pending->correo);
         $career = Career::findOrFail($pending->carrera_id);
         $data = json_decode($pending->datos, true);
 
-        DB::transaction(function () use ($pending, $career, $data, $email) {
+        DB::transaction(function () use ($pending, $career, $data) {
             $user = new User();
             $user->forceFill([
                 'id' => $pending->matricula,
                 'nombres' => $data['nombres'],
                 'apellido_paterno' => $data['apa'],
                 'apellido_materno' => $data['ama'],
-                'correo' => $email,
+                'correo' => $pending->correo,
                 'contrasena' => $data['password'],
                 'debe_cambiar_contrasena' => false,
                 'activo' => true,
@@ -157,7 +208,71 @@ class SelfRegistrationController extends Controller
             DB::table('autoregistros_pendientes')->where('id', $pending->id)->delete();
         });
 
-        return response()->json(['message' => 'Tu cuenta quedó activa. Ya puedes iniciar sesión con tu número de control.', 'id' => $pending->matricula], 201);
+        return response()->json([
+            'message' => "La cuenta de {$pending->matricula} quedó activa.",
+            'email_sent' => $this->notifyResult($pending, $data, $career, true),
+        ]);
+    }
+
+    public function reject(Request $request, int $id)
+    {
+        $validated = $request->validate(['reason' => 'required|string|min:5|max:500'], [], ['reason' => 'motivo']);
+        $pending = $this->reviewable($id);
+        $data = json_decode($pending->datos, true);
+        DB::table('autoregistros_pendientes')->where('id', $pending->id)->update([
+            'estado' => 'rechazada', 'motivo_rechazo' => trim($validated['reason']),
+            'revisado_por' => auth('api')->id(), 'revisado_en' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Solicitud rechazada.',
+            'email_sent' => $this->notifyResult($pending, $data, Career::findOrFail($pending->carrera_id), false, trim($validated['reason'])),
+        ]);
+    }
+
+    /** Aviso para quien intenta entrar con una solicitud que aún no es cuenta. Exige la contraseña que eligió. */
+    public static function loginNotice(string $id, string $password): ?string
+    {
+        // Durante el despliegue el código puede llegar antes que la migración: el inicio de sesión no debe fallar por eso.
+        if (!\App\Support\SchemaCache::hasColumn('autoregistros_pendientes', 'estado')) {
+            return null;
+        }
+
+        $pending = DB::table('autoregistros_pendientes')
+            ->where('matricula', SelfRegistrationRule::normalizeId($id))
+            ->whereIn('estado', ['por_aprobar', 'rechazada'])
+            ->first();
+        if (!$pending || !Hash::check($password, (string) (json_decode($pending->datos, true)['password'] ?? ''))) {
+            return null;
+        }
+
+        return $pending->estado === 'por_aprobar'
+            ? 'Tu solicitud de cuenta sigue en revisión. Te avisaremos por correo cuando la jefatura de tu carrera la responda.'
+            : "Tu solicitud de cuenta fue rechazada: {$pending->motivo_rechazo}";
+    }
+
+    private function reviewable(int $id): object
+    {
+        $pending = DB::table('autoregistros_pendientes')->where('id', $id)->where('estado', 'por_aprobar')->first();
+        abort_unless($pending, 404, 'La solicitud no existe o ya fue revisada.');
+        $user = auth('api')->user();
+        abort_unless($user->isGeneralAdmin() || (int) $pending->carrera_id === (int) app(CareerContext::class)->careerId(), 403, 'La solicitud pertenece a otra carrera.');
+
+        return $pending;
+    }
+
+    /** Un fallo del correo no deshace la revisión: la pantalla avisa para contactar al alumno por otra vía. */
+    private function notifyResult(object $pending, array $data, Career $career, bool $approved, ?string $reason = null): bool
+    {
+        try {
+            Mail::to($pending->correo)->send(new SelfRegistrationResultMail($data['nombres'] ?? '', $career->nombre, $pending->matricula, $approved, $reason));
+
+            return true;
+        } catch (\Throwable $e) {
+            logger()->error('No se pudo avisar el resultado del autoregistro.', ['mail_mailer' => config('mail.default'), 'error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 
     /** Reglas de correo por carrera (sólo administración general). */

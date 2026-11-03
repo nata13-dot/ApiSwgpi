@@ -749,8 +749,9 @@ class EvaluationController extends Controller
             });
         }
 
+        // El semestre de una sala viene de su rúbrica: salas_evaluacion no tiene esa columna.
         if ($request->filled('semestre')) {
-            $query->where('semestre', $request->semestre);
+            $query->whereHas('rubric', fn ($rubricQuery) => $rubricQuery->where('semestre', (int) $request->semestre));
         }
 
         return response()->json($query->get()->withRelationshipAutoloading()->map(fn ($room) => $this->shapeRoom($room)));
@@ -1269,6 +1270,46 @@ class EvaluationController extends Controller
         $report = $this->roomReportData($room, $anonymizeTeachers);
         $suffix = $anonymizeTeachers ? '_limitado' : '';
         return \App\Support\PdfReport::download('reports.room-pdf', $report, 'reporte_sala_' . $room->id . $suffix . '.pdf');
+    }
+
+    /** Pide el informe de la sala para generarlo en segundo plano; una sala grande tarda más que una petición web. */
+    public function startRoomReport(Request $request, $id, \App\Services\ReportJobService $jobs)
+    {
+        $room = $this->reportRoomQuery()->findOrFail($id);
+        if ($guard = $this->guardRoomReport($room)) return $guard;
+        if (!\App\Support\PdfReport::available()) {
+            return response()->json(['error' => 'El generador PDF no está disponible.'], 501);
+        }
+
+        $anonymizeTeachers = $this->shouldAnonymizeTeacherReport($request);
+        $filename = 'reporte_sala_' . $room->id . ($anonymizeTeachers ? '_limitado' : '') . '.pdf';
+        $job = $jobs->start((string) auth('api')->id(), $filename, fn () => \App\Support\PdfReport::render('reports.room-pdf', $this->roomReportData($room, $anonymizeTeachers)));
+
+        return response()->json(['job' => $job, 'status' => 'generating'], 202);
+    }
+
+    public function reportJobStatus(string $job, \App\Services\ReportJobService $jobs)
+    {
+        $record = $jobs->find($job, (string) auth('api')->id());
+        abort_unless($record, 404, 'El informe ya no está disponible. Vuelve a solicitarlo.');
+
+        return response()->json(['status' => $record['status'], 'filename' => $record['filename']]);
+    }
+
+    public function downloadReportJob(string $job, \App\Services\ReportJobService $jobs)
+    {
+        $record = $jobs->find($job, (string) auth('api')->id());
+        abort_unless($record && $record['status'] === 'ready' && is_file($jobs->pdfPath($job)), 404, 'El informe ya no está disponible. Vuelve a solicitarlo.');
+
+        // Se lee y se borra aquí: el informe contiene calificaciones y sólo se entrega una vez.
+        $content = file_get_contents($jobs->pdfPath($job));
+        $jobs->forget($job);
+
+        return response($content, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => \Symfony\Component\HttpFoundation\HeaderUtils::makeDisposition('attachment', $record['filename']),
+            'Content-Length' => strlen($content),
+        ]);
     }
 
     public function managers()

@@ -25,9 +25,12 @@ class OperationalAlertController extends Controller
 
     public function acknowledge(Request $request, int $alert, OperationalAlertService $alerts)
     {
-        return response()->json([
-            'message' => 'Alerta marcada como atendida.',
-            'alert' => $alerts->acknowledge($alert, (string) $request->user('api')->id),
-        ]);
+        try {
+            $acknowledged = $alerts->acknowledge($alert, (string) $request->user('api')->id);
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 409);
+        }
+
+        return response()->json(['message' => 'Alerta marcada como atendida.', 'alert' => $acknowledged]);
     }
 }

@@ -129,8 +129,11 @@ class CareerModuleController extends Controller
 
     private function validateRecord(Request $request, ?CareerModuleRecord $record = null): array
     {
+        // Al crear son obligatorios; al editar sólo se validan si vienen.
+        $required = $record ? 'sometimes|required' : 'required';
+
         return $request->validate([
-            'modulo' => 'sometimes|required|string|max:80',
+            'modulo' => "{$required}|string|max:80",
             'clave' => [
                 'nullable',
                 'string',
@@ -140,7 +143,7 @@ class CareerModuleController extends Controller
                     ->where('modulo', $request->input('modulo', $record?->modulo))
                     ->ignore($record?->id),
             ],
-            'titulo' => 'sometimes|required|string|max:180',
+            'titulo' => "{$required}|string|max:180",
             'descripcion' => 'nullable|string|max:3000',
             'estado' => 'nullable|string|max:40',
             'responsable_id' => 'nullable|string|exists:usuarios,id',
@@ -153,18 +156,19 @@ class CareerModuleController extends Controller
 
     private function validateIndicator(Request $request, ?CareerIndicator $indicator = null): array
     {
+        $required = $indicator ? 'sometimes|required' : 'required';
+
         return $request->validate([
-            'modulo' => 'sometimes|required|string|max:80',
+            'modulo' => "{$required}|string|max:80",
             'clave' => [
-                'sometimes',
-                'required',
+                ...explode('|', $required),
                 'string',
                 'max:80',
                 Rule::unique('indicadores_carrera', 'clave')
                     ->where('carrera_id', $this->careerContext->careerId())
                     ->ignore($indicator?->id),
             ],
-            'nombre' => 'sometimes|required|string|max:180',
+            'nombre' => "{$required}|string|max:180",
             'descripcion' => 'nullable|string|max:3000',
             'unidad' => 'sometimes|required|string|max:30',
             'valor_actual' => 'nullable|numeric',

@@ -179,6 +179,9 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::post('/evaluations/rooms/{id}/timer', [EvaluationController::class, 'controlRoomTimer']);
         Route::put('/evaluations/rooms/{id}/schedule', [EvaluationController::class, 'updateRoomSchedule']);
         Route::get('/evaluations/rooms/{id}/report.pdf', [EvaluationController::class, 'exportRoomPdf']);
+        Route::get('/evaluations/rooms/{id}/report-job', [EvaluationController::class, 'startRoomReport']);
+        Route::get('/evaluations/report-jobs/{job}', [EvaluationController::class, 'reportJobStatus'])->whereUuid('job');
+        Route::get('/evaluations/report-jobs/{job}/download', [EvaluationController::class, 'downloadReportJob'])->whereUuid('job');
         Route::get('/evaluations', [EvaluationController::class, 'index']);
         Route::post('/evaluations', [EvaluationController::class, 'store']);
         Route::post('/evaluations/archive-selected', [EvaluationController::class, 'archiveSelected']);
@@ -195,7 +198,8 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     });
 
     // Dashboard
-    Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+    // Cifras institucionales y proyectos recientes: sólo para quienes administran.
+    Route::middleware('role:admin,project_manager')->get('/dashboard/stats', [DashboardController::class, 'stats']);
     Route::get('/dashboard/teacher', [DashboardController::class, 'teacher']);
     Route::get('/dashboard/student', [DashboardController::class, 'student']);
     Route::get('/settings/current', [SystemSettingController::class, 'current']);
@@ -245,6 +249,13 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     });
     Route::get('/repositorio/student/list', [RepositoryController::class, 'studentIndex']);
     Route::post('/repositorio', [RepositoryController::class, 'store']);
+
+    // Solicitudes de cuenta del autoregistro: administración general, jefatura y asistencia.
+    Route::middleware('role:admin,academic_manager')->group(function () {
+        Route::get('/self-registration/requests', [SelfRegistrationController::class, 'requests']);
+        Route::put('/self-registration/requests/{id}/approve', [SelfRegistrationController::class, 'approve'])->whereNumber('id');
+        Route::put('/self-registration/requests/{id}/reject', [SelfRegistrationController::class, 'reject'])->whereNumber('id');
+    });
 
     // Coordinación de proyectos: administrador, jefatura, asistencia y coordinación.
     Route::middleware('role:admin,project_manager')->group(function () {

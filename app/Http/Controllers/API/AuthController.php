@@ -37,6 +37,11 @@ class AuthController extends Controller
             $user = User::find(strtolower(trim($credentials['id'])));
 
             if (!$user || !Hash::check($credentials['password'], $user->password)) {
+                // Con la contraseña correcta se explica el estado de la solicitud; así no se revela a quien no la conoce.
+                if (!$user && ($notice = \App\Http\Controllers\API\SelfRegistrationController::loginNotice($credentials['id'], $credentials['password']))) {
+                    return response()->json(['error' => $notice, 'code' => 'SELF_REGISTRATION_PENDING'], 403);
+                }
+
                 return response()->json(['error' => 'Credenciales inválidas'], 401);
             }
 

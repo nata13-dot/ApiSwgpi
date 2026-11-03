@@ -18,7 +18,13 @@ class CompanyController extends Controller
             $query->where(fn ($q) => $q->where('nombre', 'like', "%{$term}%")->orWhere('rfc', 'like', "%{$term}%"));
         }
         if ($request->filled('status') && $request->user('api')->canManageProjects()) $query->where('estado_validacion', $request->status);
-        return response()->json($query->orderBy('nombre')->limit(50)->get());
+        $companies = $query->orderBy('nombre')->limit(50)->get();
+        // RFC y datos de contacto sólo para quienes gestionan proyectos.
+        if (!$request->user('api')->canManageProjects()) {
+            $companies = $companies->map(fn (Empresa $company) => $company->only(['id', 'nombre', 'giro']))->values();
+        }
+
+        return response()->json($companies);
     }
 
     public function review(Request $request, Empresa $company)

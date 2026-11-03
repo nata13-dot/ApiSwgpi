@@ -629,7 +629,11 @@ class ProposalWorkflowController extends Controller
             });
         }
 
-        return response()->json($query->orderBy('nombres')->limit(20)->get(['id', 'nombres', 'apa', 'ama', 'semestre', 'grupo']));
+        // Sólo lo necesario para identificar a un compañero: nunca correo, teléfono ni datos de la cuenta.
+        return response()->json($query->orderBy('nombres')->limit(20)->get()->map(fn (User $student) => [
+            'id' => $student->id, 'nombres' => $student->nombres, 'apa' => $student->apa, 'ama' => $student->ama,
+            'semestre' => $student->semestre, 'grupo' => $student->grupo,
+        ])->values());
     }
     public function windowGroups()
     {
