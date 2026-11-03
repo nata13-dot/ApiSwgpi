@@ -22,6 +22,7 @@ class SelfRegistrationCodeMail extends Mailable
         $data = ['name' => $this->name, 'career' => $this->career, 'token' => $this->token];
 
         return $this
+            ->tag('codigo_registro')
             ->subject('Código para activar tu cuenta SGPI')
             ->view('emails.self-registration-code', $data)
             ->text('emails.self-registration-code-text', $data);

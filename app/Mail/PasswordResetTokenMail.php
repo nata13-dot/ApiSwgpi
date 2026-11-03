@@ -22,6 +22,7 @@ class PasswordResetTokenMail extends Mailable
         $name = trim("{$this->user->nombres} {$this->user->apa}") ?: $this->user->id;
 
         return $this
+            ->tag('recuperacion')
             ->subject('Token de recuperacion de contrasena')
             ->view('emails.password-reset-token', [
                 'name' => $name,

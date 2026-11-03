@@ -32,6 +32,8 @@ class SwgpiMailerTransport extends AbstractTransport
             'reply_to' => ($email->getReplyTo()[0] ?? null)?->getAddress(),
             'from_name' => ($email->getFrom()[0] ?? null)?->getName() ?: null,
             'subject' => (string) $email->getSubject(),
+            // El registro de envíos guarda este tipo en lugar del asunto.
+            'category' => $email->getHeaders()->get('X-Tag')?->getBodyAsString() ?? 'general',
             'html' => (string) ($email->getHtmlBody() ?? ''),
             'text' => (string) ($email->getTextBody() ?? ''),
             'attachments' => array_map(fn ($part) => [

@@ -134,6 +134,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::get('/integrity', [CareerIntegrityController::class, 'index']);
         Route::post('/integrity/run', [CareerIntegrityController::class, 'run']);
         Route::get('/integrity/history', [CareerIntegrityController::class, 'history']);
+        Route::get('/sent-emails', [\App\Http\Controllers\API\SentEmailController::class, 'index']);
         Route::get('/database-backups', [DatabaseBackupController::class, 'index']);
         Route::get('/database-backups-health', [DatabaseBackupController::class, 'health']);
         Route::post('/database-backups', [DatabaseBackupController::class, 'store']);

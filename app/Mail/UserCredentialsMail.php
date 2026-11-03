@@ -19,6 +19,7 @@ class UserCredentialsMail extends Mailable
     public function build(): self
     {
         return $this
+            ->tag('credenciales')
             ->subject($this->mailSubject)
             ->view('emails.user-credentials', [
                 'body' => $this->body,
