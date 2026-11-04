@@ -19,7 +19,7 @@ class SemesterManagementService
 
     public function syncCurrentPeriod(): ?AcademicPeriod
     {
-        // Scheduler prepares work only; it must never activate or promote students.
+        // La apertura por fecha la hace AcademicPeriodAutomationService; esta consulta no cambia nada.
         return app(\App\Support\CareerContext::class)->careerId() ? $this->activePeriod() : null;
     }
 

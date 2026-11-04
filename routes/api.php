@@ -92,6 +92,8 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     Route::put('/residencies/{residency}/advisor', [\App\Http\Controllers\API\ResidencyController::class, 'advisor']);
     Route::post('/residencies/{residency}/close', [\App\Http\Controllers\API\ResidencyController::class, 'close']);
     Route::match(['GET', 'POST'], '/academic-operations/periods/{period}/reconciliation', [\App\Http\Controllers\API\AcademicOperationsController::class, 'reconciliation']);
+    Route::get('/academic-operations/automation', [\App\Http\Controllers\API\AcademicOperationsController::class, 'automation']);
+    Route::post('/academic-operations/automation', [\App\Http\Controllers\API\AcademicOperationsController::class, 'applyAutomation']);
     Route::get('/academic-operations/catalog', [\App\Http\Controllers\API\AcademicOperationsController::class, 'catalog']);
     Route::get('/academic-operations/enrollments', [\App\Http\Controllers\API\AcademicOperationsController::class, 'enrollments']);
     Route::post('/academic-operations/enrollments', [\App\Http\Controllers\API\AcademicOperationsController::class, 'assign']);

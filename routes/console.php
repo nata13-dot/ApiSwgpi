@@ -138,6 +138,32 @@ Artisan::command('sgpi:prepare-academic-periods', function () {
     }
 });
 
+Artisan::command('sgpi:automate-periods {--apply : Guarda los cambios; sin esta opción sólo muestra lo que haría} {--career= : Sólo esta carrera}', function (\App\Services\AcademicPeriodAutomationService $automation) {
+    $apply = (bool) $this->option('apply');
+    $careers = DB::table('carreras')->where('activa', true)->when($this->option('career'), fn ($query, $career) => $query->where('id', $career))->orderBy('id')->get(['id', 'clave']);
+    $id = $apply ? DB::table('ejecuciones_academicas')->insertGetId(['tarea' => 'automatizar_periodos', 'estado' => 'ejecutando', 'created_at' => now(), 'updated_at' => now()]) : null;
+    try {
+        foreach ($careers as $career) {
+            $plan = $apply ? $automation->apply((int) $career->id) : $automation->plan((int) $career->id);
+            if (!$plan) {
+                $this->line("{$career->clave}: sin cambios.");
+                continue;
+            }
+            $this->line(sprintf('%s: %s · %s · %d suben · %d por acomodar · %d grupos nuevos · %d periodos por cerrar',
+                $career->clave, $plan['period']['nombre'], $plan['can_apply'] ? ($apply ? 'abierto' : 'se abriría') : 'ya abierto', count($plan['moves']), count($plan['unplaced']), count($plan['new_groups']), count($plan['close'])));
+        }
+        if ($id) DB::table('ejecuciones_academicas')->where('id', $id)->update(['estado' => 'completada', 'updated_at' => now()]);
+    } catch (\Throwable $error) {
+        if ($id) DB::table('ejecuciones_academicas')->where('id', $id)->update(['estado' => 'fallida', 'detalle' => get_class($error), 'updated_at' => now()]);
+        throw $error;
+    }
+
+    return self::SUCCESS;
+})->purpose('Abre y cierra periodos por fecha; sin --apply sólo muestra la vista previa');
+
+Schedule::command('sgpi:automate-periods --apply')->hourlyAt(20)->timezone('America/Mexico_City')
+    ->name('automate-academic-periods')->withoutOverlapping()->when(fn () => config('academic.period_automation'));
+
 Schedule::command('sgpi:prepare-academic-periods')->hourlyAt(10)->timezone('America/Mexico_City')
     ->name('prepare-academic-periods')->withoutOverlapping();
 

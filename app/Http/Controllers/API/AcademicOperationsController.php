@@ -32,6 +32,31 @@ class AcademicOperationsController extends Controller
         ]);
     }
 
+    /** Vista previa de la apertura automática o, con el periodo abierto, los alumnos por acomodar. */
+    public function automation(\App\Services\AcademicPeriodAutomationService $automation)
+    {
+        abort_unless(auth('api')->user()->canManageAcademics(), 403);
+        $career = $this->workflow->careerId();
+        $open = $this->workflow->period($career);
+
+        return response()->json([
+            'plan' => $automation->plan($career),
+            'open_period' => $open ? ['id' => $open->id, 'nombre' => $open->nombre] : null,
+            'unplaced' => $open ? $automation->unplaced($career, (int) $open->id) : [],
+            'scheduled' => (bool) config('academic.period_automation'),
+        ]);
+    }
+
+    public function applyAutomation(Request $request, \App\Services\AcademicPeriodAutomationService $automation)
+    {
+        $this->workflow->manager();
+        $data = $request->validate(['snapshot' => 'required|string|size:64']);
+        $plan = $automation->apply($this->workflow->careerId(), (string) auth('api')->id(), $data['snapshot']);
+        abort_unless($plan, 409, 'Este periodo ya está abierto o cerrado.');
+
+        return response()->json(['message' => 'Periodo abierto.', 'promoted' => count($plan['moves']), 'unplaced' => count($plan['unplaced'])]);
+    }
+
     public function enrollments(Request $request)
     {
         abort_unless(auth('api')->user()->canManageAcademics(), 403);

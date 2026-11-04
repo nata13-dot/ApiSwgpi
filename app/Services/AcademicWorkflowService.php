@@ -85,8 +85,12 @@ class AcademicWorkflowService
     public function requireReviewable(int $periodId): void
     {
         $this->ready();
-        abort_unless(DB::table('carrera_periodos')->where('carrera_id', $this->careerId())->where('periodo_id', $periodId)
-            ->whereIn('estado', ['abierto', 'en_cierre'])->where('conciliado', true)->exists(), 409, 'El periodo no admite revisiones.');
+        $state = DB::table('carrera_periodos as cp')->join('periodos_academicos as p', 'p.id', '=', 'cp.periodo_id')
+            ->where('cp.carrera_id', $this->careerId())->where('cp.periodo_id', $periodId)->where('cp.conciliado', true)->first(['cp.estado', 'p.fecha_fin']);
+        // Los periodos concluyen por fecha aunque quede algo pendiente: hay 60 días para terminar de revisarlo.
+        $reviewable = $state && (in_array($state->estado, ['abierto', 'en_cierre'], true)
+            || ($state->estado === 'cerrado' && today()->lte(\Illuminate\Support\Carbon::parse($state->fecha_fin)->addDays(60))));
+        abort_unless($reviewable, 409, 'El periodo no admite revisiones.');
     }
 
     public function enrollment(string $studentId, ?int $periodId = null): ?object
