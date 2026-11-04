@@ -14,6 +14,11 @@ return [
     |
     */
 
+    // Ruta a la llave de la cuenta de servicio de Firebase. Nunca dentro de Git.
+    'firebase' => [
+        'credentials' => env('FIREBASE_CREDENTIALS'),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

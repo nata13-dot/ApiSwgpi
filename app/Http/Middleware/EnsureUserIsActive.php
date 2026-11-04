@@ -19,6 +19,12 @@ class EnsureUserIsActive
             return response()->json(['error' => 'Cuenta desactivada'], 403);
         }
 
+        // El token de la app no vence: lo que decide si sigue valiendo es su registro.
+        if ($user && ($appSession = \App\Services\AppSessionService::current())
+            && !app(\App\Services\AppSessionService::class)->isActive($appSession, (string) $user->getAuthIdentifier())) {
+            return response()->json(['error' => 'La sesión se cerró. Inicia sesión de nuevo.'], 401);
+        }
+
         // "Ver como" del administrador general: el token sólo puede leer.
         $readOnly = $user && $this->readOnlyToken();
         if ($readOnly && !$request->isMethodSafe() && !$request->is('api/auth/heartbeat', 'api/auth/logout')) {

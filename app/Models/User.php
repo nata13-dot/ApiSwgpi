@@ -79,6 +79,16 @@ class User extends Authenticatable implements JWTSubject
         'perfil_id',
     ];
 
+    protected static function booted(): void
+    {
+        // Cambiar la contraseña cierra las sesiones de la app en otros teléfonos.
+        static::updated(function (self $user) {
+            if ($user->wasChanged('contrasena') && \App\Support\SchemaCache::hasTable('sesiones_app')) {
+                app(\App\Services\AppSessionService::class)->revokeAllForUser((string) $user->getKey(), \App\Services\AppSessionService::current());
+            }
+        });
+    }
+
     public function getAuthPassword()
     {
         return $this->contrasena;

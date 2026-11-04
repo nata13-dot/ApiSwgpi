@@ -31,6 +31,7 @@ class AuthController extends Controller
                 'password' => 'required|string',
                 'remember' => 'nullable|boolean',
                 'carrera_id' => 'nullable|integer|exists:carreras,id',
+                'device' => 'nullable|in:app',
             ]);
 
             // Los números de control con b se guardan en minúsculas; se ignoran espacios accidentales.
@@ -49,12 +50,15 @@ class AuthController extends Controller
                 return response()->json(['error' => 'Cuenta desactivada'], 403);
             }
 
-            $remember = $request->boolean('remember');
+            // La app móvil pide una sesión sin vencimiento; la protege el bloqueo con huella del teléfono.
+            $isApp = ($credentials['device'] ?? null) === 'app';
+            $remember = $isApp || $request->boolean('remember');
             $access = $this->resolveCareerAccess($user, $request->integer('carrera_id') ?: null);
             if (!$access) {
                 return response()->json(['error' => 'La cuenta no tiene una carrera activa asignada.'], 403);
             }
-            $token = $this->issueToken($user, $remember, $access['career']->id, $access['profile_id']);
+            $appSession = $isApp ? app(\App\Services\AppSessionService::class)->create($user->id) : null;
+            $token = $this->issueToken($user, $remember, $access['career']->id, $access['profile_id'], $appSession);
 
             return response()->json([
                 'access_token' => $token,
@@ -111,7 +115,7 @@ class AuthController extends Controller
         }
 
         $remember = $this->rememberedToken();
-        $newToken = $this->issueToken($user, $remember, $access['career']->id, $access['profile_id']);
+        $newToken = $this->issueToken($user, $remember, $access['career']->id, $access['profile_id'], \App\Services\AppSessionService::current());
         try {
             JWTAuth::invalidate(JWTAuth::getToken());
         } catch (\Throwable) {
@@ -129,6 +133,9 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         try {
+            if ($appSession = \App\Services\AppSessionService::current()) {
+                app(\App\Services\AppSessionService::class)->revoke($appSession);
+            }
             JWTAuth::invalidate(JWTAuth::getToken());
             return response()->json(['message' => 'Sesión cerrada']);
         } catch (\Exception $e) {
@@ -139,10 +146,24 @@ class AuthController extends Controller
     public function refresh()
     {
         try {
-            $oldPayload = JWTAuth::parseToken()->getPayload();
+            // getPayload() rechaza los tokens vencidos, justo los que hay que renovar; se decodifica en modo renovación.
+            $oldToken = JWTAuth::parseToken()->getToken();
+            $oldPayload = JWTAuth::manager()->setRefreshFlow()->decode($oldToken);
+            JWTAuth::manager()->setRefreshFlow(false);
             $careerId = $oldPayload->get('career_id');
             $remember = (bool) $oldPayload->get('remember');
-            $token = JWTAuth::refresh(JWTAuth::getToken());
+            $appSession = $oldPayload->get('app_session');
+            // Sin "Mantener sesión", un token vencido sigue terminando la sesión.
+            if (!$remember && (int) $oldPayload->get('exp') <= now()->timestamp) {
+                return response()->json(['error' => 'La sesion ya no puede renovarse'], 401);
+            }
+            if ($appSession) {
+                $sessionUser = User::find($oldPayload->get('sub'));
+                if (!$sessionUser || !app(\App\Services\AppSessionService::class)->isActive($appSession, $sessionUser->id)) {
+                    return response()->json(['error' => 'La sesion ya no puede renovarse'], 401);
+                }
+            }
+            $token = JWTAuth::setToken($oldToken)->refresh();
             $user = JWTAuth::setToken($token)->authenticate();
             if (!$user || !$user->activo) {
                 return response()->json(['error' => 'Cuenta no disponible'], 403);
@@ -345,13 +366,21 @@ class AuthController extends Controller
             'simulated_profile' => $simulated, 'simulated_label' => $simulated ? \App\Support\Profiles::label($simulated) : null];
     }
 
-    private function issueToken(User $user, bool $remember, int $careerId, int $profileId): string
+    private function issueToken(User $user, bool $remember, int $careerId, int $profileId, ?string $appSession = null): string
     {
-        return JWTAuth::claims([
-            'remember' => $remember,
-            'career_id' => $careerId,
-            'career_role' => $profileId,
-        ])->fromUser($user);
+        $claims = ['remember' => $remember, 'career_id' => $careerId, 'career_role' => $profileId];
+        if (!$appSession) {
+            return JWTAuth::claims($claims)->fromUser($user);
+        }
+
+        $factory = JWTAuth::factory();
+        $ttl = $factory->getTTL();
+        $factory->setTTL(\App\Services\AppSessionService::TOKEN_TTL_MINUTES);
+        try {
+            return JWTAuth::claims($claims + ['app_session' => $appSession])->fromUser($user);
+        } finally {
+            $factory->setTTL($ttl);
+        }
     }
 
     private function resolveCareerAccess(User $user, ?int $careerId = null): ?array

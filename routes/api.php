@@ -74,6 +74,8 @@ Route::prefix('repositorio')->group(function () {
 Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/auth/careers', [AuthController::class, 'careers']);
     Route::post('/auth/switch-career', [AuthController::class, 'switchCareer']);
+    Route::post('/devices/push-token', [\App\Http\Controllers\API\PushDeviceController::class, 'store']);
+    Route::delete('/devices/push-token', [\App\Http\Controllers\API\PushDeviceController::class, 'destroy']);
     Route::post('/auth/password/change-initial', [\App\Http\Controllers\API\ProfileController::class, 'changeInitialPassword']);
 });
 

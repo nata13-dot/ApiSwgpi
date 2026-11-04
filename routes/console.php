@@ -62,6 +62,17 @@ Artisan::command('sgpi:verify-backup {backup?}', function (DatabaseBackupService
     return self::SUCCESS;
 })->purpose('Prueba un respaldo mediante una restauración temporal aislada');
 
+Artisan::command('sgpi:push-test {usuario}', function (\App\Services\PushNotificationService $push) {
+    if (!$push->configured()) {
+        $this->error('Falta FIREBASE_CREDENTIALS o el archivo no se puede leer.');
+        return self::FAILURE;
+    }
+    $result = $push->sendToUser((string) $this->argument('usuario'), 'Prueba de SGPI', 'Las notificaciones funcionan en este teléfono.', ['url' => '/dashboard']);
+    $this->line(json_encode($result));
+
+    return $result['sent'] > 0 ? self::SUCCESS : self::FAILURE;
+})->purpose('Envía una notificación de prueba a los teléfonos de un usuario');
+
 Artisan::command('sgpi:backup-health', function (DatabaseBackupService $backups) {
     $status = $backups->storageStatus();
     $this->table(['Copias', 'Disponibles', 'Faltantes', 'Alteradas', 'Verificadas'], [[

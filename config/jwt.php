@@ -33,7 +33,7 @@ return [
     ],
 
     // La carrera activa y el modo "ver como" deben sobrevivir a la renovación del token.
-    'persistent_claims' => ['remember', 'career_id', 'career_role', 'view_as_by', 'read_only', 'simulated_profile'],
+    'persistent_claims' => ['remember', 'career_id', 'career_role', 'view_as_by', 'read_only', 'simulated_profile', 'app_session'],
 
     'lock_subject' => true,
     'leeway' => env('JWT_LEEWAY', 0),
