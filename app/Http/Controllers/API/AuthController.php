@@ -164,7 +164,17 @@ class AuthController extends Controller
                     return response()->json(['error' => 'La sesion ya no puede renovarse'], 401);
                 }
             }
-            $token = JWTAuth::setToken($oldToken)->refresh();
+            // El token renovado de la app conserva su duración; si no, caería al vencimiento de un token web.
+            $factory = JWTAuth::factory();
+            $ttl = $factory->getTTL();
+            if ($appSession) {
+                $factory->setTTL(\App\Services\AppSessionService::TOKEN_TTL_MINUTES);
+            }
+            try {
+                $token = JWTAuth::setToken($oldToken)->refresh();
+            } finally {
+                $factory->setTTL($ttl);
+            }
             $user = JWTAuth::setToken($token)->authenticate();
             if (!$user || !$user->activo) {
                 return response()->json(['error' => 'Cuenta no disponible'], 403);
