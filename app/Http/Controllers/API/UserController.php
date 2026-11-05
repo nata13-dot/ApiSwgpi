@@ -758,11 +758,71 @@ class UserController extends Controller
         ]), true];
     }
 
+    /**
+     * El administrador general nombra o retira a otros administradores generales, con su contraseña.
+     * Nadie cambia su propia administración: así siempre queda al menos quien hizo el cambio.
+     */
+    public function setGeneralAdmin(Request $request, $id)
+    {
+        $actor = auth('api')->user();
+        if ($actor?->globalProfileId() !== \App\Support\Profiles::GENERAL_ADMIN) {
+            return response()->json(['error' => 'Solo el administrador general puede nombrar administradores generales.'], 403);
+        }
+        $validated = $request->validate(['grant' => 'required|boolean', 'admin_password' => 'required|string'], [], ['admin_password' => 'contraseña']);
+        if (!Hash::check($validated['admin_password'], $actor->password)) {
+            return response()->json(['error' => 'Contraseña de administrador incorrecta'], 403);
+        }
+        $target = User::withoutGlobalScopes()->find($id);
+        if (!$target) {
+            return response()->json(['error' => 'Usuario no encontrado'], 404);
+        }
+        if ($target->is($actor)) {
+            return response()->json(['error' => 'No puedes cambiar tu propia administración general; pídeselo a otro administrador general.'], 422);
+        }
+
+        $grant = (bool) $validated['grant'];
+        if ($grant && !$target->activo) {
+            return response()->json(['error' => 'Activa la cuenta antes de nombrarla administradora general.'], 422);
+        }
+        if ($grant && UserCareer::where('usuario_id', $target->id)->where('perfil_id', \App\Support\Profiles::STUDENT)->where('activo', true)->exists()) {
+            return response()->json(['error' => 'Un estudiante no puede ser administrador general.'], 422);
+        }
+        if ($this->isGeneralAdminAccount($target) === $grant) {
+            return response()->json(['message' => $grant ? 'Ya es administrador general.' : 'No es administrador general.', 'es_administrador_general' => $grant]);
+        }
+
+        DB::transaction(function () use ($target, $actor, $grant) {
+            DB::table('usuarios')->where('id', $target->id)->update(['es_administrador_general' => $grant, 'actualizado_en' => now()]);
+            DB::table('bitacora_usuarios')->insert([
+                'usuario_id' => $target->id,
+                'administrador_id' => $actor->id,
+                'accion' => $grant ? 'admin_general.otorgado' : 'admin_general.retirado',
+                'detalle' => json_encode(['es_administrador_general' => $grant]),
+                'accion_en' => now(),
+            ]);
+        });
+        // Al retirarlo se cierran sus sesiones de la app para que vuelva a entrar con su perfil de carrera.
+        if (!$grant && \App\Support\SchemaCache::hasTable('sesiones_app')) {
+            app(\App\Services\AppSessionService::class)->revokeAllForUser((string) $target->id);
+        }
+        \App\Services\ActivityNotificationService::send([$target->id], $actor->id, 'cuenta',
+            $grant ? 'Ahora eres administrador general' : 'Ya no eres administrador general',
+            $grant ? 'Cierra sesión y vuelve a entrar para ver todas las carreras y opciones de administración.' : 'Tu cuenta vuelve a su perfil dentro de la carrera.',
+            '/dashboard');
+
+        return response()->json(['message' => $grant ? 'Ahora es administrador general.' : 'Se retiró la administración general.', 'es_administrador_general' => $grant]);
+    }
+
+    private function isGeneralAdminAccount(User $user): bool
+    {
+        return (bool) User::withoutGlobalScopes()->whereKey($user->getKey())->value('es_administrador_general');
+    }
+
     private function guardAdminSensitiveAction(Request $request, User $target, ?int $careerProfileId = null)
     {
         $protectedProfile = $careerProfileId ?? (int) $target->perfil_id;
-        // Jefatura y asistencia sólo las modifica el administrador general (con su contraseña).
-        if (!in_array($protectedProfile, [1, \App\Support\Profiles::CAREER_HEAD, \App\Support\Profiles::HEAD_ASSISTANT], true)) {
+        // Jefatura, asistencia y otros administradores generales sólo los modifica el administrador general (con su contraseña).
+        if (!$this->isGeneralAdminAccount($target) && !in_array($protectedProfile, [1, \App\Support\Profiles::CAREER_HEAD, \App\Support\Profiles::HEAD_ASSISTANT], true)) {
             return null;
         }
 
