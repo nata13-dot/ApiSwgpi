@@ -174,6 +174,10 @@ class DeliverableController extends Controller
             ]);
         $user = auth('api')->user();
 
+        if ($request->filled('q')) {
+            \App\Support\TextSearch::apply($query, (string) $request->query('q'), ['entregables.nombre', 'entregables.descripcion']);
+        }
+
         if ((int) $user->perfil_id === 2) {
             $query->whereExists(function ($subquery) use ($user) {
                 $subquery->selectRaw('1')
@@ -361,6 +365,7 @@ class DeliverableController extends Controller
                 'competencia_id' => 'required_without:asignatura_id|exists:asignaturas,id',
                 'autores' => 'nullable|string|max:1000',
                 'estado' => 'nullable|string',
+                'fecha_limite' => ['nullable', 'date', new \App\Rules\NotBeforeNow()],
             ]);
 
             $courseId = $this->courseIdForDeliverable((int) ($validated['asignatura_id'] ?? $validated['competencia_id']), $validated['project_id'] ?? null);
@@ -371,6 +376,7 @@ class DeliverableController extends Controller
                 'descripcion' => $validated['descripcion'] ?? null,
                 'tipo_documento' => $validated['tipo_documento'] ?? 'documento',
                 'estado' => $this->normalizedDeliverableState($validated['estado'] ?? 'publicado'),
+                'fecha_limite' => $validated['fecha_limite'] ?? null,
                 'activo' => true,
             ]);
             $project = ! empty($validated['project_id']) ? Project::find($validated['project_id']) : null;
@@ -424,9 +430,10 @@ class DeliverableController extends Controller
                 'tipo_documento' => 'nullable|in:reporte,video,presentacion,codigo,documento,otro',
                 'rama_asociada' => 'nullable|string|max:255',
                 'activo' => 'nullable|boolean',
+                'fecha_limite' => ['nullable', 'date', new \App\Rules\NotBeforeNow($deliverable->fecha_limite)],
             ]);
 
-            $payload = collect($validated)->only(['nombre', 'descripcion', 'tipo_documento', 'activo'])->toArray();
+            $payload = collect($validated)->only(['nombre', 'descripcion', 'tipo_documento', 'activo', 'fecha_limite'])->toArray();
             if (isset($validated['estado'])) {
                 $payload['estado'] = $this->normalizedDeliverableState($validated['estado']);
             }
@@ -510,6 +517,16 @@ class DeliverableController extends Controller
             $delivery->update([
                 'calificacion' => $grade,
             ]);
+
+            // El aviso no incluye la calificación: viaja por servidores externos y se consulta al abrirlo.
+            ActivityNotificationService::send(
+                $delivery->project?->students()->pluck('usuarios.id') ?? [],
+                (string) $user->id,
+                'entrega_calificada',
+                'Trabajo calificado',
+                "«{$deliverable->nombre}» ya fue calificado. Revísalo en SGPI.",
+                '/deliverables'
+            );
 
             return response()->json([
                 'message' => 'Entregable calificado exitosamente',
@@ -654,7 +671,7 @@ class DeliverableController extends Controller
             'actividad_habilitada',
             'Nueva actividad disponible',
             "{$deliverable->nombre}{$context} fue habilitada para tu proyecto.",
-            '/pages/student/my-deliverables.php'
+            '/deliverables'
         );
     }
 
@@ -759,7 +776,7 @@ class DeliverableController extends Controller
             'actividad_entregada',
             'Actividad entregada',
             "{$studentName} subio la actividad \"{$deliverable->nombre}\".",
-            '/pages/teacher/my-deliverables.php'
+            '/deliverables'
         );
         ActivityNotificationService::send(
             $adminIds,
@@ -767,7 +784,7 @@ class DeliverableController extends Controller
             'actividad_entregada',
             'Actividad entregada',
             "{$studentName} subio la actividad \"{$deliverable->nombre}\".",
-            '/pages/admin/deliverables.php'
+            '/deliverables'
         );
     }
 

@@ -139,6 +139,12 @@ class SelfRegistrationController extends Controller
         $this->ensureAvailable($pending->matricula, $email);
         DB::table('autoregistros_pendientes')->where('id', $pending->id)->update(['estado' => 'por_aprobar', 'codigo' => '', 'verificado_en' => now()]);
 
+        // Es una petición pública: el aviso a quienes revisan no debe impedir responderle al alumno.
+        \App\Services\ActivityNotificationService::send(
+            DB::table('usuario_carrera')->where('carrera_id', $pending->carrera_id)->where('activo', true)->whereIn('perfil_id', [1, 5, 6])->pluck('usuario_id'),
+            null, 'solicitud_cuenta', 'Solicitud de cuenta', 'Un alumno nuevo espera aprobación.', '/registration-requests', (int) $pending->carrera_id
+        );
+
         return response()->json(['message' => 'Confirmamos tu correo. Tu solicitud quedó en revisión; te avisaremos por correo cuando la jefatura de tu carrera la responda.', 'id' => $pending->matricula, 'status' => 'por_aprobar']);
     }
 
@@ -326,9 +332,13 @@ class SelfRegistrationController extends Controller
             return null;
         }
 
+        // Los alumnos nuevos entran a 5°, sólo en los grupos que la carrera definió.
+        if (!\App\Support\NewStudentGroups::allowedIn($period)) {
+            return null;
+        }
         $groups = SubjectGroup::withoutGlobalScopes()->where('carrera_id', $career->id)->where('periodo_id', $period->id)
-            ->where('activo', true)->whereNotNull('semestre')->where('clave_grupo', 'not like', 'SIN\_%')
-            ->orderBy('semestre')->orderBy('clave_grupo')->get(['id', 'nombre', 'semestre', 'clave_grupo'])
+            ->where('activo', true)->where('semestre', \App\Support\NewStudentGroups::SEMESTER)->whereIn('clave_grupo', \App\Support\NewStudentGroups::letters($career->id))
+            ->orderBy('clave_grupo')->get(['id', 'nombre', 'semestre', 'clave_grupo'])
             ->map(fn ($group) => ['id' => $group->id, 'nombre' => $group->nombre, 'semestre' => (int) $group->semestre, 'grupo' => $group->clave_grupo]);
         if ($groups->isEmpty()) {
             return null;

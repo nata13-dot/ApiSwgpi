@@ -53,7 +53,9 @@ class AcademicPeriodAutomationService
             }
         }
 
-        $newGroups = collect($moves)->map(fn ($move) => ['semestre' => $move['to'], 'clave' => $move['clave']])->unique(fn ($group) => "{$group['semestre']}|{$group['clave']}")
+        // De julio a diciembre también se preparan los grupos de 5° para los alumnos nuevos.
+        $freshmen = in_array(\App\Support\NewStudentGroups::SEMESTER, $allowed, true) ? collect(\App\Support\NewStudentGroups::letters($career))->map(fn ($letter) => ['to' => \App\Support\NewStudentGroups::SEMESTER, 'clave' => $letter]) : collect();
+        $newGroups = collect($moves)->concat($freshmen)->map(fn ($move) => ['semestre' => $move['to'], 'clave' => $move['clave']])->unique(fn ($group) => "{$group['semestre']}|{$group['clave']}")
             ->reject(fn ($group) => $existingGroups->contains(fn ($row) => (int) $row->semestre === $group['semestre'] && $row->clave_grupo === $group['clave']))
             ->sortBy(fn ($group) => sprintf('%02d%s', $group['semestre'], $group['clave']))->values()->all();
         $open = in_array($state?->estado, ['abierto', 'en_cierre'], true);
@@ -325,9 +327,7 @@ class AcademicPeriodAutomationService
 
     private function notifyManagers(int $career, string $type, string $title, string $message): void
     {
-        foreach (DB::table('usuario_carrera')->where('carrera_id', $career)->where('activo', true)->whereIn('perfil_id', [1, 5, 6])->pluck('usuario_id') as $user) {
-            DB::table('notificaciones')->insert(['carrera_id' => $career, 'usuario_id' => $user, 'tipo' => $type, 'titulo' => $title, 'mensaje' => $message, 'creada_en' => now()]);
-        }
+        ActivityNotificationService::send(DB::table('usuario_carrera')->where('carrera_id', $career)->where('activo', true)->whereIn('perfil_id', [1, 5, 6])->pluck('usuario_id'), null, $type, $title, $message, '/semesters', $career);
     }
 
     private function log(int $career, ?string $actorId, string $action, string $entity, int|string $id, mixed $before, mixed $after): void

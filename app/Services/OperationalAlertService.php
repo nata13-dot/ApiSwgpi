@@ -186,6 +186,8 @@ class OperationalAlertService
                     'detectada_en' => now(),
                     'actualizada_en' => now(),
                 ]);
+                // Sólo la primera vez que aparece: el análisis corre seguido y no debe repetir el aviso.
+                ActivityNotificationService::send(DB::table('usuarios')->where('es_administrador_general', true)->where('activo', true)->pluck('id'), null, 'alerta_sistema', 'Alerta del sistema', $title, '/operations');
                 return;
             }
             DB::table('alertas_operativas')->where('id', $existing->id)->update([

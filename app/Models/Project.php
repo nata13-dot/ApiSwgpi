@@ -385,6 +385,28 @@ class Project extends Model
         return $query->where('activo', false);
     }
 
+    /** Lo que el usuario ve en el listado de proyectos: activos, ya aprobados y, si es docente o alumno, sólo los suyos. */
+    public function scopeVisibleInListing($query, $user)
+    {
+        $query->where('activo', true)
+            ->where(function ($scope) {
+                $scope->whereNull('subject_group_id')
+                    ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereIn('semestre', app(\App\Services\SemesterManagementService::class)->careerSemesters()));
+            });
+        // Las propuestas sólo pasan al resto del sistema cuando se aprueban; antes viven en Propuestas.
+        $query->where(function ($scope) {
+            $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
+        });
+        if ($user && (int) $user->perfil_id === 2) {
+            $query->whereHas('advisors', fn ($q) => $q->where('usuarios.id', $user->id));
+        }
+        if ($user && (int) $user->perfil_id === 3) {
+            $query->whereHas('students', fn ($q) => $q->where('usuarios.id', $user->id));
+        }
+
+        return $query;
+    }
+
     public function scopeSearch($query, $term)
     {
         return $query->where('title', 'like', "%{$term}%")

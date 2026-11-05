@@ -75,26 +75,7 @@ class ProjectController extends Controller
                 'proposalReviewer:id,nombres,apa,ama',
             ])
             ->withCount('students')
-            ->where('activo', true)
-            ->where(function ($scope) {
-                $scope->whereNull('subject_group_id')
-                    ->orWhereHas('subjectGroup', fn ($groupQuery) => $groupQuery->whereIn('semestre', app(\App\Services\SemesterManagementService::class)->careerSemesters()));
-            });
-
-        $user = auth('api')->user();
-        // Las propuestas sólo pasan al resto del sistema cuando se aprueban; antes viven en Propuestas.
-        $query->where(function ($scope) {
-            $scope->where('tipo', '!=', 'propuesta')->orWhere('estado', 'aprobado');
-        });
-        if ($user && (int) $user->perfil_id === 2) {
-            $query->where(function ($scope) use ($user) {
-                $scope->whereHas('advisors', fn ($q) => $q->where('usuarios.id', $user->id));
-            });
-        }
-
-        if ($user && (int) $user->perfil_id === 3) {
-            $query->whereHas('students', fn ($q) => $q->where('usuarios.id', $user->id));
-        }
+            ->visibleInListing(auth('api')->user());
 
         if ($request->filled('semestre')) {
             $query->where('semestre', $request->semestre);
@@ -104,26 +85,15 @@ class ProjectController extends Controller
 
         if ($request->filled('q')) {
             $search = trim((string) $request->query('q'));
-            $query->where(function ($scope) use ($search) {
-                $scope->where('title', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%")
-                    ->orWhere('created_at', 'like', "%{$search}%")
-                    ->orWhereHas('empresa', function ($companyQuery) use ($search) {
-                        $companyQuery->where('nombre', 'like', "%{$search}%")
-                            ->orWhere('contacto_nombre', 'like', "%{$search}%");
-                    })
-                    ->orWhereHas('students', function ($studentQuery) use ($search) {
-                        $studentQuery->where('usuarios.id', 'like', "%{$search}%")
-                            ->orWhere('usuarios.nombres', 'like', "%{$search}%")
-                            ->orWhere('usuarios.apa', 'like', "%{$search}%")
-                            ->orWhere('usuarios.ama', 'like', "%{$search}%");
-                    })
-                    ->orWhereHas('advisors', function ($advisorQuery) use ($search) {
-                        $advisorQuery->where('usuarios.id', 'like', "%{$search}%")
-                            ->orWhere('usuarios.nombres', 'like', "%{$search}%")
-                            ->orWhere('usuarios.apa', 'like', "%{$search}%")
-                            ->orWhere('usuarios.ama', 'like', "%{$search}%");
-                    });
+            \App\Support\TextSearch::apply($query, $search, ['title', 'description', 'created_at'], function ($scope, $pattern) {
+                $people = fn ($personQuery) => $personQuery->where(fn ($match) => $match
+                    ->where('usuarios.id', 'like', $pattern)
+                    ->orWhere('usuarios.nombres', 'like', $pattern)
+                    ->orWhere('usuarios.apa', 'like', $pattern)
+                    ->orWhere('usuarios.ama', 'like', $pattern));
+                $scope->orWhereHas('empresa', fn ($companyQuery) => $companyQuery->where('nombre', 'like', $pattern)->orWhere('contacto_nombre', 'like', $pattern))
+                    ->orWhereHas('students', $people)
+                    ->orWhereHas('advisors', $people);
             });
         }
 
@@ -420,6 +390,8 @@ class ProjectController extends Controller
                 }
             });
 
+            \App\Services\ActivityNotificationService::send([$validated['user_id']], (string) auth('api')->id(), 'asesoria_asignada', 'Te asignaron un proyecto', "Ahora participas en «{$project->titulo}».", '/projects');
+
             return response()->json(['message' => 'Asesor asignado', 'project' => $project->load(['advisors'])]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -487,6 +459,7 @@ class ProjectController extends Controller
             ]);
         }
 
+        $advisorsBefore = DB::table('proyecto_integrantes')->where('proyecto_id', $project->id)->whereIn('rol', $allowedRoles)->pluck('usuario_id')->map(fn ($id) => (string) $id);
         DB::transaction(function () use ($project, $allowedRoles, $assignments) {
             $before = $project->advisors()->get()->map(fn ($u) => ['id' => $u->id, 'rol' => $u->pivot->rol]);
             app(\App\Services\AcademicWorkflowService::class)->audit('proyecto.asesores', 'proyecto', $project->id, $before, $assignments);
@@ -511,6 +484,9 @@ class ProjectController extends Controller
                 DB::table('proyecto_integrantes')->insert($rows);
             }
         });
+
+        // Sólo a quien acaba de entrar: reacomodar puestos no debe avisar a todos otra vez.
+        \App\Services\ActivityNotificationService::send($selectedUsers->map(fn ($id) => (string) $id)->diff($advisorsBefore), (string) auth('api')->id(), 'asesoria_asignada', 'Te asignaron un proyecto', "Ahora participas en «{$project->titulo}».", '/projects');
 
         return response()->json([
             'message' => 'Asignaciones de asesores actualizadas',

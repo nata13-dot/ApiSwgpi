@@ -220,19 +220,14 @@ class SemesterManagementController extends Controller
         $students = User::query()
             ->students()
             ->where('activo', true)
-            ->where(function ($query) use ($term) {
-                $query->where('id', 'like', "%{$term}%")
-                    ->orWhere('nombres', 'like', "%{$term}%")
-                    ->orWhere('apellido_paterno', 'like', "%{$term}%")
-                    ->orWhere('apellido_materno', 'like', "%{$term}%");
-            })
+            ->tap(fn ($query) => \App\Support\TextSearch::apply($query, $term, ['id', 'nombres', 'apellido_paterno', 'apellido_materno']))
             ->limit(12)
             ->get(['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'semestre', 'grupo']);
 
         $projects = Project::query()
             ->with('subjectGroup:id,semestre,grupo')
             ->where('activo', true)
-            ->where('titulo', 'like', "%{$term}%")
+            ->tap(fn ($query) => \App\Support\TextSearch::apply($query, $term, ['titulo']))
             ->limit(12)
             ->get(['id', 'titulo', 'grupo_id']);
 

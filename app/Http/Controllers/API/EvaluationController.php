@@ -654,8 +654,8 @@ class EvaluationController extends Controller
                 (string) $user->id,
                 'evaluacion_realizada',
                 'Evaluacion realizada',
-                "La evaluacion de \"{$projectTitle}\" fue completada. Ya puedes consultar su seguimiento.",
-                '/pages/student/dashboard.php'
+                "La evaluación de «{$projectTitle}» fue completada. Ya puedes consultar el resultado.",
+                '/dashboard'
             );
         }
 
@@ -783,6 +783,7 @@ class EvaluationController extends Controller
 
             return $room;
         });
+        $this->notifyRoomAssignments($room->fresh(), [], [], (string) $user->id);
 
         return response()->json(['message' => 'Sala creada', 'room' => $this->shapeRoom($room->load(['teachers', 'responsibleTeacher', 'projects']))], 201);
     }
@@ -799,7 +800,9 @@ class EvaluationController extends Controller
         }
         $validated = $this->roomRules($request);
         $specialCases = $this->specialCaseRules($request);
-        DB::transaction(function () use ($room, $validated, $specialCases) {
+        $teachersBefore = [];
+        $projectsBefore = [];
+        DB::transaction(function () use ($room, $validated, $specialCases, &$teachersBefore, &$projectsBefore) {
             $lockedRoom = EvaluationRoom::whereKey($room->id)->lockForUpdate()->firstOrFail();
             if ($lockedRoom->sequence_locked) {
                 throw ValidationException::withMessages([
@@ -816,6 +819,8 @@ class EvaluationController extends Controller
             $this->authorizeSpecialCases($specialCases, $validated + ['periodo_id' => $lockedRoom->periodo_id]);
             $validated = array_replace($validated, app(\App\Services\EvaluationAgendaService::class)->validate($validated, $lockedRoom));
             $lockedRoom->update(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
+            $teachersBefore = $lockedRoom->teachers()->pluck('usuarios.id')->map(fn ($teacherId) => (string) $teacherId)->all();
+            $projectsBefore = Evaluation::where('evaluation_room_id', $lockedRoom->id)->where('estado', '!=', 'archivada')->pluck('project_id')->map(fn ($projectId) => (int) $projectId)->all();
             $lockedRoom->teachers()->sync($validated['teacher_ids'] ?? []);
             $this->syncRoomEvaluations(
                 $lockedRoom,
@@ -823,6 +828,8 @@ class EvaluationController extends Controller
                 $validated['project_order'] ?? []
             );
         });
+
+        $this->notifyRoomAssignments($room->fresh(), $teachersBefore, $projectsBefore, (string) auth('api')->id());
 
         return response()->json(['message' => 'Sala actualizada', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
     }
@@ -1051,6 +1058,12 @@ class EvaluationController extends Controller
             return $room;
         });
 
+        if (!$room->completed_at && $room->current_order) {
+            $nextProject = Evaluation::where('evaluation_room_id', $room->id)->where('presentation_order', $room->current_order)->value('project_id');
+            ActivityNotificationService::send(DB::table('proyecto_integrantes')->where('proyecto_id', $nextProject)->whereIn('rol', ['lider', 'integrante'])->pluck('usuario_id'),
+                (string) $user->id, 'turno_proximo', 'Es tu turno', "Tu proyecto se presenta ahora en {$room->nombre}.", '/dashboard');
+        }
+
         return response()->json(['message' => $room->completed_at ? 'Sala finalizada' : 'Turno actualizado', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
     }
 
@@ -1156,7 +1169,7 @@ class EvaluationController extends Controller
             'fecha_evaluacion' => 'required|date',
             'fecha_fin_evaluacion' => 'required|date|after:fecha_evaluacion',
             'allow_late_evaluations' => 'required|boolean',
-            'late_evaluation_until' => 'nullable|required_if:allow_late_evaluations,true|date|after:fecha_fin_evaluacion',
+            'late_evaluation_until' => ['nullable', 'required_if:allow_late_evaluations,true', 'date', 'after:fecha_fin_evaluacion', new \App\Rules\NotBeforeNow(EvaluationRoom::whereKey($id)->value('evaluacion_fuera_horario_hasta'))],
             'late_evaluation_reason' => 'nullable|required_if:allow_late_evaluations,true|string|min:10|max:500',
             'expected_sequence_version' => 'required|integer|min:0',
         ]);
@@ -1231,6 +1244,12 @@ class EvaluationController extends Controller
             ]);
             return $room;
         });
+
+        // Cambio de horario: siempre llega, aunque sea de noche, porque afecta a toda la sala.
+        $participants = $this->roomParticipants($room);
+        $when = $room->fresh()->fecha_evaluacion?->format('d/m/Y H:i');
+        ActivityNotificationService::send($participants['teachers'], (string) $user->id, 'sala_reprogramada', 'Cambió el horario de tu sala', "{$room->nombre} ahora es el {$when}.", '/evaluation-rooms');
+        ActivityNotificationService::send($participants['students'], (string) $user->id, 'sala_reprogramada', 'Cambió tu presentación', "{$room->nombre} ahora es el {$when}.", '/dashboard');
 
         return response()->json([
             'message' => 'Horario y politica de evaluacion actualizados',
@@ -2232,7 +2251,7 @@ class EvaluationController extends Controller
         $projectIdsRules = $ignoreId ? 'present|array' : 'required|array|min:1';
         $projectOrderRules = $ignoreId ? 'present|array' : 'required|array|min:1';
         if (!$ignoreId) {
-            $startRules[] = 'after_or_equal:now';
+            $startRules[] = new \App\Rules\NotBeforeNow();
         }
         $validated = $request->validate([
             'nombre' => 'required|string|max:80',
@@ -2383,6 +2402,28 @@ class EvaluationController extends Controller
             $startsAt->copy()->startOfHour(),
             $startsAt->copy()->endOfHour(),
         ]);
+    }
+
+    /** Avisa sólo a quien acaba de entrar a la sala: docentes y equipos de los proyectos nuevos. */
+    private function notifyRoomAssignments(EvaluationRoom $room, array $teachersBefore, array $projectsBefore, string $actorId): void
+    {
+        $when = $room->fecha_evaluacion ? ' el '.$room->fecha_evaluacion->format('d/m/Y H:i') : '';
+        $teachers = $room->teachers()->pluck('usuarios.id')->map(fn ($id) => (string) $id)->diff($teachersBefore);
+        ActivityNotificationService::send($teachers, $actorId, 'sala_asignada', 'Te asignaron a una sala', "Participas en {$room->nombre}{$when}.", '/evaluation-rooms');
+
+        $projects = Evaluation::where('evaluation_room_id', $room->id)->where('estado', '!=', 'archivada')->pluck('project_id')->map(fn ($id) => (int) $id)->diff($projectsBefore);
+        $students = DB::table('proyecto_integrantes')->whereIn('proyecto_id', $projects)->whereIn('rol', ['lider', 'integrante'])->pluck('usuario_id');
+        ActivityNotificationService::send($students, $actorId, 'presentacion_asignada', 'Presentación programada', "Tu proyecto se presenta en {$room->nombre}{$when}.", '/dashboard');
+    }
+
+    /** Todos los participantes de la sala: docentes, responsable y equipos. */
+    private function roomParticipants(EvaluationRoom $room): array
+    {
+        $teachers = $room->teachers()->pluck('usuarios.id')->push($room->responsible_teacher_id)->filter()->map(fn ($id) => (string) $id);
+        $projects = Evaluation::where('evaluation_room_id', $room->id)->where('estado', '!=', 'archivada')->pluck('project_id');
+        $students = DB::table('proyecto_integrantes')->whereIn('proyecto_id', $projects)->whereIn('rol', ['lider', 'integrante'])->pluck('usuario_id')->map(fn ($id) => (string) $id);
+
+        return ['teachers' => $teachers->unique()->values()->all(), 'students' => $students->unique()->values()->all()];
     }
 
     private function syncRoomEvaluations(EvaluationRoom $room, array $projectIds, array $projectOrder): void

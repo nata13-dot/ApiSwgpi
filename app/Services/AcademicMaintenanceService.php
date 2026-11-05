@@ -17,10 +17,7 @@ class AcademicMaintenanceService
                     if (now()->addDays(7)->toDateString() >= $period->fecha_fin) {
                         $key = "cierre:{$career}:{$period->id}:{$period->fecha_fin}";
                         if (DB::table('avisos_academicos')->insertOrIgnore(['clave' => $key, 'created_at' => now()])) {
-                            foreach (DB::table('usuario_carrera')->where('carrera_id', $career)->where('activo', true)->whereIn('perfil_id', [1, 5, 6])->pluck('usuario_id') as $user) {
-                                DB::table('notificaciones')->insert(['carrera_id' => $career, 'usuario_id' => $user, 'tipo' => 'periodo_por_cerrar',
-                                    'titulo' => 'Revisar cierre del periodo', 'mensaje' => "El periodo {$period->nombre} termina el {$period->fecha_fin}. Revisa pendientes y promociones; el cierre requiere confirmación.", 'creada_en' => now()]);
-                            }
+                            ActivityNotificationService::send(DB::table('usuario_carrera')->where('carrera_id', $career)->where('activo', true)->whereIn('perfil_id', [1, 5, 6])->pluck('usuario_id'), null, 'periodo_por_cerrar', 'Revisar cierre del periodo', "El periodo {$period->nombre} termina el {$period->fecha_fin}. Revisa pendientes y promociones; el cierre requiere confirmación.", '/semesters', $career);
                         }
                     }
                 }
@@ -46,12 +43,7 @@ class AcademicMaintenanceService
             if ($week > $weeks) continue;
             $answered = DB::table('revisiones_irregulares')->where(['carrera_id' => $period->carrera_id, 'periodo_id' => $period->id, 'semana' => $week])->exists();
             if ($answered || !DB::table('avisos_academicos')->insertOrIgnore(['clave' => "irregulares:{$period->carrera_id}:{$period->id}:{$week}", 'created_at' => now()])) continue;
-            foreach (DB::table('usuario_carrera')->where('carrera_id', $period->carrera_id)->where('activo', true)->whereIn('perfil_id', [1, 5, 6])->pluck('usuario_id') as $user) {
-                DB::table('notificaciones')->insert(['carrera_id' => $period->carrera_id, 'usuario_id' => $user, 'tipo' => 'revision_irregulares',
-                    'titulo' => "Semana {$week} de {$weeks}: alumnos en otro semestre",
-                    'mensaje' => "¿Hay alumnos que por materias reprobadas cursen un semestre distinto al que les corresponde en {$period->nombre}? Responde desde el panel.",
-                    'creada_en' => now()]);
-            }
+            ActivityNotificationService::send(DB::table('usuario_carrera')->where('carrera_id', $period->carrera_id)->where('activo', true)->whereIn('perfil_id', [1, 5, 6])->pluck('usuario_id'), null, 'revision_irregulares', "Semana {$week} de {$weeks}: alumnos en otro semestre", "¿Hay alumnos que por materias reprobadas cursen un semestre distinto al que les corresponde en {$period->nombre}? Responde desde el panel.", '/semesters', (int) $period->carrera_id);
         }
     }
 }

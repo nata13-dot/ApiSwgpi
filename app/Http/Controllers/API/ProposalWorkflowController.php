@@ -53,7 +53,7 @@ class ProposalWorkflowController extends Controller
     {
         $validated = $request->validate([
             'subject_group_id' => 'required|exists:grupos_academicos,id',
-            'starts_at' => 'required|date',
+            'starts_at' => ['required', 'date', new \App\Rules\NotBeforeNow()],
             'ends_at' => 'required|date|after:starts_at',
             'activo' => 'nullable|boolean',
             'notes' => 'nullable|string|max:1000',
@@ -74,8 +74,8 @@ class ProposalWorkflowController extends Controller
         $group = SubjectGroup::findOrFail($id);
         $this->guardCanManageWindow((int) $group->id);
         $validated = $request->validate([
-            'starts_at' => 'required|date',
-            'ends_at' => 'required|date|after:starts_at',
+            'starts_at' => ['required', 'date', new \App\Rules\NotBeforeNow($group->registro_proyectos_desde)],
+            'ends_at' => 'required|date|after:starts_at|after:now',
             'activo' => 'nullable|boolean',
             'notes' => 'nullable|string|max:1000',
         ]);
@@ -272,6 +272,10 @@ class ProposalWorkflowController extends Controller
             return $project;
         });
 
+        if (DB::table('empresas')->where('id', $project->empresa_id)->where('estado_validacion', 'pendiente')->exists()) {
+            \App\Services\ActivityNotificationService::send(User::withCareerProfiles([5, 6, 7])->where('activo', true)->pluck('id'), $student->id, 'empresa_por_revisar', 'Empresa por revisar',
+                "«{$project->titulo}» registró una empresa nueva.", '/companies');
+        }
         \App\Services\ActivityNotificationService::send($this->validatorIds(), $student->id, 'propuesta_registrada', 'Nueva propuesta por validar',
             "{$project->titulo} ({$group->nombre}) espera validación.", '/proposals');
 
@@ -436,6 +440,7 @@ class ProposalWorkflowController extends Controller
                 'until' => $selfUntil?->toIso8601String(),
                 'open' => (bool) $selfUntil?->isFuture(),
                 'can_manage' => $this->canManageSelfRegistration($user),
+                'groups' => \App\Support\NewStudentGroups::letters((int) app(\App\Services\AcademicWorkflowService::class)->careerId()),
                 'rule' => \App\Support\SelfRegistrationRule::publicPayload(\App\Support\SelfRegistrationRule::forCareer($careerId)),
             ],
             'proposal_window' => $this->proposalWindow() + ['until' => CareerSetting::valueFor('proposal_registration_until')],
@@ -446,12 +451,34 @@ class ProposalWorkflowController extends Controller
         ]);
     }
 
+    /** Letras de los grupos de 5° que elige un alumno nuevo. Quitar una no borra un grupo que ya tenga alumnos. */
+    public function updateNewStudentGroups(Request $request)
+    {
+        abort_unless($this->canManageSelfRegistration(auth('api')->user()), 403, 'Los grupos los define la administración general o la jefatura.');
+        $validated = $request->validate(['groups' => 'required|array|min:1|max:10', 'groups.*' => 'required|string|max:3|regex:/^[A-Za-z0-9]+$/'], [], ['groups' => 'grupos']);
+        $workflow = app(\App\Services\AcademicWorkflowService::class);
+        $career = (int) $workflow->careerId();
+        $letters = collect($validated['groups'])->map(fn ($letter) => strtoupper($letter))->unique()->values()->all();
+        CareerSetting::setValue('new_student_groups', $letters, 'array', 'Grupos de 5° para alumnos nuevos');
+        $period = $workflow->period();
+        if ($period && \App\Support\NewStudentGroups::allowedIn($period)) {
+            \App\Support\NewStudentGroups::ensure($career, (int) $period->id);
+        }
+
+        return response()->json(['message' => 'Grupos guardados', 'groups' => $letters]);
+    }
+
     public function updateSelfRegistration(Request $request)
     {
         abort_unless($this->canManageSelfRegistration(auth('api')->user()), 403, 'El autoregistro lo abre la administración general o la jefatura.');
         $validated = $request->validate(['until' => 'nullable|date|after:now'], [], ['until' => 'fecha de cierre']);
         if (!empty($validated['until'])) {
-            abort_unless(app(\App\Services\AcademicWorkflowService::class)->period(), 409, 'Abre el periodo de la carrera antes de habilitar el autoregistro.');
+            $period = app(\App\Services\AcademicWorkflowService::class)->period();
+            abort_unless($period, 409, 'Abre el periodo de la carrera antes de habilitar el autoregistro.');
+            // Los alumnos nuevos entran a 5°, y 5° sólo existe de julio a diciembre.
+            abort_unless(\App\Support\NewStudentGroups::allowedIn($period), 409, 'El registro de alumnos nuevos sólo se abre de julio a diciembre, cuando existe 5° semestre.');
+            abort_unless(Carbon::parse($validated['until'])->lte(Carbon::parse($period->fecha_fin)->endOfDay()), 422, 'La fecha de cierre debe estar dentro del periodo abierto.');
+            \App\Support\NewStudentGroups::ensure((int) app(\App\Services\AcademicWorkflowService::class)->careerId(), (int) $period->id);
         }
         $until = empty($validated['until']) ? null : Carbon::parse($validated['until'])->toIso8601String();
         CareerSetting::setValue('self_registration_until', $until, 'string', 'Cierre del autoregistro de alumnos');
@@ -622,11 +649,7 @@ class ProposalWorkflowController extends Controller
             ->whereDoesntHave('projectsAsAdvisor', fn ($q) => $q->where('proyecto_integrantes.rol', 'integrante'));
 
         if ($term !== '') {
-            $query->where(function ($q) use ($term) {
-                $q->where('id', 'like', "%{$term}%")
-                    ->orWhere('nombres', 'like', "%{$term}%")
-                    ->orWhere('apa', 'like', "%{$term}%");
-            });
+            \App\Support\TextSearch::apply($query, $term, ['id', 'nombres', 'apa', 'ama']);
         }
 
         // Sólo lo necesario para identificar a un compañero: nunca correo, teléfono ni datos de la cuenta.

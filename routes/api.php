@@ -82,6 +82,11 @@ Route::middleware(['auth:api', 'active'])->group(function () {
 // ========================
 // RUTAS PROTEGIDAS (con JWT)
 // ========================
+Route::middleware(['auth:api', 'active', 'career', 'throttle:120,1'])->group(function () {
+    Route::get('/search', \App\Http\Controllers\API\GlobalSearchController::class);
+    Route::get('/help', [\App\Http\Controllers\API\HelpController::class, 'index']);
+});
+
 Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'academic.open'])->group(function () {
     Route::get('/residencies', [\App\Http\Controllers\API\ResidencyController::class, 'index']);
     Route::post('/residencies', [\App\Http\Controllers\API\ResidencyController::class, 'store']);
@@ -222,6 +227,8 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     Route::post('/auth/logout', [AuthController::class, 'logout']);
 
     // Notificaciones personales de actividad
+    Route::get('/notifications/preferences', [\App\Http\Controllers\API\NotificationPreferenceController::class, 'index']);
+    Route::put('/notifications/preferences', [\App\Http\Controllers\API\NotificationPreferenceController::class, 'update']);
     Route::get('/activity-notifications', [ActivityNotificationController::class, 'index']);
     Route::put('/activity-notifications/read-all', [ActivityNotificationController::class, 'markAllRead']);
     Route::put('/activity-notifications/{notification}/read', [ActivityNotificationController::class, 'markRead']);
@@ -265,6 +272,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     Route::middleware('role:admin,project_manager')->group(function () {
         Route::get('/proposal/config', [ProposalWorkflowController::class, 'configIndex']);
         Route::get('/proposal/settings', [ProposalWorkflowController::class, 'settings']);
+        Route::put('/proposal/settings/new-student-groups', [ProposalWorkflowController::class, 'updateNewStudentGroups']);
         Route::put('/proposal/settings/self-registration', [ProposalWorkflowController::class, 'updateSelfRegistration']);
         Route::put('/proposal/settings/proposal-window', [ProposalWorkflowController::class, 'updateProposalWindow']);
         Route::put('/proposal/settings/validators', [ProposalWorkflowController::class, 'updateValidators']);

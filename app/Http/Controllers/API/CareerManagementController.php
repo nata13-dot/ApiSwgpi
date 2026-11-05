@@ -172,13 +172,7 @@ class CareerManagementController extends Controller
 
         if ($search = trim((string) ($validated['search'] ?? ''))) {
             $query->whereHas('user', function ($userQuery) use ($search): void {
-                $userQuery->withoutGlobalScope('careerMembership')
-                    ->where(function ($searchQuery) use ($search): void {
-                        $searchQuery->where('id', 'like', "%{$search}%")
-                    ->orWhere('nombres', 'like', "%{$search}%")
-                    ->orWhere('apellido_paterno', 'like', "%{$search}%")
-                    ->orWhere('correo', 'like', "%{$search}%");
-                    });
+                \App\Support\TextSearch::apply($userQuery->withoutGlobalScope('careerMembership'), $search, ['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo']);
             });
         }
 

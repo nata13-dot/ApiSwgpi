@@ -104,7 +104,7 @@ class ResidencyController extends Controller
         $row = $this->get($residency);
         $this->editable($row);
         abort_unless(auth('api')->id() === $row->asesor_id || auth('api')->user()->canManageAcademics(), 403);
-        $data = $request->validate(['name' => 'required|string|max:180', 'required' => 'required|boolean', 'deadline' => 'nullable|date']);
+        $data = $request->validate(['name' => 'required|string|max:180', 'required' => 'required|boolean', 'deadline' => ['nullable', 'date', new \App\Rules\NotBeforeNow()]]);
         DB::transaction(function () use ($residency, $data) {
             $this->editable($this->get($residency, true));
             DB::table('residencia_requisitos')->insert(['residencia_id' => $residency, 'nombre' => $data['name'], 'obligatorio' => $data['required'], 'fecha_limite' => $data['deadline'] ?? null, 'created_at' => now(), 'updated_at' => now()]);

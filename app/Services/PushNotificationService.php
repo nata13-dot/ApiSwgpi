@@ -7,9 +7,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Envía notificaciones al teléfono con Firebase Cloud Messaging (API HTTP v1). Nada del sistema la llama
- * todavía: qué se notifica y a quién se decidirá aparte. La llave de la cuenta de servicio vive sólo en el
- * servidor, fuera de Git (FIREBASE_CREDENTIALS).
+ * Envía notificaciones al teléfono con Firebase Cloud Messaging (API HTTP v1). De noche las guarda para la
+ * mañana, salvo las urgentes. Qué se avisa y a quién lo decide ActivityNotificationService. La llave de la
+ * cuenta de servicio vive sólo en el servidor, fuera de Git (FIREBASE_CREDENTIALS).
  */
 class PushNotificationService
 {
@@ -18,6 +18,57 @@ class PushNotificationService
         $path = (string) config('services.firebase.credentials');
 
         return $path !== '' && is_readable($path);
+    }
+
+    /** Dentro de una petición se envía después de responder: Firebase no debe retrasar a quien hizo la operación. */
+    public function deliver(array $userIds, string $title, string $body, string $url, bool $urgent = false): void
+    {
+        if (!$this->configured() || $userIds === []) {
+            return;
+        }
+        if (!$urgent && $this->quietHours()) {
+            foreach ($userIds as $userId) {
+                DB::table('notificaciones_push_pendientes')->insert(['usuario_id' => $userId, 'titulo' => mb_substr($title, 0, 180), 'mensaje' => $body, 'url' => $url, 'creada_en' => now()]);
+            }
+
+            return;
+        }
+        $send = function () use ($userIds, $title, $body, $url) {
+            foreach ($userIds as $userId) {
+                try {
+                    $this->sendToUser((string) $userId, $title, $body, ['url' => $url]);
+                } catch (\Throwable $exception) {
+                    logger()->warning('No se pudo enviar una notificación al teléfono.', ['exception' => $exception::class]);
+                }
+            }
+        };
+        app()->runningInConsole() ? $send() : app()->terminating($send);
+    }
+
+    /** Lo que esperó al horario de silencio. Si varios avisos esperan a la misma persona, se resumen en uno. */
+    public function flushDeferred(): int
+    {
+        if ($this->quietHours() || !$this->configured()) {
+            return 0;
+        }
+        $sent = 0;
+        foreach (DB::table('notificaciones_push_pendientes')->orderBy('id')->get()->groupBy('usuario_id') as $userId => $rows) {
+            DB::table('notificaciones_push_pendientes')->whereIn('id', $rows->pluck('id'))->delete();
+            $first = $rows->first();
+            $many = $rows->count() > 1;
+            $this->sendToUser((string) $userId, $many ? "Tienes {$rows->count()} avisos nuevos" : $first->titulo, $many ? 'Ábrelos en la campana de SGPI.' : $first->mensaje, ['url' => $many ? '/dashboard' : (string) $first->url]);
+            $sent++;
+        }
+
+        return $sent;
+    }
+
+    private function quietHours(): bool
+    {
+        ['from' => $from, 'to' => $to] = config('notifications.quiet_hours');
+        $hour = (int) now()->format('G');
+
+        return $hour >= $from || $hour < $to;
     }
 
     public function registerDevice(string $userId, string $token, string $platform = 'android'): void

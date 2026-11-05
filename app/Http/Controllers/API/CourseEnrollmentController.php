@@ -69,8 +69,8 @@ class CourseEnrollmentController extends Controller
     {
         $validated = $request->validate([
             'enabled' => 'required|boolean',
-            'starts_at' => 'nullable|required_if:enabled,true|date',
-            'ends_at' => 'nullable|required_if:enabled,true|date|after:starts_at',
+            'starts_at' => ['nullable', 'required_if:enabled,true', 'date', new \App\Rules\NotBeforeNow($course->inscripcion_desde)],
+            'ends_at' => 'nullable|required_if:enabled,true|date|after:starts_at|after:now',
             'password' => 'nullable|required_if:enabled,true|string|min:6|max:100|confirmed',
         ]);
         $user = auth('api')->user();

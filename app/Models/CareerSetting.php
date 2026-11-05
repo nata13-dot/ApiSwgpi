@@ -16,6 +16,7 @@ final class CareerSetting
         'basic_semesters_enabled',
         'self_registration_until',
         'self_registration_rule',
+        'new_student_groups',
         'proposal_registration_until',
         'proposal_validator_teacher_ids',
     ];

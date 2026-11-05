@@ -73,6 +73,14 @@ Artisan::command('sgpi:push-test {usuario}', function (\App\Services\PushNotific
     return $result['sent'] > 0 ? self::SUCCESS : self::FAILURE;
 })->purpose('Envía una notificación de prueba a los teléfonos de un usuario');
 
+Artisan::command('sgpi:send-reminders {--weekly : Envía los resúmenes de la semana}', function (\App\Services\NotificationSchedulerService $scheduler) {
+    $this->line(json_encode($this->option('weekly') ? $scheduler->weekly() : $scheduler->daily()));
+})->purpose('Recordatorios de entregas y salas, y resúmenes semanales');
+
+Artisan::command('sgpi:flush-notifications', function (\App\Services\PushNotificationService $push) {
+    $this->line('Enviadas: '.$push->flushDeferred());
+})->purpose('Envía las notificaciones que esperaron al horario de silencio');
+
 Artisan::command('sgpi:backup-health', function (DatabaseBackupService $backups) {
     $status = $backups->storageStatus();
     $this->table(['Copias', 'Disponibles', 'Faltantes', 'Alteradas', 'Verificadas'], [[
@@ -163,6 +171,10 @@ Artisan::command('sgpi:automate-periods {--apply : Guarda los cambios; sin esta 
 
 Schedule::command('sgpi:automate-periods --apply')->hourlyAt(20)->timezone('America/Mexico_City')
     ->name('automate-academic-periods')->withoutOverlapping()->when(fn () => config('academic.period_automation'));
+
+Schedule::command('sgpi:send-reminders')->dailyAt('09:00')->timezone('America/Mexico_City')->name('send-reminders')->withoutOverlapping();
+Schedule::command('sgpi:send-reminders --weekly')->weeklyOn(1, '08:00')->timezone('America/Mexico_City')->name('send-weekly-digests')->withoutOverlapping();
+Schedule::command('sgpi:flush-notifications')->dailyAt('07:05')->timezone('America/Mexico_City')->name('flush-notifications')->withoutOverlapping();
 
 Schedule::command('sgpi:prepare-academic-periods')->hourlyAt(10)->timezone('America/Mexico_City')
     ->name('prepare-academic-periods')->withoutOverlapping();

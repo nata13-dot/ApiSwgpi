@@ -14,7 +14,8 @@ class AsignaturaController extends Controller
     public function index(Request $request)
     {
         $perPage = min((int) $request->query('per_page', 15), 100);
-        $asignaturas = Asignatura::orderBy('nombre')->paginate($perPage);
+        $asignaturas = \App\Support\TextSearch::apply(Asignatura::query(), (string) $request->query('q', ''), ['nombre', 'clave'])
+            ->orderBy('nombre')->paginate($perPage);
         $asignaturas->getCollection()->each(fn (Asignatura $asignatura) => $asignatura->setAttribute('competencias_count', 1));
 
         return response()->json($asignaturas);

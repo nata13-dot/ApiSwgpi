@@ -14,8 +14,7 @@ class CompanyController extends Controller
         $query = Empresa::query()->withCount('projects');
         if (!$request->user('api')->canManageProjects()) $query->where('estado_validacion', 'aprobada');
         if ($request->filled('q')) {
-            $term = trim((string) $request->q);
-            $query->where(fn ($q) => $q->where('nombre', 'like', "%{$term}%")->orWhere('rfc', 'like', "%{$term}%"));
+            \App\Support\TextSearch::apply($query, (string) $request->q, ['nombre', 'rfc', 'giro']);
         }
         if ($request->filled('status') && $request->user('api')->canManageProjects()) $query->where('estado_validacion', $request->status);
         $companies = $query->orderBy('nombre')->limit(50)->get();

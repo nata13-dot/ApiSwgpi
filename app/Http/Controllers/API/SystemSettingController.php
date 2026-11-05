@@ -135,7 +135,14 @@ class SystemSettingController extends Controller
             'notices.*.active' => 'required|boolean',
         ]);
 
+        // Se guarda la lista completa: sólo se revisa el inicio de los avisos nuevos o cuyo inicio cambió.
+        $savedStarts = collect(CareerSetting::valueFor('system_notices', []))->pluck('starts_at', 'id');
         foreach ($validated['notices'] as $index => $notice) {
+            if (!empty($notice['starts_at'])) {
+                (new \App\Rules\NotBeforeNow($savedStarts[$notice['id'] ?? ''] ?? null))->validate("notices.{$index}.starts_at", $notice['starts_at'], function (string $message) use ($index) {
+                    throw ValidationException::withMessages(["notices.{$index}.starts_at" => ['El aviso no puede iniciar antes de hoy.']]);
+                });
+            }
             if (!empty($notice['starts_at']) && !empty($notice['ends_at']) && Carbon::parse($notice['ends_at'])->lt(Carbon::parse($notice['starts_at']))) {
                 throw ValidationException::withMessages([
                     "notices.{$index}.ends_at" => ['La fecha final del aviso debe ser igual o posterior a la fecha inicial.'],

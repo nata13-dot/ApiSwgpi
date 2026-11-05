@@ -92,12 +92,8 @@ class RepositoryController extends Controller
         }
 
         if ($request->filled('buscar')) {
-            $term = $request->buscar;
-            $query->where(function ($q) use ($term) {
-                $q->where('nombre', 'like', "%{$term}%")
-                    ->orWhere('descripcion', 'like', "%{$term}%")
-                    ->orWhereHas('authorRecords', fn ($authorQuery) => $authorQuery
-                        ->where('nombre_autor', 'like', "%{$term}%"));
+            \App\Support\TextSearch::apply($query, $request->buscar, ['nombre', 'descripcion', 'autor_nombre'], function ($scope, $pattern) {
+                $scope->orWhereHas('tags', fn ($tagQuery) => $tagQuery->where('etiquetas.nombre', 'like', $pattern));
             });
         }
 

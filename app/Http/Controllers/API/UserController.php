@@ -103,17 +103,9 @@ class UserController extends Controller
 
         if ($request->filled('q')) {
             $search = trim((string) $request->query('q'));
-            $query->where(function ($scope) use ($search, $hasPhoneTable) {
-                $scope->where('id', 'like', "%{$search}%")
-                    ->orWhere('nombres', 'like', "%{$search}%")
-                    ->orWhere('apellido_paterno', 'like', "%{$search}%")
-                    ->orWhere('apellido_materno', 'like', "%{$search}%")
-                    ->orWhere('correo', 'like', "%{$search}%")
-                    ->orWhere('telefono', 'like', "%{$search}%")
-                    ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellido_paterno, ''), ' ', COALESCE(apellido_materno, '')) LIKE ?", ["%{$search}%"]);
-
+            \App\Support\TextSearch::apply($query, $search, ['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo', 'telefono'], function ($scope, $pattern) use ($hasPhoneTable) {
                 if ($hasPhoneTable) {
-                    $scope->orWhereHas('phoneNumbers', fn ($phoneQuery) => $phoneQuery->where('telefono', 'like', "%{$search}%"));
+                    $scope->orWhereHas('phoneNumbers', fn ($phoneQuery) => $phoneQuery->where('telefono', 'like', $pattern));
                 }
             });
         }

@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn () => null);
         $middleware->api(prepend: [
             \App\Http\Middleware\SanitizeApiInput::class,
+            \App\Http\Middleware\RejectEmptyUploads::class,
         ]);
         
         $middleware->alias([

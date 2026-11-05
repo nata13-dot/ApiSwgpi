@@ -48,6 +48,8 @@ class AcademicAuthorizationService
             ]);
             $row = DB::table('autorizaciones_academicas')->find($id);
             $this->workflow->audit('autorizacion.solicitada', 'autorizacion', $id, null, $row);
+            ActivityNotificationService::send(DB::table('usuario_carrera')->where('carrera_id', $this->workflow->careerId())->where('activo', true)->whereIn('perfil_id', [5, 6, 7])->pluck('usuario_id'),
+                (string) $user->id, 'autorizacion_solicitada', 'Autorización por revisar', 'Hay una solicitud especial esperando respuesta.', '/academic-workflows');
             return $row;
         });
     }
