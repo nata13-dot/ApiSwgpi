@@ -436,6 +436,11 @@ class ProposalWorkflowController extends Controller
         $user = auth('api')->user();
         $careerId = app(\App\Services\AcademicWorkflowService::class)->careerId();
         $selfUntil = SelfRegistrationController::openUntilFor($careerId);
+        // Una ventana abierta antes de que los grupos de 5° se crearan solos se completa al consultarla.
+        $period = app(\App\Services\AcademicWorkflowService::class)->period();
+        if ($selfUntil?->isFuture() && $period && \App\Support\NewStudentGroups::allowedIn($period)) {
+            \App\Support\NewStudentGroups::ensure($careerId, (int) $period->id);
+        }
 
         return response()->json([
             'self_registration' => [
