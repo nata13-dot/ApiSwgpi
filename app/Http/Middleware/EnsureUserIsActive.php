@@ -91,12 +91,22 @@ class EnsureUserIsActive
 
     private function sessionExpiredByInactivity(): bool
     {
-        $lastActivity = $this->activityCache()->get($this->activityCacheKey());
+        return self::idleSince($this->activityCache()->get($this->activityCacheKey()));
+    }
+
+    /** También lo usa la renovación: un token inactivo no puede cambiarse por uno nuevo. */
+    public static function tokenIsIdle(string $token): bool
+    {
+        return self::idleSince(Cache::store(config('auth.activity_cache_store', 'file'))->get('auth:last_activity:'.sha1($token)));
+    }
+
+    private static function idleSince(mixed $lastActivity): bool
+    {
         if (!$lastActivity) {
             return false;
         }
 
-        return now()->timestamp - (int) $lastActivity > ($this->idleTimeoutMinutes() * 60);
+        return now()->timestamp - (int) $lastActivity > (max(1, (int) SystemSetting::valueFor('session_timeout_minutes', 60)) * 60);
     }
 
     private function activityCacheKey(): string
@@ -106,17 +116,10 @@ class EnsureUserIsActive
         return 'auth:last_activity:' . sha1($token);
     }
 
+    /** Solo la app móvil conserva la sesión. No se confía en lo que indique el cliente. */
     private function rememberedSession(): bool
     {
-        if (request()->boolean('remember_session') || request()->header('X-SGPI-Remember') === '1') {
-            return true;
-        }
-
-        try {
-            return (bool) JWTAuth::parseToken()->getPayload()->get('remember');
-        } catch (\Throwable $e) {
-            return false;
-        }
+        return \App\Services\AppSessionService::current() !== null;
     }
 
     private function idleTimeoutMinutes(): int

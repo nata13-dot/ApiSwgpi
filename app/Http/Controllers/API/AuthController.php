@@ -50,9 +50,10 @@ class AuthController extends Controller
                 return response()->json(['error' => 'Cuenta desactivada'], 403);
             }
 
-            // La app móvil pide una sesión sin vencimiento; la protege el bloqueo con huella del teléfono.
+            // Solo la app móvil conserva la sesión; la protege el bloqueo con huella del teléfono. En un navegador
+            // se piden credenciales al expirar o por inactividad, aunque el cliente pida recordarla.
             $isApp = ($credentials['device'] ?? null) === 'app';
-            $remember = $isApp || $request->boolean('remember');
+            $remember = $isApp;
             $access = $this->resolveCareerAccess($user, $request->integer('carrera_id') ?: null);
             if (!$access) {
                 return response()->json(['error' => 'La cuenta no tiene una carrera activa asignada.'], 403);
@@ -151,10 +152,10 @@ class AuthController extends Controller
             $oldPayload = JWTAuth::manager()->setRefreshFlow()->decode($oldToken);
             JWTAuth::manager()->setRefreshFlow(false);
             $careerId = $oldPayload->get('career_id');
-            $remember = (bool) $oldPayload->get('remember');
             $appSession = $oldPayload->get('app_session');
-            // Sin "Mantener sesión", un token vencido sigue terminando la sesión.
-            if (!$remember && (int) $oldPayload->get('exp') <= now()->timestamp) {
+            // Fuera de la app, un token vencido o inactivo termina la sesión, aunque se haya emitido como recordada.
+            $remember = (bool) $appSession;
+            if (!$remember && ((int) $oldPayload->get('exp') <= now()->timestamp || \App\Http\Middleware\EnsureUserIsActive::tokenIsIdle((string) $oldToken))) {
                 return response()->json(['error' => 'La sesion ya no puede renovarse'], 401);
             }
             if ($appSession) {

@@ -196,7 +196,9 @@ class ProposalWorkflowController extends Controller
         $myRequest = $project ? null : DB::table('solicitudes_union_proyecto as s')->join('proyectos as p', 'p.id', '=', 's.proyecto_id')
             ->where('s.estudiante_id', $student->id)->where('s.estado', 'pendiente')
             ->first(['s.id', 's.proyecto_id', 's.creada_en', 'p.titulo as project_title']);
-        $profileRequired = !$student->profile_completed_at || !$student->nombres || !$student->apa || !$student->semestre || !$student->grupo;
+        // En la vista simulada la cuenta es la del administrador: no hay perfil de alumno que completar.
+        $profileRequired = !app(\App\Support\CareerContext::class)->simulatedProfile()
+            && (!$student->profile_completed_at || !$student->nombres || !$student->apa || !$student->semestre || !$student->grupo);
         $window = $this->proposalWindow();
 
         return response()->json([

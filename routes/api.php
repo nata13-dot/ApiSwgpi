@@ -40,6 +40,7 @@ Route::post('/auth/password/request-token', [AuthController::class, 'requestPass
 Route::post('/auth/password/verify-token', [AuthController::class, 'verifyPasswordResetToken'])->middleware('throttle:password-recovery');
 Route::post('/auth/password/reset', [AuthController::class, 'resetPasswordWithToken'])->middleware('throttle:password-recovery');
 Route::get('/settings/public', [SystemSettingController::class, 'public']);
+Route::get('/help/public', [\App\Http\Controllers\API\HelpController::class, 'publicIndex'])->middleware('throttle:60,1');
 Route::get('/self-registration', [SelfRegistrationController::class, 'index']);
 Route::post('/self-registration', [SelfRegistrationController::class, 'request'])->middleware('throttle:self-registration');
 Route::post('/self-registration/verify', [SelfRegistrationController::class, 'verify'])->middleware('throttle:self-registration');
@@ -227,6 +228,8 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     Route::post('/auth/logout', [AuthController::class, 'logout']);
 
     // Notificaciones personales de actividad
+    Route::get('/appearance', [\App\Http\Controllers\API\AppearancePreferenceController::class, 'show']);
+    Route::put('/appearance', [\App\Http\Controllers\API\AppearancePreferenceController::class, 'update']);
     Route::get('/notifications/preferences', [\App\Http\Controllers\API\NotificationPreferenceController::class, 'index']);
     Route::put('/notifications/preferences', [\App\Http\Controllers\API\NotificationPreferenceController::class, 'update']);
     Route::get('/activity-notifications', [ActivityNotificationController::class, 'index']);
