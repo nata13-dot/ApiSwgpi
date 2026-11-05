@@ -5,20 +5,18 @@ namespace App\Support;
 use App\Models\CareerSetting;
 
 /**
- * Formato del número de control y del correo institucional que una carrera acepta en el autoregistro.
- * El correo siempre empieza con «l» seguida del número de control completo: 22240022 → l22240022@smartin.tecnm.mx,
- * b22240022 → lb22240022@smartin.tecnm.mx. El número de control puede ir sólo con dígitos o con una b al inicio,
- * en todas las carreras. La administración general ajusta por carrera los dígitos, el inicio del número y el dominio.
+ * Formato del número de control y del correo institucional de los alumnos. El número tiene 8 dígitos:
+ * generación (2) + clave de la carrera (2) + consecutivo de la generación (4), y puede llevar una b al inicio.
+ * El correo siempre es «l» seguida del número completo: AA24NNNN → lAA24NNNN@dominio, bAA24NNNN → lbAA24NNNN@dominio.
+ * La administración general ajusta por carrera la clave y el dominio.
  */
 final class SelfRegistrationRule
 {
     public const EMAIL_PREFIX = 'l';
+    public const DIGITS = 8;
 
     public const DEFAULT = [
-        'email_prefix' => self::EMAIL_PREFIX,
-        'allow_b' => true,
-        'number_prefix' => '',
-        'digits' => 8,
+        'career_code' => '',
         'domain' => 'smartin.tecnm.mx',
     ];
 
@@ -34,8 +32,8 @@ final class SelfRegistrationRule
         return [
             'email_prefix' => self::EMAIL_PREFIX,
             'allow_b' => true,
-            'number_prefix' => preg_replace('/\D/', '', (string) $rule['number_prefix']),
-            'digits' => max(4, min(12, (int) $rule['digits'])),
+            'digits' => self::DIGITS,
+            'career_code' => substr(preg_replace('/\D/', '', (string) $rule['career_code']), 0, 2),
             'domain' => strtolower(ltrim(trim((string) $rule['domain']), '@')),
         ];
     }
@@ -46,18 +44,34 @@ final class SelfRegistrationRule
         return strtolower(trim($id));
     }
 
+    /** @return string|null mensaje de error, o null si el número de control cumple el formato */
+    public static function numberViolation(array $rule, string $id): ?string
+    {
+        if (!preg_match('/^b?(\d{2})(\d{2})(\d{4})$/', self::normalizeId($id), $parts)) {
+            return 'El número de control debe tener ' . self::describeNumber($rule) . '.';
+        }
+        [, $generation, $career, $sequence] = $parts;
+        if ((int) $generation > (int) now()->format('y')) {
+            return "La generación {$generation} del número de control todavía no existe: revisa los dos primeros dígitos.";
+        }
+        if ($rule['career_code'] !== '' && $career !== $rule['career_code']) {
+            return "El tercer y cuarto dígito del número de control deben ser {$rule['career_code']}, la clave de la carrera.";
+        }
+        if ($sequence === '0000') {
+            return 'Los últimos cuatro dígitos del número de control no pueden ser 0000.';
+        }
+
+        return null;
+    }
+
     /** @return string|null mensaje de error, o null si el número de control y el correo cumplen la regla */
     public static function violation(array $rule, string $id, string $email): ?string
     {
-        $id = self::normalizeId($id);
-        $email = strtolower(trim($email));
-        $pattern = '/^' . ($rule['allow_b'] ? 'b?' : '') . preg_quote($rule['number_prefix'], '/')
-            . '\d{' . max(0, $rule['digits'] - strlen($rule['number_prefix'])) . '}$/';
-
-        if (!preg_match($pattern, $id)) {
-            return 'El número de control debe tener ' . self::describeNumber($rule) . '.';
+        if ($violation = self::numberViolation($rule, $id)) {
+            return $violation;
         }
-        if ($email !== $rule['email_prefix'] . $id . '@' . $rule['domain']) {
+        $id = self::normalizeId($id);
+        if (strtolower(trim($email)) !== $rule['email_prefix'] . $id . '@' . $rule['domain']) {
             return 'El correo institucional debe ser ' . $rule['email_prefix'] . $id . '@' . $rule['domain'] . ' (los mismos números que tu número de control).';
         }
 
@@ -66,19 +80,17 @@ final class SelfRegistrationRule
 
     public static function describeNumber(array $rule): string
     {
-        $text = "{$rule['digits']} dígitos";
-        if ($rule['number_prefix'] !== '') $text .= " que empiezan con {$rule['number_prefix']}";
-        if ($rule['allow_b']) $text .= ' (puede llevar b al inicio)';
+        $career = $rule['career_code'] !== '' ? "la clave de la carrera ({$rule['career_code']})" : '2 de la carrera';
 
-        return $text;
+        return "8 dígitos: 2 de la generación, {$career} y 4 del consecutivo (puede llevar b al inicio)";
     }
 
+    /** Sólo el formato, con letras: un número de ejemplo podría ser el de una cuenta real. */
     public static function example(array $rule, bool $withB = false): string
     {
-        $number = str_pad($rule['number_prefix'], $rule['digits'], '0');
-        $number = substr($number, 0, $rule['digits'] - 2) . '22';
+        $career = $rule['career_code'] !== '' ? $rule['career_code'] : 'CC';
 
-        return $rule['email_prefix'] . ($withB ? 'b' : '') . $number . '@' . $rule['domain'];
+        return $rule['email_prefix'] . ($withB ? 'b' : '') . "AA{$career}NNNN@" . $rule['domain'];
     }
 
     /** Lo que ven los formularios para guiar al alumno. */
@@ -86,7 +98,7 @@ final class SelfRegistrationRule
     {
         return $rule + [
             'example' => self::example($rule),
-            'example_b' => $rule['allow_b'] ? self::example($rule, true) : null,
+            'example_b' => self::example($rule, true),
             'description' => 'Número de control de ' . self::describeNumber($rule) . '.',
         ];
     }

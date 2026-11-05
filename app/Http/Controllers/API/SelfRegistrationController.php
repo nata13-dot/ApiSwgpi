@@ -294,15 +294,12 @@ class SelfRegistrationController extends Controller
     public function updateRule(Request $request, Career $career)
     {
         $validated = $request->validate([
-            'number_prefix' => 'nullable|string|max:8|regex:/^\d*$/',
-            'digits' => 'required|integer|min:4|max:12',
+            'career_code' => ['nullable', 'string', 'regex:/^\d{2}$/'],
             'domain' => ['required', 'string', 'max:120', 'regex:/^[a-z0-9.-]+\.[a-z]{2,}$/i'],
-        ], [], ['number_prefix' => 'inicio del número de control', 'digits' => 'dígitos', 'domain' => 'dominio']);
-        if (strlen((string) ($validated['number_prefix'] ?? '')) > (int) $validated['digits']) {
-            throw ValidationException::withMessages(['number_prefix' => ['El inicio no puede ser más largo que el número de control.']]);
-        }
+        ], [], ['career_code' => 'clave de la carrera', 'domain' => 'dominio']);
 
-        $rule = SelfRegistrationRule::normalize($validated);
+        // Las apps anteriores no envían la clave: guardar desde ellas no debe borrarla.
+        $rule = SelfRegistrationRule::normalize($validated + SelfRegistrationRule::forCareer($career->id));
         CareerSetting::setValueForCareer($career->id, 'self_registration_rule', $rule, 'array', 'Formato del número de control y del correo institucional para el autoregistro');
 
         return response()->json(['message' => 'Regla guardada', 'rule' => SelfRegistrationRule::publicPayload($rule)]);
@@ -320,29 +317,48 @@ class SelfRegistrationController extends Controller
         return self::openUntilFor($careerId);
     }
 
-    /** Datos públicos de la carrera si su autoregistro está abierto y tiene periodo abierto con grupos. */
-    private function openCareerPayload(Career $career): ?array
+    /** Por qué el inicio de sesión no muestra «Crear cuenta» para esta carrera; null si lo muestra. */
+    public static function blockerFor(Career $career): ?string
     {
-        $until = $this->openUntil($career->id);
-        if (!$career->activa || !$until || $until->isPast()) {
-            return null;
+        $until = self::openUntilFor($career->id);
+        if (!$until || $until->isPast()) {
+            return 'La ventana de autoregistro está cerrada.';
+        }
+        if (!$career->activa) {
+            return 'La carrera está inactiva.';
         }
         $period = app(AcademicWorkflowService::class)->period($career->id);
         if (!$period) {
-            return null;
+            return 'La carrera no tiene un periodo abierto.';
         }
-
         // Los alumnos nuevos entran a 5°, sólo en los grupos que la carrera definió.
         if (!\App\Support\NewStudentGroups::allowedIn($period)) {
-            return null;
+            return "El periodo abierto ({$period->nombre}) no tiene 5° semestre: los alumnos nuevos sólo se registran de julio a diciembre.";
         }
-        $groups = SubjectGroup::withoutGlobalScopes()->where('carrera_id', $career->id)->where('periodo_id', $period->id)
+        if (self::newStudentGroups($career, $period)->isEmpty()) {
+            return "No hay grupos de 5° activos en el periodo {$period->nombre}. Guarda los grupos de alumnos nuevos o activa los que estén inactivos.";
+        }
+
+        return null;
+    }
+
+    private static function newStudentGroups(Career $career, object $period)
+    {
+        return SubjectGroup::withoutGlobalScopes()->where('carrera_id', $career->id)->where('periodo_id', $period->id)
             ->where('activo', true)->where('semestre', \App\Support\NewStudentGroups::SEMESTER)->whereIn('clave_grupo', \App\Support\NewStudentGroups::letters($career->id))
-            ->orderBy('clave_grupo')->get(['id', 'nombre', 'semestre', 'clave_grupo'])
-            ->map(fn ($group) => ['id' => $group->id, 'nombre' => $group->nombre, 'semestre' => (int) $group->semestre, 'grupo' => $group->clave_grupo]);
-        if ($groups->isEmpty()) {
+            ->orderBy('clave_grupo')->get(['id', 'nombre', 'semestre', 'clave_grupo']);
+    }
+
+    /** Datos públicos de la carrera si su autoregistro está abierto y tiene periodo abierto con grupos. */
+    private function openCareerPayload(Career $career): ?array
+    {
+        if (self::blockerFor($career)) {
             return null;
         }
+        $until = $this->openUntil($career->id);
+        $period = app(AcademicWorkflowService::class)->period($career->id);
+        $groups = self::newStudentGroups($career, $period)
+            ->map(fn ($group) => ['id' => $group->id, 'nombre' => $group->nombre, 'semestre' => (int) $group->semestre, 'grupo' => $group->clave_grupo]);
 
         return [
             'id' => $career->id,

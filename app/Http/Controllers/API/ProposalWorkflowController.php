@@ -441,6 +441,8 @@ class ProposalWorkflowController extends Controller
             'self_registration' => [
                 'until' => $selfUntil?->toIso8601String(),
                 'open' => (bool) $selfUntil?->isFuture(),
+                // La ventana puede estar abierta y aun así no mostrarse «Crear cuenta»: se le dice a quien la administra.
+                'blocker' => $selfUntil?->isFuture() ? SelfRegistrationController::blockerFor(\App\Models\Career::findOrFail($careerId)) : null,
                 'can_manage' => $this->canManageSelfRegistration($user),
                 'groups' => \App\Support\NewStudentGroups::letters((int) app(\App\Services\AcademicWorkflowService::class)->careerId()),
                 'rule' => \App\Support\SelfRegistrationRule::publicPayload(\App\Support\SelfRegistrationRule::forCareer($careerId)),

@@ -152,6 +152,12 @@ class UserController extends Controller
                 'telefonos' => 'nullable|string|max:200',
             ]);
 
+            if ((int) $validated['perfil_id'] === 3) {
+                if ($violation = $this->studentNumberViolation($validated['id'])) {
+                    throw ValidationException::withMessages(['id' => [$violation]]);
+                }
+                $validated['id'] = \App\Support\SelfRegistrationRule::normalizeId($validated['id']);
+            }
             $academicAssignment = $this->pullAcademicAssignment($validated);
             $this->preparePhoneData($validated);
             $this->applyInitialPassword($validated);
@@ -169,6 +175,14 @@ class UserController extends Controller
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }
+    }
+
+    private function studentNumberViolation(string $id): ?string
+    {
+        $careerId = app(\App\Support\CareerContext::class)->careerId();
+        $rule = $careerId ? \App\Support\SelfRegistrationRule::forCareer($careerId) : \App\Support\SelfRegistrationRule::normalize([]);
+
+        return \App\Support\SelfRegistrationRule::numberViolation($rule, $id);
     }
 
     public function show($id)
@@ -494,6 +508,7 @@ class UserController extends Controller
         ], [
             'semestre: '.($period ? "en el periodo {$period->nombre} sólo existen " : 'usa ').implode(', ', $allowed).'.',
             'grupo: una letra (A, B, C...). Si el grupo no existe en el periodo abierto se crea automáticamente, por ejemplo 6° A.',
+            'matricula: 8 dígitos, generación (2) + clave de la carrera (2) + consecutivo (4); puede llevar b al inicio.',
             'La contraseña inicial es la matrícula; el sistema pedirá cambiarla en el primer inicio de sesión.',
             'Correo y apellido materno son opcionales.',
         ]);
@@ -590,6 +605,15 @@ class UserController extends Controller
                 if ($validator->fails()) {
                     $errors[] = ['fila' => $line, 'errores' => $validator->errors()->all()];
                     continue;
+                }
+
+                // Las cuentas que ya existen conservan su número; el formato se exige a las nuevas.
+                if (!$existing && $profileId === 3) {
+                    if ($violation = $this->studentNumberViolation($userId)) {
+                        $errors[] = ['fila' => $line, 'errores' => [$violation]];
+                        continue;
+                    }
+                    $data['id'] = \App\Support\SelfRegistrationRule::normalizeId($userId);
                 }
 
                 if ($existing && $data['email'] && $existing->email && strcasecmp($data['email'], $existing->email) !== 0) {
