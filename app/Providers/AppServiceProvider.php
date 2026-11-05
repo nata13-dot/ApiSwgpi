@@ -42,7 +42,7 @@ class AppServiceProvider extends ServiceProvider
 
                 RateLimiter::for('password-recovery', function (Request $request) {
             $identity = mb_strtolower((string) ($request->input('email') ?? $request->input('correo') ?? 'unknown'));
-            return Limit::perMinute(3)->by($request->ip().'|'.$identity);
+            return Limit::perMinute(5)->by($request->path().'|'.$request->ip().'|'.$identity);
         });
     }
 }

@@ -23,7 +23,7 @@ class PasswordResetTokenMail extends Mailable
 
         return $this
             ->tag('recuperacion')
-            ->subject('Token de recuperacion de contrasena')
+            ->subject('Código para recuperar tu contraseña')
             ->view('emails.password-reset-token', [
                 'name' => $name,
                 'token' => $this->token,

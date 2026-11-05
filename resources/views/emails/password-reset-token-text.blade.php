@@ -1,11 +1,11 @@
 Hola {{ $name }},
 
-Recibimos una solicitud para cambiar la contrasena de tu cuenta.
+Recibimos una solicitud para cambiar la contraseña de tu cuenta.
 
-Tu token de recuperacion es: {{ $token }}
+Tu código de recuperación es: {{ $token }}
 
-Este token vence en 15 minutos.
+Este código vence en 15 minutos.
 
-Si no solicitaste este cambio, puedes ignorar este correo. Tu contrasena actual seguira funcionando.
+Si no solicitaste este cambio, puedes ignorar este correo. Tu contraseña actual seguirá funcionando.
 
 Correo automatico enviado por Sistema SGPI. No respondas a este mensaje.

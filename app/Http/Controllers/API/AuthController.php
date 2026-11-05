@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\CareerContext;
 use Illuminate\Http\Request;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
@@ -19,6 +20,8 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    private const MAX_RESET_ATTEMPTS = 5;
+
     public function __construct(private readonly CareerContext $careerContext)
     {
     }
@@ -219,7 +222,7 @@ class AuthController extends Controller
                 ->first();
 
             if (!$user) {
-                return response()->json(['error' => 'El No. de Control, No. de empleado y el correo no coinciden con una cuenta activa.'], 422);
+                return response()->json(['error' => 'El número de control o empleado y el correo no coinciden con una cuenta activa.'], 422);
             }
 
             $token = (string) random_int(100000, 999999);
@@ -232,9 +235,11 @@ class AuthController extends Controller
                 ]
             );
 
+            Cache::forget($this->resetAttemptsKey($user->email));
+
             Mail::to($user->email)->send(new PasswordResetTokenMail($user, $token));
 
-            return response()->json(['message' => 'Token enviado al correo registrado.']);
+            return response()->json(['message' => 'Código enviado al correo registrado.']);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Throwable $e) {
@@ -245,7 +250,7 @@ class AuthController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'No se pudo procesar la solicitud de recuperacion. Revisa los logs de la API en Railway.',
+                'error' => 'No pudimos enviar el código. Intenta de nuevo en unos minutos.',
             ], 500);
         }
     }
@@ -258,17 +263,17 @@ class AuthController extends Controller
                 'email' => 'required|email',
                 'token' => 'required|string|size:6',
             ], [], [
-                'id' => 'No. de Control, No. de empleado',
+                'id' => 'número de control o empleado',
                 'email' => 'correo',
-                'token' => 'token',
+                'token' => 'código',
             ]);
 
             $user = $this->validResetUser($validated['id'], $validated['email']);
             if (!$user || !$this->validResetToken($user->email, $validated['token'])) {
-                return response()->json(['error' => 'El token no es valido o ya expiro.'], 422);
+                return response()->json(['error' => 'El código no es válido o ya venció.'], 422);
             }
 
-            return response()->json(['message' => 'Token validado.']);
+            return response()->json(['message' => 'Código validado.']);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         }
@@ -281,17 +286,17 @@ class AuthController extends Controller
                 'id' => 'required|string|max:10',
                 'email' => 'required|email',
                 'token' => 'required|string|size:6',
-                'password' => 'required|string|min:6|max:72|confirmed',
+                'password' => 'required|string|min:8|max:72|confirmed',
             ], [], [
-                'id' => 'No. de Control, No. de empleado',
+                'id' => 'número de control o empleado',
                 'email' => 'correo',
-                'token' => 'token',
+                'token' => 'código',
                 'password' => 'contraseña',
             ]);
 
             $user = $this->validResetUser($validated['id'], $validated['email']);
             if (!$user || !$this->validResetToken($user->email, $validated['token'])) {
-                return response()->json(['error' => 'El token no es valido o ya expiro.'], 422);
+                return response()->json(['error' => 'El código no es válido o ya venció.'], 422);
             }
 
             $user->update(['contrasena' => Hash::make($validated['password'])]);
@@ -301,14 +306,14 @@ class AuthController extends Controller
             if (!$access) {
                 return response()->json(['error' => 'La cuenta no tiene una carrera activa asignada.'], 403);
             }
-            $jwt = $this->issueToken($user, true, $access['career']->id, $access['profile_id']);
+            $jwt = $this->issueToken($user, false, $access['career']->id, $access['profile_id']);
 
             return response()->json([
                 'message' => 'Contraseña actualizada correctamente.',
                 'access_token' => $jwt,
                 'token_type' => 'bearer',
                 'user' => $this->userPayload($user, $access['career'], $access['profile_id']),
-                'remember' => true,
+                'remember' => false,
             ]);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -330,7 +335,23 @@ class AuthController extends Controller
             return false;
         }
 
-        return Hash::check($token, $record->token);
+        if (Hash::check($token, $record->token)) {
+            return true;
+        }
+
+        // Tras varios intentos fallidos el código deja de servir, aunque cambie la dirección IP.
+        $attempts = Cache::add($this->resetAttemptsKey($email), 0, now()->addMinutes(15)) ? 0 : (int) Cache::get($this->resetAttemptsKey($email), 0);
+        Cache::put($this->resetAttemptsKey($email), $attempts + 1, now()->addMinutes(15));
+        if ($attempts + 1 >= self::MAX_RESET_ATTEMPTS) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+        }
+
+        return false;
+    }
+
+    private function resetAttemptsKey(string $email): string
+    {
+        return 'auth:reset_attempts:'.sha1(strtolower($email));
     }
 
     private function userPayload(User $user, ?Career $career = null, ?int $activeProfileId = null): array
