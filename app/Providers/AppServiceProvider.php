@@ -37,7 +37,8 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('self-registration', function (Request $request) {
             $identity = mb_strtolower((string) ($request->input('email') ?? 'unknown'));
-            return [Limit::perMinute(5)->by($request->ip().'|'.$identity), Limit::perHour(30)->by('self-registration|'.$request->ip())];
+            // Un grupo entero se registra desde el wifi de la escuela, que comparte una sola IP pública.
+            return [Limit::perMinute(5)->by($request->ip().'|'.$identity), Limit::perHour(300)->by('self-registration|'.$request->ip())];
         });
 
                 RateLimiter::for('password-recovery', function (Request $request) {

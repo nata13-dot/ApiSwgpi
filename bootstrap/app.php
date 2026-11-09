@@ -12,6 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // El túnel entrega las peticiones desde el propio servidor: sin esto todos comparten la IP ::1
+        // y los límites por IP (inicio de sesión, autoregistro) se agotan entre todos.
+        $middleware->trustProxies(at: ['127.0.0.1', '::1']);
         $middleware->prepend(\App\Http\Middleware\EnsureCorsHeaders::class);
         $middleware->prepend(\App\Http\Middleware\SecurityHeaders::class);
         $middleware->prependToPriorityList(\Illuminate\Routing\Middleware\SubstituteBindings::class, \App\Http\Middleware\ResolveCareerContext::class);
