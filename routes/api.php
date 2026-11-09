@@ -88,6 +88,13 @@ Route::middleware(['auth:api', 'active', 'career', 'throttle:120,1'])->group(fun
     Route::get('/help', [\App\Http\Controllers\API\HelpController::class, 'index']);
 });
 
+// Archivo histórico: se usa sobre todo con el periodo ya cerrado, así que no exige uno abierto.
+Route::middleware(['auth:api', 'active', 'career', 'audit', 'role:admin'])->prefix('archive')->group(function () {
+    Route::get('/', [\App\Http\Controllers\API\ArchiveController::class, 'index']);
+    Route::post('/', [\App\Http\Controllers\API\ArchiveController::class, 'archive']);
+    Route::post('/restore', [\App\Http\Controllers\API\ArchiveController::class, 'restore']);
+});
+
 Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'academic.open'])->group(function () {
     Route::get('/residencies', [\App\Http\Controllers\API\ResidencyController::class, 'index']);
     Route::post('/residencies', [\App\Http\Controllers\API\ResidencyController::class, 'store']);
@@ -348,6 +355,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     Route::middleware('role:student,project_manager')->put('/projects/{id}', [ProjectController::class, 'update']);
     Route::middleware('role:project_manager')->group(function () {
         Route::delete('/projects/{id}', [ProjectController::class, 'destroy']);
+        Route::put('/projects/{id}/residency', [ProjectController::class, 'setResidency']);
         Route::post('/projects/{id}/advisors', [ProjectController::class, 'addAdvisor']);
         Route::put('/projects/{id}/advisors', [ProjectController::class, 'syncAdvisors']);
         Route::post('/projects/{id}/asignaturas', [ProjectController::class, 'syncAsignaturas']);

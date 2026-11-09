@@ -92,7 +92,7 @@ class RepositoryDocument extends Model
 
     public function uploader(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'subido_por', 'id')->withoutGlobalScope('careerMembership');
+        return $this->belongsTo(User::class, 'subido_por', 'id')->withoutGlobalScopes(['careerMembership', 'archived']);
     }
 
     public function publisher(): BelongsTo

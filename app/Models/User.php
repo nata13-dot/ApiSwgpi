@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Archivable;
 use App\Models\Concerns\HasLegacyAliases;
 use App\Models\Concerns\ScopedToCareerMembership;
 use App\Models\Pivots\ProjectMemberPivot;
@@ -15,7 +16,7 @@ use Tymon\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
 {
-    use HasFactory, Notifiable, HasLegacyAliases, ScopedToCareerMembership;
+    use Archivable, HasFactory, Notifiable, HasLegacyAliases, ScopedToCareerMembership;
 
     protected $table = 'usuarios';
     public $incrementing = false;

@@ -71,12 +71,13 @@ class PushNotificationService
         return $hour >= $from || $hour < $to;
     }
 
-    public function registerDevice(string $userId, string $token, string $platform = 'android'): void
+    public function registerDevice(string $userId, string $token, string $platform = 'android', ?string $channel = null): void
     {
-        DB::table('dispositivos_push')->updateOrInsert(
-            ['token_hash' => hash('sha256', $token)],
-            ['usuario_id' => $userId, 'token' => $token, 'plataforma' => $platform, 'actualizado_en' => now(), 'creado_en' => now()],
-        );
+        $values = ['usuario_id' => $userId, 'token' => $token, 'plataforma' => $platform, 'actualizado_en' => now(), 'creado_en' => now()];
+        if (\App\Support\SchemaCache::hasColumn('dispositivos_push', 'canal')) {
+            $values['canal'] = $channel;
+        }
+        DB::table('dispositivos_push')->updateOrInsert(['token_hash' => hash('sha256', $token)], $values);
     }
 
     public function removeDevice(string $userId, string $token): void
@@ -94,8 +95,9 @@ class PushNotificationService
         if (!$this->configured()) {
             return $result;
         }
-        foreach (DB::table('dispositivos_push')->where('usuario_id', $userId)->get(['id', 'token']) as $device) {
-            $response = $this->send($device->token, $title, $body, $data);
+        $columns = \App\Support\SchemaCache::hasColumn('dispositivos_push', 'canal') ? ['id', 'token', 'canal'] : ['id', 'token'];
+        foreach (DB::table('dispositivos_push')->where('usuario_id', $userId)->get($columns) as $device) {
+            $response = $this->send($device->token, $title, $body, $data, $device->canal ?? null);
             if ($response->successful()) {
                 $result['sent']++;
             } elseif ($response->status() === 404 || $response->json('error.status') === 'UNREGISTERED') {
@@ -112,7 +114,7 @@ class PushNotificationService
         return $result;
     }
 
-    private function send(string $token, string $title, string $body, array $data)
+    private function send(string $token, string $title, string $body, array $data, ?string $channel = null)
     {
         $projectId = $this->credentials()['project_id'];
 
@@ -121,7 +123,8 @@ class PushNotificationService
                 'token' => $token,
                 'notification' => ['title' => $title, 'body' => $body],
                 'data' => array_map('strval', $data),
-                'android' => ['priority' => 'HIGH', 'notification' => ['channel_id' => 'sgpi']],
+                // El canal del teléfono decide el tono y la vibración; las apps anteriores usan "sgpi".
+                'android' => ['priority' => 'HIGH', 'notification' => ['channel_id' => $channel ?: 'sgpi', 'default_vibrate_timings' => true]],
             ]]);
     }
 

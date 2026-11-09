@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Archivable;
 use App\Models\Concerns\BelongsToCareer;
 use App\Models\Concerns\HasLegacyAliases;
 use App\Models\Pivots\ProjectMemberPivot;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Project extends Model
 {
-    use BelongsToCareer, HasFactory, HasLegacyAliases;
+    use Archivable, BelongsToCareer, HasFactory, HasLegacyAliases;
 
     protected $table = 'proyectos';
 
@@ -85,6 +86,7 @@ class Project extends Model
     protected $casts = [
         'activo' => 'boolean',
         'es_tesis' => 'boolean',
+        'es_residencia' => 'boolean',
         'es_propuesta' => 'boolean',
         'creado_en' => 'datetime',
         'actualizado_en' => 'datetime',

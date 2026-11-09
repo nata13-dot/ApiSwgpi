@@ -45,6 +45,10 @@ class AuthController extends Controller
                 if (!$user && ($notice = \App\Http\Controllers\API\SelfRegistrationController::loginNotice($credentials['id'], $credentials['password']))) {
                     return response()->json(['error' => $notice, 'code' => 'SELF_REGISTRATION_PENDING'], 403);
                 }
+                if (!$user && ($archived = User::archived()->find(strtolower(trim($credentials['id']))))
+                    && Hash::check($credentials['password'], $archived->password)) {
+                    return response()->json(['error' => 'Tu cuenta está en el archivo histórico. Pide a la administración de tu carrera que la restaure.', 'code' => 'ACCOUNT_ARCHIVED'], 403);
+                }
 
                 return response()->json(['error' => 'Credenciales inválidas'], 401);
             }

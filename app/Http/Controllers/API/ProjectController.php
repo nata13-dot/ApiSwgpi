@@ -24,7 +24,7 @@ class ProjectController extends Controller
     {
         if ($request->boolean('compact')) {
             $query = Project::query()
-                ->select(['id', 'title', 'semestre', 'year', 'authors', 'subject_group_id', 'activo', 'tipo', 'modalidad', 'is_thesis', 'created_at'])
+                ->select(['id', 'title', 'semestre', 'year', 'authors', 'subject_group_id', 'activo', 'tipo', 'modalidad', 'is_thesis', 'created_at', ...$this->residencyColumns()])
                 ->with([
                     'students:id,nombres,apa,ama,semestre,grupo',
                     'advisors:id,nombres,apa,ama,perfil_id',
@@ -62,8 +62,8 @@ class ProjectController extends Controller
                 'id', 'title', 'description', 'created_by', 'created_at', 'activo', 'tipo', 'modalidad', 'is_thesis',
                 'semestre', 'subject_group_id', 'year', 'authors',
                 'company_name', 'company_giro', 'company_contact_name',
-                'company_contact_position', 'company_address', 'company_rfc',
-                'proposal_status', 'proposal_reviewed_by',
+                'company_contact_position', 'company_address', 'company_rfc', ...$this->residencyColumns(),
+                'proposal_status', 'proposal_reviewed_by', ...$this->residencyColumns(),
             ])
             ->with([
                 'creator:id,nombres,apa,ama',
@@ -101,6 +101,30 @@ class ProjectController extends Controller
         return response()->json(tap($query->orderByDesc('created_at')->orderByDesc('id')->paginate($perPage), fn ($page) => $page->getCollection()->withRelationshipAutoloading()));
     }
 
+    private function residencyColumns(): array
+    {
+        return \App\Support\SchemaCache::hasColumn('proyectos', 'es_residencia') ? ['es_residencia'] : [];
+    }
+
+    /** Marca o desmarca un proyecto integrador de 9° como proyecto de residencia; se lista aparte. */
+    public function setResidency(Request $request, $id)
+    {
+        abort_unless(\App\Support\SchemaCache::hasColumn('proyectos', 'es_residencia'), 503, 'Falta aplicar la migración de proyectos de residencia en el servidor.');
+        $data = $request->validate(['residencia' => 'required|boolean']);
+        $project = Project::with('subjectGroup:id,semestre')->findOrFail($id);
+        abort_if($project->tipo === 'propuesta' && $project->proposal_status !== 'aprobado', 422, 'Una propuesta sin aprobar no puede marcarse como residencia.');
+        abort_if($data['residencia'] && (int) $project->subjectGroup?->semestre !== 9, 422, 'Sólo los proyectos de grupos de 9° semestre pueden marcarse como residencia.');
+
+        DB::table('proyectos')->where('id', $project->id)->update([
+            'es_residencia' => $data['residencia'],
+            'residencia_marcada_por' => $data['residencia'] ? auth('api')->id() : null,
+            'residencia_marcada_en' => $data['residencia'] ? now() : null,
+            'actualizado_en' => now(),
+        ]);
+
+        return response()->json(['message' => $data['residencia'] ? 'Se marcó como proyecto de residencia.' : 'Se quitó la marca de residencia.']);
+    }
+
     private function applyRecordTypeFilter($query, Request $request): void
     {
         $recordType = $request->query('tipo_registro');
@@ -126,6 +150,11 @@ class ProjectController extends Controller
     private function applyProjectCategoryFilters($query, Request $request): void
     {
         $this->applyRecordTypeFilter($query, $request);
+
+        // Los proyectos de residencia se listan aparte; sin el parámetro se devuelven todos.
+        if ($request->has('residencia') && \App\Support\SchemaCache::hasColumn('proyectos', 'es_residencia')) {
+            $query->where('proyectos.es_residencia', $request->boolean('residencia'));
+        }
 
         if ($request->filled('modalidad')) {
             $modality = $request->validate([

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasLegacyAliases;
+use App\Models\Concerns\Archivable;
 use App\Models\Concerns\BelongsToCareer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SubjectGroup extends Model
 {
-    use HasFactory, HasLegacyAliases, BelongsToCareer;
+    use Archivable, HasFactory, HasLegacyAliases, BelongsToCareer;
 
     protected $table = 'grupos_academicos';
     const CREATED_AT = 'creado_en';

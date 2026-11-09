@@ -616,6 +616,11 @@ class UserController extends Controller
                     $data['id'] = \App\Support\SelfRegistrationRule::normalizeId($userId);
                 }
 
+                if ($existing?->archivado_en) {
+                    $errors[] = ['fila' => $line, 'errores' => ['La cuenta está en el archivo histórico; restáurala antes de volver a importarla.']];
+                    continue;
+                }
+
                 if ($existing && $data['email'] && $existing->email && strcasecmp($data['email'], $existing->email) !== 0) {
                     $errors[] = ['fila' => $line, 'errores' => ['El identificador ya existe con un correo diferente.']];
                     continue;
