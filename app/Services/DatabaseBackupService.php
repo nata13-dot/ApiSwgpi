@@ -24,7 +24,61 @@ class DatabaseBackupService
         'configuraciones_sistema',
     ];
 
-    public function create(string $source = 'manual', ?string $actorId = null): array
+    /** Pasado este tiempo, un respaldo o una prueba "en_proceso" se da por interrumpido (el proceso murió sin avisar). */
+    public const STALE_MINUTES = 10;
+
+    /**
+     * Respaldo en segundo plano: guarda la fila "en_proceso", responde y genera la copia después de enviar la respuesta,
+     * para que un proxy (nginx, el túnel) no corte la petición. Un error fatal la deja como fallida.
+     */
+    public function startCreate(string $source, ?string $actorId): array
+    {
+        $id = DB::table('respaldos_base_datos')->insertGetId(['creado_por' => $actorId, 'origen' => $source, 'estado' => 'en_proceso', 'creado_en' => now()]);
+        $this->inBackground(fn () => $this->create($source, $actorId, $id), fn () => DB::table('respaldos_base_datos')->where('id', $id)->where('estado', 'en_proceso')
+            ->update(['estado' => 'fallido', 'mensaje_error' => 'El proceso se interrumpió antes de terminar (tiempo o memoria del servidor).']));
+
+        return (array) DB::table('respaldos_base_datos')->find($id);
+    }
+
+    /** Prueba de restauración en segundo plano; misma idea que startCreate. */
+    public function startVerify(int $backupId, ?string $actorId): array
+    {
+        $backup = DB::table('respaldos_base_datos')->where('id', $backupId)->where('estado', 'completado')->first();
+        if (!$backup || !$backup->ruta_privada || !is_file($backup->ruta_privada)) {
+            throw new \RuntimeException('El archivo del respaldo no está disponible.');
+        }
+        $running = DB::table('verificaciones_restauracion')->where('respaldo_id', $backupId)->where('estado', 'en_proceso')
+            ->where('creado_en', '>', now()->subMinutes(self::STALE_MINUTES))->exists();
+        if ($running) {
+            throw new \RuntimeException('Ya hay una prueba de restauración en curso para este respaldo.');
+        }
+        $id = DB::table('verificaciones_restauracion')->insertGetId(['respaldo_id' => $backupId, 'verificado_por' => $actorId, 'estado' => 'en_proceso',
+            'tablas_encontradas' => 0, 'filas_verificadas' => 0, 'creado_en' => now()]);
+        $this->inBackground(fn () => $this->verify($backupId, $actorId, $id), fn () => DB::table('verificaciones_restauracion')->where('id', $id)->where('estado', 'en_proceso')
+            ->update(['estado' => 'fallido', 'mensaje_error' => 'El proceso se interrumpió antes de terminar (tiempo o memoria del servidor).']));
+
+        return (array) DB::table('verificaciones_restauracion')->find($id);
+    }
+
+    /** Ejecuta $work después de responder; si el proceso muere antes, $onCrash deja el registro como fallido. */
+    private function inBackground(\Closure $work, \Closure $onCrash): void
+    {
+        $finished = false;
+        register_shutdown_function(function () use (&$finished, $onCrash) {
+            if (!$finished) $onCrash();
+        });
+        app()->terminating(function () use (&$finished, $work) {
+            try {
+                $work();
+            } catch (\Throwable $exception) {
+                report($exception); // El propio create/verify ya guardó el motivo en su fila.
+            } finally {
+                $finished = true;
+            }
+        });
+    }
+
+    public function create(string $source = 'manual', ?string $actorId = null, ?int $recordId = null): array
     {
         $source = in_array($source, ['manual', 'programado', 'consola'], true) ? $source : 'consola';
         $connectionName = config('database.default');
@@ -58,28 +112,23 @@ class DatabaseBackupService
             }
             $this->gzip($temporaryPath, $finalPath);
 
-            $recordId = DB::table('respaldos_base_datos')->insertGetId([
-                'creado_por' => $actorId,
-                'origen' => $source,
+            $result = [
                 'estado' => 'completado',
                 'nombre_archivo' => $finalName,
                 'ruta_privada' => $finalPath,
                 'tamano_bytes' => filesize($finalPath),
                 'checksum_sha256' => hash_file('sha256', $finalPath),
-                'creado_en' => now(),
-            ]);
+            ];
+            if ($recordId) DB::table('respaldos_base_datos')->where('id', $recordId)->update($result);
+            else $recordId = DB::table('respaldos_base_datos')->insertGetId($result + ['creado_por' => $actorId, 'origen' => $source, 'creado_en' => now()]);
 
             return (array) DB::table('respaldos_base_datos')->find($recordId);
         } catch (\Throwable $exception) {
             @unlink($temporaryPath);
             @unlink($finalPath);
-            DB::table('respaldos_base_datos')->insert([
-                'creado_por' => $actorId,
-                'origen' => $source,
-                'estado' => 'fallido',
-                'mensaje_error' => Str::limit($exception->getMessage(), 1000, ''),
-                'creado_en' => now(),
-            ]);
+            $failure = ['estado' => 'fallido', 'mensaje_error' => Str::limit($exception->getMessage(), 1000, '')];
+            if ($recordId) DB::table('respaldos_base_datos')->where('id', $recordId)->update($failure);
+            else DB::table('respaldos_base_datos')->insert($failure + ['creado_por' => $actorId, 'origen' => $source, 'creado_en' => now()]);
             throw $exception;
         } finally {
             @unlink($temporaryPath);
@@ -106,7 +155,7 @@ class DatabaseBackupService
         chmod($destination, 0600);
     }
 
-    public function verify(int $backupId, ?string $actorId = null): array
+    public function verify(int $backupId, ?string $actorId = null, ?int $verificationId = null): array
     {
         $backup = DB::table('respaldos_base_datos')
             ->where('id', $backupId)
@@ -154,26 +203,15 @@ class DatabaseBackupService
                 $rowsVerified += (int) ($result->total ?? 0);
             }
 
-            $verificationId = DB::table('verificaciones_restauracion')->insertGetId([
-                'respaldo_id' => $backupId,
-                'verificado_por' => $actorId,
-                'estado' => 'correcto',
-                'tablas_encontradas' => $tablesFound,
-                'filas_verificadas' => $rowsVerified,
-                'creado_en' => now(),
-            ]);
+            $result = ['estado' => 'correcto', 'tablas_encontradas' => $tablesFound, 'filas_verificadas' => $rowsVerified];
+            if ($verificationId) DB::table('verificaciones_restauracion')->where('id', $verificationId)->update($result);
+            else $verificationId = DB::table('verificaciones_restauracion')->insertGetId($result + ['respaldo_id' => $backupId, 'verificado_por' => $actorId, 'creado_en' => now()]);
 
             return (array) DB::table('verificaciones_restauracion')->find($verificationId);
         } catch (\Throwable $exception) {
-            DB::table('verificaciones_restauracion')->insert([
-                'respaldo_id' => $backupId,
-                'verificado_por' => $actorId,
-                'estado' => 'fallido',
-                'tablas_encontradas' => $tablesFound,
-                'filas_verificadas' => $rowsVerified,
-                'mensaje_error' => Str::limit($exception->getMessage(), 1000, ''),
-                'creado_en' => now(),
-            ]);
+            $failure = ['estado' => 'fallido', 'tablas_encontradas' => $tablesFound, 'filas_verificadas' => $rowsVerified, 'mensaje_error' => Str::limit($exception->getMessage(), 1000, '')];
+            if ($verificationId) DB::table('verificaciones_restauracion')->where('id', $verificationId)->update($failure);
+            else DB::table('verificaciones_restauracion')->insert($failure + ['respaldo_id' => $backupId, 'verificado_por' => $actorId, 'creado_en' => now()]);
             throw $exception;
         } finally {
             @unlink($temporarySql);

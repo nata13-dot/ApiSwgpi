@@ -36,19 +36,32 @@ class DatabaseBackupController extends Controller
                 ->whereNull('backup.eliminado_en')
                 ->orderByDesc('backup.id')
                 ->limit(50)
-                ->get(),
+                ->get()
+                ->map(function ($row) {
+                    $stale = fn ($at) => $at && \Illuminate\Support\Carbon::parse($at)->lt(now()->subMinutes(DatabaseBackupService::STALE_MINUTES));
+                    if ($row->estado === 'en_proceso' && $stale($row->creado_en)) {
+                        $row->estado = 'fallido';
+                        $row->mensaje_error = 'El proceso se interrumpió antes de terminar.';
+                    }
+                    if ($row->estado_verificacion === 'en_proceso' && $stale($row->verificado_en)) {
+                        $row->estado_verificacion = 'fallido';
+                        $row->error_verificacion = 'La prueba se interrumpió antes de terminar.';
+                    }
+
+                    return $row;
+                }),
         ]);
     }
 
     public function store(Request $request, DatabaseBackupService $backups)
     {
-        try {
-            $backup = $backups->create('manual', $request->user('api')?->id);
-        } catch (\Throwable $exception) {
-            return $this->failure($exception, 'No se pudo generar el respaldo.');
-        }
+        // Se genera en segundo plano: la pantalla consulta la lista hasta que deja de estar "en_proceso".
+        $running = DB::table('respaldos_base_datos')->where('estado', 'en_proceso')
+            ->where('creado_en', '>', now()->subMinutes(DatabaseBackupService::STALE_MINUTES))->exists();
+        abort_if($running, 409, 'Ya se está generando un respaldo; espera a que termine.');
+        $backup = $backups->startCreate('manual', $request->user('api')?->id);
 
-        return response()->json(['message' => 'Respaldo generado correctamente.', 'backup' => $backup], 201);
+        return response()->json(['message' => 'Generando el respaldo. Te avisaremos al terminar.', 'backup' => $backup], 202);
     }
 
     public function download(int $backup)
@@ -65,12 +78,12 @@ class DatabaseBackupController extends Controller
     public function verify(Request $request, int $backup, DatabaseBackupService $backups)
     {
         try {
-            $verification = $backups->verify($backup, $request->user('api')?->id);
+            $verification = $backups->startVerify($backup, $request->user('api')?->id);
         } catch (\Throwable $exception) {
-            return $this->failure($exception, 'La prueba de restauración falló.');
+            return $this->failure($exception, 'No se pudo iniciar la prueba de restauración.');
         }
 
-        return response()->json(['message' => 'El respaldo puede restaurarse correctamente.', 'verification' => $verification]);
+        return response()->json(['message' => 'Prueba de restauración en curso. Te avisaremos al terminar.', 'verification' => $verification], 202);
     }
 
     /**
