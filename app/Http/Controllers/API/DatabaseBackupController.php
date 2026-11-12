@@ -84,7 +84,10 @@ class DatabaseBackupController extends Controller
             ? 'Error de base de datos ('.$exception->getCode().').'
             : $exception->getMessage();
 
-        return response()->json(['message' => "{$title} {$detail}", 'error' => "{$title} {$detail}"], 422);
+        // El servicio ya empieza con "No se pudo …": no se repite el título.
+        $message = str_starts_with($detail, 'No se pudo') ? $detail : "{$title} {$detail}";
+
+        return response()->json(['message' => $message, 'error' => $message], 422);
     }
 
     public function health(Request $request, DatabaseBackupService $backups)
