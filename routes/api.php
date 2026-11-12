@@ -87,6 +87,7 @@ Route::middleware(['auth:api', 'active', 'career', 'throttle:120,1'])->group(fun
     Route::get('/search', \App\Http\Controllers\API\GlobalSearchController::class);
     Route::get('/help', [\App\Http\Controllers\API\HelpController::class, 'index']);
     Route::get('/widget', \App\Http\Controllers\API\WidgetController::class);
+    Route::get('/live', \App\Http\Controllers\API\LiveController::class);
 });
 
 // Archivo histórico: se usa sobre todo con el periodo ya cerrado, así que no exige uno abierto.
