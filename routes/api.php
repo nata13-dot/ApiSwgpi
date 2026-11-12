@@ -62,6 +62,8 @@ Route::prefix('repositorio')->group(function () {
         Route::post('/evaluation-documents/link', [RepositoryController::class, 'storeEvaluationLink']);
         Route::put('/evaluation-documents/review', [RepositoryController::class, 'reviewEvaluationDelivery']);
         Route::put('/evaluation-documents/{id}/release-status', [RepositoryController::class, 'reviewEvaluationRelease']);
+        Route::post('/evaluation-documents/denials', [RepositoryController::class, 'denyPresentation']);
+        Route::delete('/evaluation-documents/denials/{id}', [RepositoryController::class, 'allowPresentation'])->whereNumber('id');
         Route::get('/thesis-documents', [RepositoryController::class, 'thesisDocuments']);
         Route::post('/thesis-documents', [RepositoryController::class, 'storeThesisDocument']);
     });

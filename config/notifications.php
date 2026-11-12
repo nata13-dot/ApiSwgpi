@@ -14,7 +14,7 @@ return [
     ],
 
     // Cambios del mismo día: llegan aunque sea de noche.
-    'urgent' => ['sala_reprogramada', 'turno_proximo'],
+    'urgent' => ['sala_reprogramada', 'turno_proximo', 'presentacion_negada'],
 
     'quiet_hours' => ['from' => 22, 'to' => 7],
 ];

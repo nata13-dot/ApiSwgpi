@@ -83,14 +83,18 @@ final class EvaluationRequirementsService
             ->get(['r.entrega', 'r.estado', 'r.comentario', 'r.revisado_en', 'u.nombres as revisado_por'])->keyBy('entrega') : collect();
 
         $statuses = $releaseSheet?->releaseStatuses?->keyBy(fn ($status) => (string) $status->alumno_id) ?? collect();
-        $students = $project->students->map(function ($student) use ($statuses) {
+        // Presentaciones negadas por decisión administrativa (PresentationDenialService): el alumno negado no cuenta como liberado.
+        $denials = app(PresentationDenialService::class)->active($project->id, $period?->id);
+        $students = $project->students->map(function ($student) use ($statuses, $denials) {
             $status = $statuses->get((string) $student->id);
+            $denied = $denials['students'][(string) $student->id] ?? null;
 
             return [
                 'id' => $student->id,
                 'name' => trim("{$student->nombres} {$student->apa} {$student->ama}"),
-                'released' => (bool) ($status?->liberado ?? false),
+                'released' => !$denied && (bool) ($status?->liberado ?? false),
                 'reviewed' => $status?->revisado_en !== null,
+                'denial' => $denied,
             ];
         })->values();
         $releasedCount = $students->where('released', true)->count();
@@ -100,6 +104,7 @@ final class EvaluationRequirementsService
         $applies = ['presentation' => true, 'link' => $requirements['link'], 'report' => (bool) $requirements['report']];
         $deliveries = [];
         $missing = [];
+        if ($denials['team']) $missing[] = 'que se permita la presentación (negada por decisión administrativa)';
         if (!$releaseSheet) $missing[] = 'hoja de liberación';
         foreach ($present as $type => $exists) {
             if (!$applies[$type]) continue;
@@ -130,6 +135,7 @@ final class EvaluationRequirementsService
             'deliveries' => $deliveries,
             'students' => $students,
             'missing' => $missing,
+            'denial' => $denials['team'],
             'ready' => $missing === [],
         ];
     }

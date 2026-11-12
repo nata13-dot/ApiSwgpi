@@ -411,6 +411,14 @@ class RepositoryController extends Controller
                 'students' => ['La revision contiene alumnos que no pertenecen al proyecto.'],
             ]);
         }
+        // Un alumno con la presentación negada no se puede liberar hasta que se permita de nuevo.
+        $period = rescue(fn () => app(\App\Services\AcademicWorkflowService::class)->period(), null, false);
+        $denied = app(\App\Services\PresentationDenialService::class)->active($document->project->id, $period?->id)['students'];
+        if (collect($validated['students'])->contains(fn ($student) => $student['released'] && isset($denied[(string) $student['student_id']]))) {
+            throw ValidationException::withMessages([
+                'students' => ['Hay alumnos con la presentación negada: permítela de nuevo antes de liberarlos.'],
+            ]);
+        }
 
         DB::transaction(function () use ($document, $validated, $user) {
             foreach ($validated['students'] as $student) {
@@ -798,6 +806,45 @@ class RepositoryController extends Controller
         $workflow->audit('evaluacion.entrega_revisada', 'proyecto', $project->id, $delivery, $validated);
 
         return response()->json(['message' => $validated['status'] === 'aprobada' ? 'Entrega aprobada.' : 'Observaciones enviadas al equipo.']);
+    }
+
+    /** Niega la presentación de todo el equipo (sin student_id) o de un alumno en el periodo abierto. El motivo es opcional. */
+    public function denyPresentation(Request $request)
+    {
+        $validated = $request->validate([
+            'project_id' => 'required|integer|exists:proyectos,id',
+            'student_id' => 'nullable|string|max:20',
+            'reason' => 'nullable|string|max:1000',
+        ]);
+        $user = auth('api')->user();
+        $project = Project::with('students:id')->where('activo', true)->findOrFail($validated['project_id']);
+        if (! \App\Services\EvaluationRequirementsService::canReview($user, $project)) {
+            return response()->json(['error' => 'Las presentaciones las niegan el administrador general, la jefatura, la asistencia o la coordinación de proyectos.'], 403);
+        }
+        $studentId = $validated['student_id'] ?? null;
+        if ($studentId && ! $project->students->contains(fn ($student) => (string) $student->id === (string) $studentId)) {
+            return response()->json(['errors' => ['student_id' => ['El alumno no pertenece a este proyecto.']]], 422);
+        }
+        $period = app(\App\Services\AcademicWorkflowService::class)->period();
+        abort_unless($period, 409, 'La carrera no tiene un periodo abierto.');
+        app(\App\Services\PresentationDenialService::class)->deny($project, $period->id, $studentId, $validated['reason'] ?? null, $user);
+
+        return response()->json(['message' => $studentId ? 'Presentación del alumno negada. Se le avisó en la app y por correo.' : 'Presentación del equipo negada. Se avisó a sus integrantes en la app y por correo.']);
+    }
+
+    /** Retira una negación: la presentación vuelve a estar permitida y se avisa a los alumnos. */
+    public function allowPresentation(int $id)
+    {
+        $user = auth('api')->user();
+        $projectId = DB::table('negaciones_presentacion')->where('id', $id)->value('proyecto_id');
+        abort_unless($projectId, 404, 'Negación no encontrada.');
+        $project = Project::with('students:id')->findOrFail($projectId);
+        if (! \App\Services\EvaluationRequirementsService::canReview($user, $project)) {
+            return response()->json(['error' => 'No puedes cambiar esta decisión.'], 403);
+        }
+        app(\App\Services\PresentationDenialService::class)->allow($project, $id, $user);
+
+        return response()->json(['message' => 'La presentación vuelve a estar permitida. Se avisó a los alumnos.']);
     }
 
     /** Enlace de Drive del proyecto para el periodo (video y presentación con video). Desde 6°. */

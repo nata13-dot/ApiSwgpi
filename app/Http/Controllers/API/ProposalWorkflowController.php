@@ -212,6 +212,7 @@ class ProposalWorkflowController extends Controller
             'my_request' => $myRequest,
             'max_members' => $this->maxMembers(),
             'can_register' => !$project && !$myRequest && $window['open'] && $group && !$profileRequired,
+            'presentation_denial' => $project ? $this->presentationDenialFor($project, (string) $student->id) : null,
         ]);
     }
 
@@ -572,6 +573,16 @@ class ProposalWorkflowController extends Controller
             ->whereHas('students', fn ($query) => $query->where('usuarios.id', $studentId))
             ->where(fn ($query) => $query->where('tipo', '!=', 'propuesta')->orWhere('estado', '!=', 'rechazado'))
             ->orderByDesc('creado_en')->first();
+    }
+
+    /** La negación de presentación que afecta al alumno (la de su equipo o la suya) en el periodo abierto. */
+    private function presentationDenialFor(Project $project, string $studentId): ?array
+    {
+        $period = rescue(fn () => app(\App\Services\AcademicWorkflowService::class)->period(), null, false);
+        $denials = app(\App\Services\PresentationDenialService::class)->active($project->id, $period?->id);
+        $denial = $denials['team'] ?? $denials['students'][$studentId] ?? null;
+
+        return $denial ? ['scope' => $denials['team'] ? 'team' : 'student', 'reason' => $denial['reason'], 'denied_at' => $denial['denied_at']] : null;
     }
 
     private function proposalPayload(Project $project, bool $forMember = false): array
