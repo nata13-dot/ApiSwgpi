@@ -364,9 +364,21 @@ class ProposalWorkflowController extends Controller
             }
             DB::table('solicitudes_union_proyecto')->where('id', $id)->update(['estado' => $validated['decision'], 'respondida_por' => $student->id, 'respondida_en' => now()]);
 
-            return [$joinRequest, $project];
+            // Con el equipo completo, las demás solicitudes ya no pueden aceptarse: se rechazan para que esos alumnos busquen otra opción.
+            $closed = collect();
+            if ($validated['decision'] === 'aceptada' && $project->students->count() + 1 >= $this->maxMembers()) {
+                $pending = DB::table('solicitudes_union_proyecto')->where('proyecto_id', $project->id)->where('estado', 'pendiente');
+                $closed = (clone $pending)->pluck('estudiante_id');
+                $pending->update(['estado' => 'rechazada', 'respondida_por' => $student->id, 'respondida_en' => now()]);
+            }
+
+            return [$joinRequest, $project, $closed];
         });
-        [$joinRequest, $project] = $result;
+        [$joinRequest, $project, $closed] = $result;
+        if ($closed->isNotEmpty()) {
+            \App\Services\ActivityNotificationService::send($closed, $student->id, 'solicitud_union_respuesta', 'El equipo se completó',
+                "{$project->titulo} ya tiene el máximo de integrantes. Pide unirte a otra propuesta o registra la tuya.", '/proposals');
+        }
         $accepted = $validated['decision'] === 'aceptada';
         \App\Services\ActivityNotificationService::send([$joinRequest->estudiante_id], $student->id, 'solicitud_union_respuesta',
             $accepted ? 'Te aceptaron en el proyecto' : 'Solicitud rechazada',

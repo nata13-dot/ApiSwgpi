@@ -96,9 +96,9 @@ class WidgetController extends Controller
         return [
             $this->item('deliverable', 'Próxima entrega', $next ? $this->countdown($next->fecha_limite) : '—',
                 $next ? "{$next->nombre} · {$this->date($next->fecha_limite)}" : 'Sin entregas pendientes', '/deliverables'),
-            $this->item('project', 'Mi proyecto', $projectState ?? '—', $project?->title ?? 'Aún no tienes proyecto', $project ? '/projects' : '/proposals'),
+            $this->item('project', 'Mi proyecto', $projectState ?? '—', $project?->title ?? 'Aún no tienes proyecto', '/proposals'),
             $this->item('presentation', 'Mi presentación', $presentation ? $this->shortDate($presentation->inicio_estimado) : '—',
-                $presentation ? trim(($presentation->salon ?: $presentation->nombre) . ' · ' . Carbon::parse($presentation->inicio_estimado)->format('H:i')) : 'Sin presentación asignada', '/evaluations'),
+                $presentation ? trim(($presentation->salon ?: $presentation->nombre) . ' · ' . Carbon::parse($presentation->inicio_estimado)->format('H:i')) : 'Sin presentación asignada', '/dashboard'),
             $this->item('grades', 'Calificaciones', (string) (clone $graded)->count(), $lastGraded ? "Última: {$lastGraded}" : 'Aún sin calificaciones', '/deliverables'),
         ];
     }
@@ -178,7 +178,7 @@ class WidgetController extends Controller
                 ->whereIn('horario.proyecto_id', $projectIds)->where('sala.estado', 'programada')->where('horario.inicio_estimado', '>=', now())
                 ->orderBy('horario.inicio_estimado')->first(['sala.nombre', 'sala.salon', 'horario.inicio_estimado']);
             if ($presentation) {
-                $events[] = $this->event('presentation', 'Mi presentación', $presentation->salon ?: $presentation->nombre, $presentation->inicio_estimado, '/evaluations');
+                $events[] = $this->event('presentation', 'Mi presentación', $presentation->salon ?: $presentation->nombre, $presentation->inicio_estimado, '/dashboard');
             }
             if ($projectIds->isEmpty() && ($until = $this->proposalWindowCloses())) {
                 $events[] = $this->event('proposals', 'Cierra el registro de propuestas', 'Registra tu propuesta antes', $until, '/proposals');
@@ -216,8 +216,9 @@ class WidgetController extends Controller
     private function shortcuts(User $user, string $kind): array
     {
         $links = match ($kind) {
-            'student' => [['deliverables', 'Mis entregas', '/deliverables'], ['project', 'Mi proyecto', '/projects'], ['proposals', 'Propuestas', '/proposals'],
-                ['evaluations', 'Evaluaciones', '/evaluations'], ['repository', 'Repositorio', '/repository'], ['profile', 'Mi perfil', '/profile']],
+            // Los alumnos no entran a Proyectos ni a Evaluaciones: su proyecto se ve en Propuestas y su presentación en el inicio.
+            'student' => [['deliverables', 'Mis entregas', '/deliverables'], ['project', 'Mi proyecto', '/proposals'], ['evidence', 'Evidencias', '/evaluation-documents'],
+                ['courses', 'Mis materias', '/academic-workflows?tab=courses'], ['repository', 'Repositorio', '/repository'], ['profile', 'Mi perfil', '/profile']],
             'teacher' => [['deliverables', 'Entregables', '/deliverables'], ['projects', 'Mis proyectos', '/projects'], ['evaluations', 'Evaluaciones', '/evaluations'],
                 ['proposals', 'Propuestas', '/proposals'], ['rooms', 'Salas y turnos', '/evaluation-rooms'], ['repository', 'Repositorio', '/repository']],
             default => array_values(array_filter([['period', 'Operación del periodo', '/period-center'],

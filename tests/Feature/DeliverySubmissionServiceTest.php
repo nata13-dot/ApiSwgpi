@@ -157,6 +157,23 @@ class DeliverySubmissionServiceTest extends TestCase
         );
     }
 
+    public function test_student_cannot_submit_after_the_deadline(): void
+    {
+        DB::table('entregables')->where('id', 1)->update(['fecha_limite' => now()->subHour()]);
+
+        try {
+            $this->submit('tarde.pdf');
+            $this->fail('Se aceptó una entrega fuera de tiempo.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('ya pasó', $exception->errors()['archivo'][0]);
+        }
+        $this->assertDatabaseCount('entregas', 0);
+
+        DB::table('entregables')->where('id', 1)->update(['fecha_limite' => now()->addDay()]);
+        $this->submit('a-tiempo.pdf');
+        $this->assertDatabaseCount('entregas', 1);
+    }
+
     public function test_upload_endpoint_requires_project_id(): void
     {
         $this->withoutMiddleware();
@@ -594,6 +611,7 @@ class DeliverySubmissionServiceTest extends TestCase
             $table->string('tipo_documento');
             $table->string('estado');
             $table->boolean('activo');
+            $table->dateTime('fecha_limite')->nullable();
             $table->dateTime('creado_en');
         });
         Schema::create('documentos', function (Blueprint $table): void {

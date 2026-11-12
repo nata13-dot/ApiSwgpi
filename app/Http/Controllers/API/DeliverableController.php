@@ -858,10 +858,14 @@ class DeliverableController extends Controller
     {
         $version = $delivery?->document?->latestVersion;
         $subject = $deliverable->course?->subject;
+        // Igual que DeliverySubmissionService: pasada la fecha límite el alumno ya no puede entregar.
+        $closed = $deliverable->fecha_limite && now()->greaterThan($deliverable->fecha_limite);
 
         return [
             'id' => $deliverable->id,
-            'puede_subir' => $project !== null,
+            'puede_subir' => $project !== null && !$closed,
+            'fecha_limite' => $deliverable->fecha_limite ? \Illuminate\Support\Carbon::parse($deliverable->fecha_limite)->toIso8601String() : null,
+            'vencido' => (bool) $closed,
             'project_id' => $project?->id,
             'delivery_id' => $delivery?->id,
             'document_id' => $delivery?->documento_id,

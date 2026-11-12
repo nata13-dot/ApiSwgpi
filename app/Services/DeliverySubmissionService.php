@@ -190,6 +190,13 @@ class DeliverySubmissionService
             return;
         }
 
+        // Pasada la fecha límite el alumno ya no puede entregar; el docente puede ampliarla para recibirla.
+        if ($deliverable->fecha_limite && now()->greaterThan($deliverable->fecha_limite)) {
+            throw ValidationException::withMessages([
+                'archivo' => ['La fecha límite de este entregable ('.\Illuminate\Support\Carbon::parse($deliverable->fecha_limite)->format('d/m/Y H:i').') ya pasó. Pide a tu docente que la amplíe.'],
+            ]);
+        }
+
         $isStudentMember = (int) $user->perfil_id === 3
             && $project->students()->where('usuarios.id', $user->id)->exists();
         if (! $isStudentMember) {
