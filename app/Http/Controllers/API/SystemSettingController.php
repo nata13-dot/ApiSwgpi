@@ -129,33 +129,48 @@ class SystemSettingController extends Controller
             'notices.*.active' => 'required|boolean',
         ]);
 
-        // Se guarda la lista completa: sólo se revisa el inicio de los avisos nuevos o cuyo inicio cambió.
-        $savedStarts = collect(CareerSetting::valueFor('system_notices', []))->pluck('starts_at', 'id');
+        // Se guarda la lista completa. Sólo se validan las fechas de los avisos nuevos o de las que cambiaron, para que un
+        // aviso vigente que ya empezó pueda seguir guardándose.
+        $saved = collect(CareerSetting::valueFor('system_notices', []))->keyBy('id');
         foreach ($validated['notices'] as $index => $notice) {
-            if (!empty($notice['starts_at'])) {
-                (new \App\Rules\NotBeforeNow($savedStarts[$notice['id'] ?? ''] ?? null))->validate("notices.{$index}.starts_at", $notice['starts_at'], function (string $message) use ($index) {
-                    throw ValidationException::withMessages(["notices.{$index}.starts_at" => ['El aviso no puede iniciar antes de hoy.']]);
+            $previous = $saved->get($notice['id'] ?? '');
+            foreach (['starts_at' => 'iniciar', 'ends_at' => 'terminar'] as $field => $verb) {
+                if (empty($notice[$field])) continue;
+                (new \App\Rules\NotBeforeNow($previous[$field] ?? null))->validate("notices.{$index}.{$field}", $notice[$field], function () use ($index, $field, $verb) {
+                    throw ValidationException::withMessages(["notices.{$index}.{$field}" => ["El aviso no puede {$verb} antes de hoy."]]);
                 });
             }
             if (!empty($notice['starts_at']) && !empty($notice['ends_at']) && Carbon::parse($notice['ends_at'])->lt(Carbon::parse($notice['starts_at']))) {
                 throw ValidationException::withMessages([
-                    "notices.{$index}.ends_at" => ['La fecha final del aviso debe ser igual o posterior a la fecha inicial.'],
+                    "notices.{$index}.ends_at" => ['El cierre del aviso no puede ser antes de su apertura.'],
                 ]);
             }
         }
 
+        // Un aviso nuevo o modificado lleva una marca de actualización nueva: la web y la app lo vuelven a mostrar a
+        // todos como si fuera nuevo (cuentan como no leídos los que no tienen esa marca).
+        $content = fn (array $notice) => [trim($notice['title'] ?? ''), trim($notice['message'] ?? ''), $notice['audience'] ?? 'all', $notice['type'] ?? 'info',
+            $notice['starts_at'] ?? null, $notice['ends_at'] ?? null, (bool) ($notice['active'] ?? true)];
+        $stamp = now()->toIso8601String();
         $notices = collect($validated['notices'])
-            ->map(fn ($notice) => [
-                'id' => $notice['id'] ?? uniqid('notice_', true),
-                'title' => trim($notice['title'] ?? ''),
-                'message' => trim($notice['message']),
-                'audience' => $notice['audience'],
-                'type' => $notice['type'],
-                'duration_seconds' => (int) ($notice['duration_seconds'] ?? 4),
-                'starts_at' => $notice['starts_at'] ?? null,
-                'ends_at' => $notice['ends_at'] ?? null,
-                'active' => (bool) $notice['active'],
-            ])
+            ->map(function ($notice) use ($saved, $content, $stamp) {
+                $previous = $saved->get($notice['id'] ?? '');
+                $changed = !$previous || $content($previous) !== $content($notice);
+
+                return [
+                    'id' => $notice['id'] ?? uniqid('notice_', true),
+                    'title' => trim($notice['title'] ?? ''),
+                    'message' => trim($notice['message']),
+                    'audience' => $notice['audience'],
+                    'type' => $notice['type'],
+                    'duration_seconds' => (int) ($notice['duration_seconds'] ?? 4),
+                    'starts_at' => $notice['starts_at'] ?? null,
+                    'ends_at' => $notice['ends_at'] ?? null,
+                    'active' => (bool) $notice['active'],
+                    'created_at' => $previous['created_at'] ?? $stamp,
+                    'updated_at' => $changed ? $stamp : ($previous['updated_at'] ?? $previous['created_at'] ?? $stamp),
+                ];
+            })
             ->filter(fn ($notice) => !$this->noticeExpired($notice, now()->toDateString()))
             ->values()
             ->all();

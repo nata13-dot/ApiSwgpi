@@ -26,6 +26,8 @@ class LiveController extends Controller
                     ->selectRaw('COUNT(*) total, MAX(id) last, SUM(leida_en IS NULL) unread')->first(),
                 'proposals' => Project::where('tipo', 'propuesta')->selectRaw('COUNT(*) total, MAX(actualizado_en) changed')->first(),
                 'projects' => Project::query()->selectRaw('COUNT(*) total, MAX(actualizado_en) changed')->first(),
+                // Avisos del sistema: cambia al crear, editar, activar o quitar uno.
+                'notices' => collect(\App\Models\CareerSetting::valueFor('system_notices', []))->map(fn ($notice) => [$notice['id'] ?? null, $notice['updated_at'] ?? null, $notice['active'] ?? true])->all(),
                 'deliverables' => DB::table('entregas')->selectRaw('COUNT(*) total, MAX(entregado_en) last, COUNT(calificacion) graded')->first(),
             ];
             if ($user->canManageAcademics() || $user->isGeneralAdmin()) {
