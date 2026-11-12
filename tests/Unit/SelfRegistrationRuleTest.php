@@ -25,14 +25,14 @@ class SelfRegistrationRuleTest extends TestCase
 
     public function test_accepts_every_generation_up_to_the_current_year(): void
     {
-        foreach (['22240022', '26240100', 'b20240087', 'B26240001'] as $id) {
+        foreach (['22240022', '26240100', 'b20240087', 'B26240001', 'c20240087', 'C26240001'] as $id) {
             $this->assertNull(Rule::numberViolation($this->rule, $id), $id);
         }
     }
 
     public function test_rejects_numbers_out_of_format(): void
     {
-        $cases = ['27240001' => 'generación', '26250001' => 'clave de la carrera', '26240000' => '0000', '2624001' => '8 dígitos', '262400011' => '8 dígitos', 'a26240001' => '8 dígitos', 'DS000001' => '8 dígitos'];
+        $cases = ['27240001' => 'generación', '26250001' => 'clave de la carrera', '26240000' => '0000', '2624001' => '8 dígitos', '262400011' => '8 dígitos', 'a26240001' => '8 dígitos', 'd26240001' => '8 dígitos', 'bc26240001' => '8 dígitos', 'DS000001' => '8 dígitos'];
         foreach ($cases as $id => $message) {
             $this->assertStringContainsString($message, (string) Rule::numberViolation($this->rule, $id), $id);
         }
@@ -47,6 +47,8 @@ class SelfRegistrationRuleTest extends TestCase
     {
         $this->assertNull(Rule::violation($this->rule, '26240100', 'L26240100@SMARTIN.TECNM.MX'));
         $this->assertNull(Rule::violation($this->rule, 'b26240100', 'lb26240100@smartin.tecnm.mx'));
+        $this->assertNull(Rule::violation($this->rule, 'C26240100', 'lc26240100@smartin.tecnm.mx'));
+        $this->assertNotNull(Rule::violation($this->rule, 'c26240100', 'lb26240100@smartin.tecnm.mx'));
         foreach (['l26240101@smartin.tecnm.mx', '26240100@smartin.tecnm.mx', 'l26240100@gmail.com'] as $email) {
             $this->assertNotNull(Rule::violation($this->rule, '26240100', $email), $email);
         }
