@@ -17,6 +17,7 @@ final class CareerSetting
         'self_registration_until',
         'self_registration_rule',
         'new_student_groups',
+        'new_student_semester',
         'proposal_registration_until',
         'proposal_validator_teacher_ids',
     ];

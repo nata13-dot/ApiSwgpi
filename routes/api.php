@@ -86,6 +86,7 @@ Route::middleware(['auth:api', 'active'])->group(function () {
 Route::middleware(['auth:api', 'active', 'career', 'throttle:120,1'])->group(function () {
     Route::get('/search', \App\Http\Controllers\API\GlobalSearchController::class);
     Route::get('/help', [\App\Http\Controllers\API\HelpController::class, 'index']);
+    Route::get('/widget', \App\Http\Controllers\API\WidgetController::class);
 });
 
 // Archivo histórico: se usa sobre todo con el periodo ya cerrado, así que no exige uno abierto.
@@ -282,6 +283,8 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     Route::middleware('role:admin,project_manager')->group(function () {
         Route::get('/proposal/config', [ProposalWorkflowController::class, 'configIndex']);
         Route::get('/proposal/settings', [ProposalWorkflowController::class, 'settings']);
+        Route::get('/period-center', \App\Http\Controllers\API\PeriodCenterController::class);
+        Route::get('/period-center/badges', [\App\Http\Controllers\API\PeriodCenterController::class, 'badges']);
         Route::put('/proposal/settings/new-student-groups', [ProposalWorkflowController::class, 'updateNewStudentGroups']);
         Route::put('/proposal/settings/self-registration', [ProposalWorkflowController::class, 'updateSelfRegistration']);
         Route::put('/proposal/settings/proposal-window', [ProposalWorkflowController::class, 'updateProposalWindow']);

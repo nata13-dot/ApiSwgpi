@@ -436,9 +436,10 @@ class ProposalWorkflowController extends Controller
         $user = auth('api')->user();
         $careerId = app(\App\Services\AcademicWorkflowService::class)->careerId();
         $selfUntil = SelfRegistrationController::openUntilFor($careerId);
-        // Una ventana abierta antes de que los grupos de 5° se crearan solos se completa al consultarla.
+        // Una ventana abierta antes de que los grupos de alumnos nuevos se crearan solos se completa al consultarla.
         $period = app(\App\Services\AcademicWorkflowService::class)->period();
-        if ($selfUntil?->isFuture() && $period && \App\Support\NewStudentGroups::allowedIn($period)) {
+        $semester = \App\Support\NewStudentGroups::semester($careerId);
+        if ($selfUntil?->isFuture() && $period && \App\Support\NewStudentGroups::allowedIn($period, $semester)) {
             \App\Support\NewStudentGroups::ensure($careerId, (int) $period->id);
         }
 
@@ -450,6 +451,9 @@ class ProposalWorkflowController extends Controller
                 'blocker' => $selfUntil?->isFuture() ? SelfRegistrationController::blockerFor(\App\Models\Career::findOrFail($careerId)) : null,
                 'can_manage' => $this->canManageSelfRegistration($user),
                 'groups' => \App\Support\NewStudentGroups::letters((int) app(\App\Services\AcademicWorkflowService::class)->careerId()),
+                // Semestre al que entran los alumnos nuevos y los que admite el periodo abierto (5° por defecto).
+                'semester' => $semester,
+                'semester_options' => $period ? \App\Support\NewStudentGroups::optionsFor($period) : [],
                 'rule' => \App\Support\SelfRegistrationRule::publicPayload(\App\Support\SelfRegistrationRule::forCareer($careerId)),
             ],
             'proposal_window' => $this->proposalWindow() + ['until' => CareerSetting::valueFor('proposal_registration_until')],
@@ -468,9 +472,9 @@ class ProposalWorkflowController extends Controller
         $workflow = app(\App\Services\AcademicWorkflowService::class);
         $career = (int) $workflow->careerId();
         $letters = collect($validated['groups'])->map(fn ($letter) => strtoupper($letter))->unique()->values()->all();
-        CareerSetting::setValue('new_student_groups', $letters, 'array', 'Grupos de 5° para alumnos nuevos');
+        CareerSetting::setValue('new_student_groups', $letters, 'array', 'Grupos para alumnos nuevos');
         $period = $workflow->period();
-        if ($period && \App\Support\NewStudentGroups::allowedIn($period)) {
+        if ($period && \App\Support\NewStudentGroups::allowedIn($period, \App\Support\NewStudentGroups::semester($career))) {
             \App\Support\NewStudentGroups::ensure($career, (int) $period->id);
         }
 
@@ -480,18 +484,25 @@ class ProposalWorkflowController extends Controller
     public function updateSelfRegistration(Request $request)
     {
         abort_unless($this->canManageSelfRegistration(auth('api')->user()), 403, 'El autoregistro lo abre la administración general o la jefatura.');
-        $validated = $request->validate(['until' => 'nullable|date|after:now'], [], ['until' => 'fecha de cierre']);
+        $validated = $request->validate([
+            'until' => 'nullable|date|after:now',
+            // Sin elegir nada, los alumnos nuevos entran a 5°.
+            'semester' => ['nullable', 'integer', \Illuminate\Validation\Rule::in(\App\Support\NewStudentGroups::SEMESTERS)],
+        ], [], ['until' => 'fecha de cierre', 'semester' => 'semestre']);
         if (!empty($validated['until'])) {
             $period = app(\App\Services\AcademicWorkflowService::class)->period();
             abort_unless($period, 409, 'Abre el periodo de la carrera antes de habilitar el autoregistro.');
-            // Los alumnos nuevos entran a 5°, y 5° sólo existe de julio a diciembre.
-            abort_unless(\App\Support\NewStudentGroups::allowedIn($period), 409, 'El registro de alumnos nuevos sólo se abre de julio a diciembre, cuando existe 5° semestre.');
+            $semester = (int) ($validated['semester'] ?? \App\Support\NewStudentGroups::DEFAULT_SEMESTER);
+            abort_unless(\App\Support\NewStudentGroups::allowedIn($period, $semester), 409,
+                "El periodo {$period->nombre} es de ".\App\Support\NewStudentGroups::halfLabel($period).": no tiene {$semester}° semestre. Elige "
+                .implode(' o ', array_map(fn ($option) => "{$option}°", \App\Support\NewStudentGroups::optionsFor($period))).'.');
             abort_unless(Carbon::parse($validated['until'])->lte(Carbon::parse($period->fecha_fin)->endOfDay()), 422, 'La fecha de cierre debe estar dentro del periodo abierto.');
+            CareerSetting::setValue('new_student_semester', $semester, 'integer', 'Semestre de los alumnos nuevos');
             \App\Support\NewStudentGroups::ensure((int) app(\App\Services\AcademicWorkflowService::class)->careerId(), (int) $period->id);
         }
         $until = empty($validated['until']) ? null : Carbon::parse($validated['until'])->toIso8601String();
         CareerSetting::setValue('self_registration_until', $until, 'string', 'Cierre del autoregistro de alumnos');
-        app(\App\Services\AcademicWorkflowService::class)->audit('autoregistro.ventana', 'carrera', app(\App\Services\AcademicWorkflowService::class)->careerId(), null, ['hasta' => $until]);
+        app(\App\Services\AcademicWorkflowService::class)->audit('autoregistro.ventana', 'carrera', app(\App\Services\AcademicWorkflowService::class)->careerId(), null, ['hasta' => $until, 'semestre' => empty($validated['until']) ? null : \App\Support\NewStudentGroups::semester((int) app(\App\Services\AcademicWorkflowService::class)->careerId())]);
 
         return response()->json(['message' => $until ? 'Autoregistro abierto' : 'Autoregistro cerrado', 'until' => $until]);
     }

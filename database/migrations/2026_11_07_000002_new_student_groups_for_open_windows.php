@@ -20,7 +20,7 @@ return new class extends Migration
             }
             $period = DB::table('carrera_periodos as cp')->join('periodos_academicos as p', 'p.id', '=', 'cp.periodo_id')
                 ->where('cp.carrera_id', $window->carrera_id)->whereIn('cp.estado', ['abierto', 'en_cierre'])->first(['p.id', 'p.fecha_inicio']);
-            if ($period && \App\Support\NewStudentGroups::allowedIn($period)) {
+            if ($period && \App\Support\NewStudentGroups::allowedIn($period, \App\Support\NewStudentGroups::semester((int) $window->carrera_id))) {
                 \App\Support\NewStudentGroups::ensure((int) $window->carrera_id, (int) $period->id);
             }
         }

@@ -331,12 +331,13 @@ class SelfRegistrationController extends Controller
         if (!$period) {
             return 'La carrera no tiene un periodo abierto.';
         }
-        // Los alumnos nuevos entran a 5°, sólo en los grupos que la carrera definió.
-        if (!\App\Support\NewStudentGroups::allowedIn($period)) {
-            return "El periodo abierto ({$period->nombre}) no tiene 5° semestre: los alumnos nuevos sólo se registran de julio a diciembre.";
+        // Los alumnos nuevos entran al semestre elegido al abrir la ventana, sólo en los grupos que la carrera definió.
+        $semester = \App\Support\NewStudentGroups::semester($career->id);
+        if (!\App\Support\NewStudentGroups::allowedIn($period, $semester)) {
+            return "El periodo abierto ({$period->nombre}) es de ".\App\Support\NewStudentGroups::halfLabel($period).": no tiene {$semester}° semestre. Vuelve a abrir el autoregistro eligiendo ".implode(' o ', array_map(fn ($option) => "{$option}°", \App\Support\NewStudentGroups::optionsFor($period))).'.';
         }
         if (self::newStudentGroups($career, $period)->isEmpty()) {
-            return "No hay grupos de 5° activos en el periodo {$period->nombre}. Guarda los grupos de alumnos nuevos o activa los que estén inactivos.";
+            return "No hay grupos de {$semester}° activos en el periodo {$period->nombre}. Guarda los grupos de alumnos nuevos o activa los que estén inactivos.";
         }
 
         return null;
@@ -345,7 +346,7 @@ class SelfRegistrationController extends Controller
     private static function newStudentGroups(Career $career, object $period)
     {
         return SubjectGroup::withoutGlobalScopes()->where('carrera_id', $career->id)->where('periodo_id', $period->id)
-            ->where('activo', true)->where('semestre', \App\Support\NewStudentGroups::SEMESTER)->whereIn('clave_grupo', \App\Support\NewStudentGroups::letters($career->id))
+            ->where('activo', true)->where('semestre', \App\Support\NewStudentGroups::semester($career->id))->whereIn('clave_grupo', \App\Support\NewStudentGroups::letters($career->id))
             ->orderBy('clave_grupo')->get(['id', 'nombre', 'semestre', 'clave_grupo']);
     }
 
@@ -366,6 +367,7 @@ class SelfRegistrationController extends Controller
             'nombre_corto' => $career->nombre_corto,
             'closes_at' => $until->toIso8601String(),
             'period' => $period->nombre,
+            'semester' => \App\Support\NewStudentGroups::semester($career->id),
             'rule' => SelfRegistrationRule::publicPayload(SelfRegistrationRule::forCareer($career->id)),
             'groups' => $groups->all(),
         ];

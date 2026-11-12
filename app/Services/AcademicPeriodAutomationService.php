@@ -53,8 +53,9 @@ class AcademicPeriodAutomationService
             }
         }
 
-        // De julio a diciembre también se preparan los grupos de 5° para los alumnos nuevos.
-        $freshmen = in_array(\App\Support\NewStudentGroups::SEMESTER, $allowed, true) ? collect(\App\Support\NewStudentGroups::letters($career))->map(fn ($letter) => ['to' => \App\Support\NewStudentGroups::SEMESTER, 'clave' => $letter]) : collect();
+        // Si el semestre de los alumnos nuevos existe en este periodo, también se preparan sus grupos.
+        $freshmanSemester = \App\Support\NewStudentGroups::semester($career);
+        $freshmen = in_array($freshmanSemester, $allowed, true) ? collect(\App\Support\NewStudentGroups::letters($career))->map(fn ($letter) => ['to' => $freshmanSemester, 'clave' => $letter]) : collect();
         $newGroups = collect($moves)->concat($freshmen)->map(fn ($move) => ['semestre' => $move['to'], 'clave' => $move['clave']])->unique(fn ($group) => "{$group['semestre']}|{$group['clave']}")
             ->reject(fn ($group) => $existingGroups->contains(fn ($row) => (int) $row->semestre === $group['semestre'] && $row->clave_grupo === $group['clave']))
             ->sortBy(fn ($group) => sprintf('%02d%s', $group['semestre'], $group['clave']))->values()->all();
@@ -309,7 +310,7 @@ class AcademicPeriodAutomationService
     }
 
     /** @return string[] lo que quedó sin resolver, para avisar a la jefatura */
-    private function pendingAtClose(int $career, int $periodId): array
+    public function pendingAtClose(int $career, int $periodId): array
     {
         $rooms = CareerScope::constrain(DB::table('salas_evaluacion'), 'salas_evaluacion', $career)->where('salas_evaluacion.periodo_id', $periodId)->where('estado', '!=', 'finalizada')->count();
         $residencies = CareerScope::constrain(DB::table('residencias'), 'residencias', $career)->where('periodo_id', $periodId)->where('estado', '!=', 'cerrada')->count();
