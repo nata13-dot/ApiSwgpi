@@ -35,6 +35,9 @@ class EvaluationRoom extends Model
         'timer_ends_at' => 'temporizador_finaliza_en',
         'timer_remaining_seconds' => 'temporizador_restante_segundos',
         'timer_updated_by' => 'temporizador_actualizado_por',
+        'timer_phase' => 'temporizador_fase',
+        'tolerance_minutes' => 'tolerancia_minutos',
+        'auto_questions' => 'preguntas_automaticas',
         'allow_late_evaluations' => 'permite_evaluacion_fuera_horario',
         'late_evaluation_until' => 'evaluacion_fuera_horario_hasta',
         'late_evaluation_reason' => 'motivo_evaluacion_fuera_horario',
@@ -52,7 +55,7 @@ class EvaluationRoom extends Model
         'teacher_evaluation_minutes', 'project_presentation_minutes',
         'max_attempts', 'estado', 'sequence_locked', 'current_order', 'sequence_version', 'completed_at',
         'timer_status', 'timer_order', 'timer_duration_seconds', 'timer_started_at', 'timer_ends_at',
-        'timer_remaining_seconds', 'timer_updated_by', 'created_by', 'activo',
+        'timer_remaining_seconds', 'timer_updated_by', 'timer_phase', 'tolerance_minutes', 'auto_questions', 'created_by', 'activo',
         'allow_late_evaluations', 'late_evaluation_until', 'late_evaluation_reason',
         'schedule_updated_by', 'schedule_updated_at',
     ];
@@ -94,6 +97,10 @@ class EvaluationRoom extends Model
         'schedule_updated_at' => 'datetime',
         'horario_actualizado_en' => 'datetime',
         'activo' => 'boolean',
+        'tolerance_minutes' => 'integer',
+        'tolerancia_minutos' => 'integer',
+        'auto_questions' => 'boolean',
+        'preguntas_automaticas' => 'boolean',
     ];
 
     public function teachers(): BelongsToMany

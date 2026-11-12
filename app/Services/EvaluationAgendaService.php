@@ -23,7 +23,9 @@ class EvaluationAgendaService
         $end = Carbon::parse(!empty($data['allow_late_evaluations']) ? $data['late_evaluation_until'] : $data['fecha_fin_evaluacion']);
         abort_unless($end->gt($start), 422, 'Horario inválido.');
         $projects = collect($data['project_ids'])->map(fn ($id) => (int) $id)->unique();
-        $required = $projects->count() * ((int) $data['project_presentation_minutes'] + (int) $data['teacher_evaluation_minutes']);
+        // Exposición + preguntas por turno y la tolerancia entre turnos (App\Support\RoomTimeline).
+        $required = $projects->count() * ((int) $data['project_presentation_minutes'] + (int) $data['teacher_evaluation_minutes'])
+            + max(0, $projects->count() - 1) * (int) ($data['tolerance_minutes'] ?? $room?->tolerance_minutes ?? \App\Support\RoomTimeline::DEFAULT_TOLERANCE);
         abort_if($start->diffInMinutes(Carbon::parse($data['fecha_fin_evaluacion'])) < $required, 422, 'El horario no alcanza para todas las presentaciones y evaluaciones.');
         $keys = $teachers->map(fn ($id) => 'docente:'.$id)->push('salon:'.$salon->id)
             ->merge($projects->map(fn ($id) => 'proyecto:'.$id))->sort()->values();

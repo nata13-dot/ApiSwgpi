@@ -198,6 +198,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::post('/evaluations/rooms/{id}/lock-sequence', [EvaluationController::class, 'lockRoomSequence']);
         Route::post('/evaluations/rooms/{id}/advance', [EvaluationController::class, 'advanceRoom']);
         Route::post('/evaluations/rooms/{id}/timer', [EvaluationController::class, 'controlRoomTimer']);
+        Route::get('/evaluations/rooms/{id}/live', [EvaluationController::class, 'roomLive'])->whereNumber('id');
         Route::put('/evaluations/rooms/{id}/schedule', [EvaluationController::class, 'updateRoomSchedule']);
         Route::get('/evaluations/rooms/{id}/report.pdf', [EvaluationController::class, 'exportRoomPdf']);
         Route::get('/evaluations/rooms/{id}/report-job', [EvaluationController::class, 'startRoomReport']);

@@ -815,7 +815,7 @@ class EvaluationController extends Controller
                     && (int) ($validated['periodo_id'] ?? $lockedRoom->periodo_id) === (int) $lockedRoom->periodo_id,
                     409, 'La sala ya contiene evaluaciones. Conserva su etapa y periodo; programa una nueva sala con las autorizaciones correspondientes.');
             }
-            abort_unless(\Illuminate\Support\Carbon::parse($validated['fecha_evaluacion'])->equalTo($lockedRoom->fecha_evaluacion) && \Illuminate\Support\Carbon::parse($validated['fecha_fin_evaluacion'])->equalTo($lockedRoom->fecha_fin_evaluacion), 409, 'El horario se cambia desde el botón Horario de la sala.');
+            abort_unless(\Illuminate\Support\Carbon::parse($validated['fecha_evaluacion'])->equalTo($lockedRoom->fecha_evaluacion), 409, 'La fecha y hora de inicio se cambian desde el botón Horario de la sala.');
             $this->authorizeSpecialCases($specialCases, $validated + ['periodo_id' => $lockedRoom->periodo_id]);
             $validated = array_replace($validated, app(\App\Services\EvaluationAgendaService::class)->validate($validated, $lockedRoom));
             $lockedRoom->update(collect($validated)->except(['teacher_ids', 'project_ids', 'project_order'])->toArray());
@@ -921,6 +921,7 @@ class EvaluationController extends Controller
                 'sequence_version' => ((int) $room->sequence_version) + 1,
                 'completed_at' => null,
                 'timer_status' => 'detenido',
+                'timer_phase' => 'exposicion',
                 'timer_order' => $firstOrder,
                 'timer_duration_seconds' => ((int) $room->project_presentation_minutes) * 60,
                 'timer_started_at' => null,
@@ -930,6 +931,8 @@ class EvaluationController extends Controller
 
             return $room;
         });
+
+        $this->notifyUpNext($room->fresh(), (string) $user->id);
 
         return response()->json(['message' => 'Orden bloqueado. El primer proyecto ya puede evaluarse.', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
     }
@@ -1028,6 +1031,7 @@ class EvaluationController extends Controller
                 'completed_at' => $next ? null : now(),
                 'sequence_version' => ((int) $room->sequence_version) + 1,
                 'timer_status' => 'detenido',
+                'timer_phase' => 'exposicion',
                 'timer_order' => $nextOrder,
                 'timer_duration_seconds' => $duration,
                 'timer_started_at' => null,
@@ -1062,16 +1066,37 @@ class EvaluationController extends Controller
             $nextProject = Evaluation::where('evaluation_room_id', $room->id)->where('presentation_order', $room->current_order)->value('project_id');
             ActivityNotificationService::send(DB::table('proyecto_integrantes')->where('proyecto_id', $nextProject)->whereIn('rol', ['lider', 'integrante'])->pluck('usuario_id'),
                 (string) $user->id, 'turno_proximo', 'Es tu turno', "Tu proyecto se presenta ahora en {$room->nombre}.", '/dashboard');
+            $this->notifyUpNext($room, (string) $user->id);
         }
 
         return response()->json(['message' => $room->completed_at ? 'Sala finalizada' : 'Turno actualizado', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
+    }
+
+    /** Temporizador y turno de la sala para quien evalúa en ella (docentes asignados, encargado y gestores). */
+    public function roomLive($id)
+    {
+        $user = auth('api')->user();
+        $room = EvaluationRoom::with(['teachers:id', 'projects:id,titulo'])->findOrFail($id);
+        $isTeacher = $room->teachers->contains(fn ($teacher) => (string) $teacher->id === (string) $user->id);
+        if (!$isTeacher && !$this->isRoomResponsible($room, $user) && !$this->isEvaluationManager($user)) {
+            return response()->json(['error' => 'No participas en esta sala.'], 403);
+        }
+        $shape = $this->shapeRoom($room);
+        $current = collect($shape['projects'])->firstWhere('is_current', true);
+
+        return response()->json([
+            'id' => $room->id, 'nombre' => $room->nombre, 'sequence_version' => $shape['sequence_version'],
+            'current_order' => $shape['current_order'], 'total' => count($shape['projects']), 'completed_at' => $shape['completed_at'],
+            'current_project' => $current ? ['id' => $current['id'], 'title' => $current['title'] ?? $current['titulo'] ?? null] : null,
+            'timer' => $shape['timer'], 'can_control_room' => $shape['can_control_room'],
+        ]);
     }
 
     public function controlRoomTimer(Request $request, $id)
     {
         $user = auth('api')->user();
         $validated = $request->validate([
-            'action' => ['required', Rule::in(['start', 'pause', 'resume', 'reset', 'finish'])],
+            'action' => ['required', Rule::in(['start', 'pause', 'resume', 'reset', 'finish', 'questions'])],
             'duration_seconds' => 'nullable|integer|min:60|max:14400',
             'expected_sequence_version' => 'required|integer|min:0',
         ]);
@@ -1093,7 +1118,23 @@ class EvaluationController extends Controller
                 ]);
             }
 
+            \App\Support\RoomTimeline::syncPhase($room);
             $action = $validated['action'];
+            if ($action === 'questions' || $action === 'reset') {
+                // Preguntas: arranca ya la cuenta de preguntas y respuestas. Reiniciar: vuelve a la exposición.
+                $phase = $action === 'questions' ? 'preguntas' : 'exposicion';
+                $seconds = max(60, ((int) ($phase === 'preguntas' ? $room->teacher_evaluation_minutes : $room->project_presentation_minutes)) * 60);
+                $room->update([
+                    'timer_order' => (int) $room->current_order, 'timer_updated_by' => $user->id, 'sequence_version' => ((int) $room->sequence_version) + 1,
+                    'timer_phase' => $phase, 'timer_duration_seconds' => $seconds,
+                    'timer_status' => $action === 'questions' ? 'en_curso' : 'detenido',
+                    'timer_started_at' => $action === 'questions' ? now() : null,
+                    'timer_ends_at' => $action === 'questions' ? now()->addSeconds($seconds) : null,
+                    'timer_remaining_seconds' => $action === 'questions' ? null : $seconds,
+                ]);
+
+                return $room;
+            }
             $duration = (int) ($validated['duration_seconds']
                 ?? $room->timer_remaining_seconds
                 ?? $room->timer_duration_seconds
@@ -1106,6 +1147,10 @@ class EvaluationController extends Controller
             ];
 
             if ($action === 'start') {
+                // Iniciar arranca la fase completa (exposición o preguntas) con los minutos de la sala.
+                if (!isset($validated['duration_seconds'])) {
+                    $duration = max(60, ((int) (($room->timer_phase ?? 'exposicion') === 'preguntas' ? $room->teacher_evaluation_minutes : $room->project_presentation_minutes)) * 60);
+                }
                 $payload += [
                     'timer_status' => 'en_curso',
                     'timer_duration_seconds' => $duration,
@@ -1167,9 +1212,8 @@ class EvaluationController extends Controller
         $user = auth('api')->user();
         $validated = $request->validate([
             'fecha_evaluacion' => 'required|date',
-            'fecha_fin_evaluacion' => 'required|date|after:fecha_evaluacion',
             'allow_late_evaluations' => 'required|boolean',
-            'late_evaluation_until' => ['nullable', 'required_if:allow_late_evaluations,true', 'date', 'after:fecha_fin_evaluacion', new \App\Rules\NotBeforeNow(EvaluationRoom::whereKey($id)->value('evaluacion_fuera_horario_hasta'))],
+            'late_evaluation_until' => ['nullable', 'required_if:allow_late_evaluations,true', 'date', new \App\Rules\NotBeforeNow(EvaluationRoom::whereKey($id)->value('evaluacion_fuera_horario_hasta'))],
             'late_evaluation_reason' => 'nullable|required_if:allow_late_evaluations,true|string|min:10|max:500',
             'expected_sequence_version' => 'required|integer|min:0',
         ]);
@@ -1186,7 +1230,12 @@ class EvaluationController extends Controller
             }
 
             $startsAt = \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion']);
-            $endsAt = \Illuminate\Support\Carbon::parse($validated['fecha_fin_evaluacion']);
+            $endsAt = \App\Support\RoomTimeline::endFor($startsAt, $room->projects()->count(), (int) $room->project_presentation_minutes,
+                (int) $room->teacher_evaluation_minutes, \App\Support\RoomTimeline::tolerance($room));
+            $validated['fecha_fin_evaluacion'] = $endsAt->toDateTimeString();
+            if (!empty($validated['allow_late_evaluations']) && \Illuminate\Support\Carbon::parse($validated['late_evaluation_until'])->lte($endsAt)) {
+                throw ValidationException::withMessages(['late_evaluation_until' => ['La evaluación fuera de horario debe terminar después de que termine la sala ('.$endsAt->format('d/m/Y H:i').').']]);
+            }
             $originalStart = $room->fecha_evaluacion;
             $originalEnd = $room->fecha_fin_evaluacion;
             if ($originalStart && $originalStart->isPast() && !$startsAt->equalTo($originalStart)) {
@@ -1228,6 +1277,7 @@ class EvaluationController extends Controller
                 'semestre' => $room->semestre, 'salon_id' => $room->salon_id,
                 'project_presentation_minutes' => $room->project_presentation_minutes,
                 'teacher_evaluation_minutes' => $room->teacher_evaluation_minutes,
+                'tolerance_minutes' => \App\Support\RoomTimeline::tolerance($room),
             ]), $room);
             $allowsLate = (bool) $validated['allow_late_evaluations'];
             $room->update([
@@ -1911,15 +1961,39 @@ class EvaluationController extends Controller
                 ->whereIn('integrante.rol', ['lider', 'integrante']))
             ->orderBy('fecha_exposicion')
             ->get()
-            ->map(fn ($evaluation) => [
-                'project_title' => $evaluation->project?->title,
-                'room_name' => $evaluation->room?->nombre ?? $evaluation->sala,
-                'classroom' => $evaluation->room?->salon,
-                'presentation_minutes' => $evaluation->room?->project_presentation_minutes,
-                'evaluation_minutes' => $evaluation->room?->teacher_evaluation_minutes,
-                'date' => optional($evaluation->fecha_exposicion)->toDateTimeString(),
-                'semester' => $evaluation->semestre,
-            ]);
+            ->map(function ($evaluation) {
+                $room = $evaluation->room;
+                $order = (int) $evaluation->presentation_order;
+                $live = null;
+                if ($room && $room->estado !== 'finalizada') {
+                    // Turno en vivo: qué número va pasando, cuántos faltan antes del suyo y la hora estimada recalculada.
+                    \App\Support\RoomTimeline::syncPhase($room);
+                    $minutes = \App\Support\RoomTimeline::minutesUntil($room, $order, $this->roomTimerRemainingSeconds($room));
+                    $total = Evaluation::where('evaluation_room_id', $room->id)->where('estado', '!=', 'archivada')->count();
+                    $live = [
+                        'started' => (bool) $room->sequence_locked,
+                        'current_order' => $room->sequence_locked ? (int) $room->current_order : null,
+                        'my_order' => $order,
+                        'total' => $total,
+                        'turns_before' => $room->sequence_locked && $room->current_order ? max(0, $order - (int) $room->current_order) : $order - 1,
+                        'is_current' => $room->sequence_locked && (int) $room->current_order === $order && !$room->completed_at,
+                        'done' => $minutes === null,
+                        'estimated_at' => $minutes === null ? null : now()->addMinutes($minutes)->toIso8601String(),
+                    ];
+                }
+
+                return [
+                    'project_title' => $evaluation->project?->title,
+                    'room_name' => $room?->nombre ?? $evaluation->sala,
+                    'classroom' => $room?->salon,
+                    'presentation_minutes' => $room?->project_presentation_minutes,
+                    'questions_minutes' => $room?->teacher_evaluation_minutes,
+                    'evaluation_minutes' => $room?->teacher_evaluation_minutes,
+                    'date' => optional($evaluation->fecha_exposicion)->toDateTimeString(),
+                    'semester' => $evaluation->semestre,
+                    'live' => $live,
+                ];
+            });
 
         return response()->json($evaluations);
     }
@@ -2261,9 +2335,13 @@ class EvaluationController extends Controller
             'semestre' => 'required|integer|in:5,6,7,8',
             'responsible_teacher_id' => $responsibleRules,
             'fecha_evaluacion' => $startRules,
-            'fecha_fin_evaluacion' => 'required|date|after:fecha_evaluacion',
+            // Se calcula con RoomTimeline; se acepta por compatibilidad con clientes anteriores, pero se ignora.
+            'fecha_fin_evaluacion' => 'nullable|date',
+            // teacher_evaluation_minutes es el tiempo de preguntas y respuestas de cada turno.
             'teacher_evaluation_minutes' => 'required|integer|min:1|max:240',
             'project_presentation_minutes' => 'required|integer|min:1|max:240',
+            'tolerance_minutes' => 'nullable|integer|min:0|max:15',
+            'auto_questions' => 'nullable|boolean',
             'max_attempts' => 'required|integer|min:1|max:10',
             'teacher_ids' => 'required|array|min:1',
             'teacher_ids.*' => ['string', Rule::exists('usuarios', 'id')->where('activo', true)],
@@ -2302,8 +2380,12 @@ class EvaluationController extends Controller
         }
         $validated['rubrica_id'] = $rubric->id;
 
+        $validated['tolerance_minutes'] = (int) ($validated['tolerance_minutes'] ?? \App\Support\RoomTimeline::DEFAULT_TOLERANCE);
+        $validated['auto_questions'] = (bool) ($validated['auto_questions'] ?? true);
         $startsAt = \Illuminate\Support\Carbon::parse($validated['fecha_evaluacion']);
-        $endsAt = \Illuminate\Support\Carbon::parse($validated['fecha_fin_evaluacion']);
+        $endsAt = \App\Support\RoomTimeline::endFor($startsAt, count($validated['project_ids'] ?? []),
+            (int) $validated['project_presentation_minutes'], (int) $validated['teacher_evaluation_minutes'], $validated['tolerance_minutes']);
+        $validated['fecha_fin_evaluacion'] = $endsAt->toDateTimeString();
         if ($ignoreId) {
             $existingRoom = EvaluationRoom::findOrFail($ignoreId);
             $originalStart = $existingRoom->fecha_evaluacion;
@@ -2417,6 +2499,17 @@ class EvaluationController extends Controller
     }
 
     /** Todos los participantes de la sala: docentes, responsable y equipos. */
+    /** «Te toca en el siguiente»: al equipo que presenta después del turno que acaba de empezar. */
+    private function notifyUpNext(EvaluationRoom $room, string $actorId): void
+    {
+        if (!$room->current_order || $room->completed_at) return;
+        $upNext = Evaluation::where('evaluation_room_id', $room->id)->where('estado', '!=', 'archivada')
+            ->where('presentation_order', '>', (int) $room->current_order)->orderBy('presentation_order')->value('project_id');
+        if (!$upNext) return;
+        ActivityNotificationService::send(DB::table('proyecto_integrantes')->where('proyecto_id', $upNext)->whereIn('rol', ['lider', 'integrante'])->pluck('usuario_id'),
+            $actorId, 'turno_proximo', 'Te toca en el siguiente turno', "Prepárate: tu proyecto se presenta después del que está pasando en {$room->nombre}.", '/dashboard');
+    }
+
     private function roomParticipants(EvaluationRoom $room): array
     {
         $teachers = $room->teachers()->pluck('usuarios.id')->push($room->responsible_teacher_id)->filter()->map(fn ($id) => (string) $id);
@@ -2545,6 +2638,7 @@ class EvaluationController extends Controller
 
             return $data;
         })->values();
+        \App\Support\RoomTimeline::syncPhase($room);
         $remainingSeconds = $this->roomTimerRemainingSeconds($room);
         $timerStatus = $room->timer_status;
         if ($timerStatus === 'en_curso' && $remainingSeconds === 0) {
@@ -2567,7 +2661,10 @@ class EvaluationController extends Controller
             'fecha_evaluacion' => optional($room->fecha_evaluacion)->toDateTimeString(),
             'fecha_fin_evaluacion' => optional($room->fecha_fin_evaluacion)->toDateTimeString(),
             'teacher_evaluation_minutes' => $room->teacher_evaluation_minutes,
+            'questions_minutes' => $room->teacher_evaluation_minutes,
             'project_presentation_minutes' => $room->project_presentation_minutes,
+            'tolerance_minutes' => \App\Support\RoomTimeline::tolerance($room),
+            'auto_questions' => (bool) ($room->auto_questions ?? true),
             'max_attempts' => $room->max_attempts,
             'sequence_locked' => $room->sequence_locked,
             'current_order' => $room->current_order,
@@ -2584,6 +2681,11 @@ class EvaluationController extends Controller
                 'remaining_seconds' => $remainingSeconds,
                 'started_at' => optional($room->timer_started_at)->toDateTimeString(),
                 'ends_at' => optional($room->timer_ends_at)->toDateTimeString(),
+                'phase' => $room->timer_phase ?? 'exposicion',
+                'auto_questions' => (bool) ($room->auto_questions ?? true),
+                'questions_delay_seconds' => \App\Support\RoomTimeline::QUESTIONS_DELAY,
+                'presentation_seconds' => ((int) $room->project_presentation_minutes) * 60,
+                'questions_seconds' => ((int) $room->teacher_evaluation_minutes) * 60,
             ],
             'can_control_room' => $this->isRoomResponsible($room, $user) || $this->isEvaluationManager($user),
             'can_edit_room' => $this->isEvaluationManager($user) && !$room->sequence_locked,
