@@ -86,13 +86,29 @@ class PushNotificationService
     }
 
     /**
+     * Sólo reciben en el teléfono las cuentas activas, no archivadas y con la sesión de la app abierta. Al cerrar sesión
+     * la app borra su registro; si la sesión se revocó desde fuera (cambio de contraseña, archivo, retiro de permisos),
+     * el teléfono deja de recibir hasta que se vuelva a entrar. Los avisos siguen en la campana.
+     */
+    private function canReceive(string $userId): bool
+    {
+        $user = DB::table('usuarios')->where('id', $userId)->first();
+        if (!$user || !$user->activo || (\App\Support\SchemaCache::hasColumn('usuarios', 'archivado_en') && $user->archivado_en)) {
+            return false;
+        }
+
+        return !\App\Support\SchemaCache::hasTable('sesiones_app')
+            || DB::table('sesiones_app')->where('usuario_id', $userId)->whereNull('revocada_en')->exists();
+    }
+
+    /**
      * @param array<string, string> $data datos extra; "url" es la pantalla que abre al tocarla
      * @return array{sent: int, failed: int, removed: int}
      */
     public function sendToUser(string $userId, string $title, string $body, array $data = []): array
     {
         $result = ['sent' => 0, 'failed' => 0, 'removed' => 0];
-        if (!$this->configured()) {
+        if (!$this->configured() || !$this->canReceive($userId)) {
             return $result;
         }
         $columns = \App\Support\SchemaCache::hasColumn('dispositivos_push', 'canal') ? ['id', 'token', 'canal'] : ['id', 'token'];
