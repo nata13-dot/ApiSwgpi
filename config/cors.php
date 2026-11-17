@@ -67,6 +67,7 @@ return [
         'Origin',
         'X-Requested-With',
         'X-SGPI-Remember',
+        'X-SGPI-Client',
     ],
 
     // Los fronts leen el nombre real del archivo descargado y la huella de los respaldos.

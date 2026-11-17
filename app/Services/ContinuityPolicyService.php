@@ -15,6 +15,7 @@ class ContinuityPolicyService
             'critical_readiness' => (int) ($policy?->umbral_critico ?? config('continuity.critical_readiness', 75)),
             'max_backup_age_hours' => (int) ($policy?->antiguedad_maxima_respaldo_horas ?? config('continuity.max_backup_age_hours', 26)),
             'backup_retention_days' => (int) ($policy?->retencion_respaldos_dias ?? 30),
+            'audit_retention_days' => (int) ($policy?->retencion_auditoria_dias ?? AuditRetentionService::DEFAULT_DAYS),
             'updated_by' => $policy?->actualizado_por,
             'updated_at' => $policy?->actualizado_en,
         ];
@@ -27,6 +28,8 @@ class ContinuityPolicyService
             'umbral_critico' => $values['critical_readiness'],
             'antiguedad_maxima_respaldo_horas' => $values['max_backup_age_hours'],
             'retencion_respaldos_dias' => $values['backup_retention_days'],
+            ...(array_key_exists('audit_retention_days', $values) && \App\Support\SchemaCache::hasColumn('politica_continuidad', 'retencion_auditoria_dias')
+                ? ['retencion_auditoria_dias' => $values['audit_retention_days']] : []),
             'actualizado_por' => $actorId,
             'actualizado_en' => now(),
         ]);

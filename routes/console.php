@@ -193,6 +193,20 @@ Schedule::command('sgpi:backup-database --source=programado')
     ->name('backup-database')
     ->withoutOverlapping();
 
+Artisan::command('sgpi:prune-audit', function () {
+    $result = app(\App\Services\AuditRetentionService::class)->run('programado');
+    $this->info($result['message']);
+
+    return self::SUCCESS;
+})->purpose('Copia la auditoría vencida junto a los respaldos y la borra de las tablas');
+
+// Después del respaldo de la 01:00: lo que se depura también queda en ese respaldo completo.
+Schedule::command('sgpi:prune-audit')
+    ->dailyAt('01:40')
+    ->timezone('America/Mexico_City')
+    ->name('prune-audit')
+    ->withoutOverlapping();
+
 Schedule::command('sgpi:verify-backup')
     ->weeklyOn(0, '02:00')
     ->name('verify-latest-database-backup')

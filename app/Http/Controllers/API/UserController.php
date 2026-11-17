@@ -475,7 +475,7 @@ class UserController extends Controller
         if ($reason = $purge->blocker($user)) abort(422, $reason);
         DB::table('auditoria_carreras')->insert([
             'carrera_id' => $careerId, 'actor_id' => $actor->id, 'metodo' => 'POST', 'ruta' => '/api/users/bulk',
-            'accion' => 'user_deleted_permanently', 'estado_http' => 200, 'direccion_ip' => request()->ip(),
+            'accion' => 'user_deleted_permanently', 'estado_http' => 200, 'direccion_ip' => \App\Support\ClientIp::of(),
             'agente_usuario' => mb_substr((string) request()->userAgent(), 0, 255),
             'detalle' => json_encode(['usuario_id' => (string) $user->getKey(), 'nombre' => trim("{$user->nombres} {$user->apellido_paterno}")], JSON_UNESCAPED_UNICODE),
             'creado_en' => now(),

@@ -44,13 +44,15 @@ class AuditCareerMutation
                 'ruta' => '/'.$request->path(),
                 'accion' => $request->route()?->getActionName(),
                 'estado_http' => $status,
-                'direccion_ip' => $request->ip(),
+                'direccion_ip' => \App\Support\ClientIp::of($request),
                 'agente_usuario' => mb_substr((string) $request->userAgent(), 0, 255),
                 'detalle' => json_encode([
                     'route_parameters' => collect($request->route()?->parameters() ?? [])
                         ->map(fn ($value) => is_object($value) && method_exists($value, 'getKey') ? $value->getKey() : $value)
                         ->all(),
                     'query_keys' => array_keys($request->query()),
+                    // Versión de la app que hizo el cambio (la web no la envía).
+                    'cliente' => mb_substr((string) $request->headers->get('X-SGPI-Client'), 0, 40) ?: null,
                 ], JSON_UNESCAPED_UNICODE),
                 'creado_en' => now(),
             ]);

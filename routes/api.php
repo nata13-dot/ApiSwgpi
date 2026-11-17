@@ -164,6 +164,10 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::get('/database-backups/{backup}/download', [DatabaseBackupController::class, 'download']);
         Route::get('/careers/export', [CareerExportController::class, 'institutionalSummary']);
         Route::get('/audit', [CareerAuditController::class, 'index']);
+        Route::get('/audit/ip-check', [CareerAuditController::class, 'ipCheck']);
+        Route::get('/audit/retention', [CareerAuditController::class, 'retention']);
+        Route::post('/audit/retention/run', [CareerAuditController::class, 'prune']);
+        Route::get('/audit/archives/{archive}/download', [CareerAuditController::class, 'downloadArchive'])->whereNumber('archive');
         Route::get('/careers', [CareerManagementController::class, 'index']);
         // Simular un nivel de perfil (sin entrar a la cuenta de ninguna persona).
         Route::post('/view-level', [\App\Http\Controllers\API\ViewAsController::class, 'start']);

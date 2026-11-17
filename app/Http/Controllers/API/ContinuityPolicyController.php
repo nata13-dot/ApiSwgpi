@@ -20,6 +20,7 @@ class ContinuityPolicyController extends Controller
             'critical_readiness' => 'required|integer|min:1|lt:target_readiness',
             'max_backup_age_hours' => 'required|integer|min:1|max:168',
             'backup_retention_days' => 'required|integer|min:7|max:365',
+            'audit_retention_days' => 'sometimes|integer|min:'.\App\Services\AuditRetentionService::MIN_DAYS.'|max:'.\App\Services\AuditRetentionService::MAX_DAYS,
         ]);
 
         return response()->json([

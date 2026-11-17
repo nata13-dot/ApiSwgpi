@@ -28,7 +28,7 @@ class ContinuityReportController extends Controller
             'ruta' => '/api/admin/continuity-report.pdf',
             'accion' => self::class.'@pdf',
             'estado_http' => 200,
-            'direccion_ip' => $request->ip(),
+            'direccion_ip' => \App\Support\ClientIp::of($request),
             'agente_usuario' => mb_substr((string) $request->userAgent(), 0, 255),
             'detalle' => json_encode(['readiness_score' => $data['readiness_score']], JSON_UNESCAPED_UNICODE),
             'creado_en' => now(),

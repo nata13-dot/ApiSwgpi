@@ -1055,7 +1055,7 @@ class EvaluationController extends Controller
                     'ruta' => "/api/evaluations/rooms/{$room->id}/advance",
                     'accion' => 'forced_room_advance',
                     'estado_http' => 200,
-                    'direccion_ip' => $request->ip(),
+                    'direccion_ip' => \App\Support\ClientIp::of($request),
                     'agente_usuario' => mb_substr((string) $request->userAgent(), 0, 255),
                     'detalle' => json_encode([
                         'from_order' => $currentOrder,

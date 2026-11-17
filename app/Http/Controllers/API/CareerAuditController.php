@@ -28,7 +28,7 @@ class CareerAuditController extends Controller
                 'career.nombre_corto as carrera_nombre', 'audit.actor_id',
                 'actor.nombres as actor_nombres', 'actor.apellido_paterno as actor_apellido',
                 'audit.metodo', 'audit.ruta', 'audit.accion', 'audit.estado_http',
-                'audit.direccion_ip', 'audit.detalle', 'audit.creado_en',
+                'audit.direccion_ip', 'audit.agente_usuario', 'audit.detalle', 'audit.creado_en',
             ])
             ->when($validated['career_id'] ?? null, fn ($q, $value) => $q->where('audit.carrera_id', $value))
             ->when($validated['actor_id'] ?? null, fn ($q, $value) => $q->where('audit.actor_id', $value))
@@ -38,6 +38,41 @@ class CareerAuditController extends Controller
             ->when($validated['date_to'] ?? null, fn ($q, $value) => $q->whereDate('audit.creado_en', '<=', $value))
             ->orderByDesc('audit.id');
 
-        return response()->json($query->paginate((int) ($validated['per_page'] ?? 25)));
+        $page = $query->paginate((int) ($validated['per_page'] ?? 25));
+        $page->getCollection()->transform(function ($row) {
+            $detail = json_decode((string) $row->detalle, true) ?: [];
+            $row->dispositivo = \App\Support\DeviceLabel::from($row->agente_usuario, $detail['cliente'] ?? null);
+
+            return $row;
+        });
+
+        return response()->json($page);
+    }
+
+    /** Retención: plazo, cuántos registros se depurarían hoy y las copias ya generadas. */
+    public function retention(\App\Services\AuditRetentionService $retention)
+    {
+        return response()->json(['ready' => $retention::ready(), 'preview' => $retention->preview(), 'archives' => $retention->history()]);
+    }
+
+    /** Depurar ahora (lo mismo que corre cada noche): copia los registros vencidos junto a los respaldos y los borra. */
+    public function prune(Request $request, \App\Services\AuditRetentionService $retention)
+    {
+        $result = $retention->run('manual', (string) $request->user('api')->id);
+
+        return response()->json($result + ['preview' => $retention->preview(), 'archives' => $retention->history()]);
+    }
+
+    public function downloadArchive(int $archive, \App\Services\AuditRetentionService $retention)
+    {
+        [$path, $row] = $retention->pathFor($archive);
+
+        return response()->download($path, $row->archivo, ['Content-Type' => 'application/gzip', 'X-Checksum-SHA256' => $row->sha256]);
+    }
+
+    /** Cómo ve el sistema a quien consulta: IP detectada y cabeceras del proxy, para comprobar que la auditoría es exacta. */
+    public function ipCheck(Request $request)
+    {
+        return response()->json(\App\Support\ClientIp::diagnostics($request));
     }
 }
