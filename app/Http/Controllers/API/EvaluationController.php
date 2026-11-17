@@ -494,7 +494,12 @@ class EvaluationController extends Controller
                 'general_comment' => 'nullable|string|max:3000',
                 'confirm_update' => 'nullable|boolean',
                 'apto_titulacion' => 'nullable|boolean',
+                // Voto de viabilidad de la evaluación de 5° (ViabilityService); obligatorio en esa etapa.
+                'viabilidad' => ['nullable', Rule::in(array_keys(\App\Services\ViabilityService::OPTIONS))],
             ]);
+            if ((int) $evaluation->semestre === 5 && \App\Services\ViabilityService::ready() && empty($validated['viabilidad'])) {
+                throw ValidationException::withMessages(['viabilidad' => ['Marca tu dictamen de viabilidad: viable, viable con correcciones o no viable.']]);
+            }
             // Cada respuesta debe pertenecer a la escala de su pregunta.
             $criteriaByKey = $this->criteriaForEvaluation($evaluation)->keyBy('clave');
             foreach ($validated['scores'] as $index => $score) {
@@ -569,6 +574,9 @@ class EvaluationController extends Controller
                     && \App\Support\SchemaCache::hasColumn('evaluaciones', 'apto_titulacion')
                 ) {
                     $attemptPayload['apto_titulacion'] = $request->boolean('apto_titulacion');
+                }
+                if ((int) $lockedEvaluation->semestre === 5 && \App\Services\ViabilityService::ready()) {
+                    $attemptPayload['viabilidad'] = $validated['viabilidad'];
                 }
                 $attempt->update($attemptPayload);
             });
@@ -1070,6 +1078,23 @@ class EvaluationController extends Controller
         }
 
         return response()->json(['message' => $room->completed_at ? 'Sala finalizada' : 'Turno actualizado', 'room' => $this->shapeRoom($room->fresh(['teachers', 'responsibleTeacher', 'projects']))]);
+    }
+
+    /** Confirma el dictamen de viabilidad de 5° (coordinación, jefatura, asistencia o administración) y aplica sus efectos. */
+    public function confirmViability(Request $request, $id)
+    {
+        $user = auth('api')->user();
+        if ($guard = $this->guardEvaluationManager($user)) return $guard;
+        $validated = $request->validate([
+            'decision' => ['required', Rule::in(array_keys(\App\Services\ViabilityService::OPTIONS))],
+            'reason' => 'nullable|string|max:3000',
+            'deadline' => 'nullable|date',
+        ], [], ['decision' => 'dictamen', 'reason' => 'motivo', 'deadline' => 'plazo de corrección']);
+        $evaluation = Evaluation::with('attempts')->findOrFail($id);
+        $summary = app(\App\Services\ViabilityService::class)->confirm($evaluation, $validated['decision'], $validated['reason'] ?? null, $validated['deadline'] ?? null, $user);
+        $labels = ['viable' => 'Dictamen confirmado: viable.', 'correcciones' => 'Dictamen confirmado: la propuesta vuelve a corrección y se avisó al equipo.', 'no_viable' => 'Dictamen confirmado: el proyecto quedó como no viable y el equipo puede registrar otra propuesta.'];
+
+        return response()->json(['message' => $labels[$validated['decision']], 'viability' => $summary]);
     }
 
     /** Temporizador y turno de la sala para quien evalúa en ella (docentes asignados, encargado y gestores). */
@@ -2157,6 +2182,7 @@ class EvaluationController extends Controller
                         : $maxScore,
                     'general_comment' => $attempt?->general_comment,
                     'apto_titulacion' => $this->attemptTitulationVote($attempt),
+                    'viabilidad' => $attempt?->getAttribute('viabilidad'),
                     'can_view_score_detail' => $canViewScoreDetail,
                     'scores' => $canViewScoreDetail ? $teacherScores->map(fn ($score) => [
                         'criterio' => $score->criterio,
@@ -2226,6 +2252,9 @@ class EvaluationController extends Controller
             'teacher_breakdown' => $teacherBreakdown,
             'current_teacher_attempts' => optional($currentTeacherAttempt)->attempts_count ?? 0,
             'current_teacher_apto_titulacion' => $this->attemptTitulationVote($currentTeacherAttempt),
+            'current_teacher_viabilidad' => $currentTeacherAttempt?->getAttribute('viabilidad'),
+            'viability' => $viability = app(\App\Services\ViabilityService::class)->summary($evaluation),
+            'can_confirm_viability' => ($viability['applies'] ?? false) && !$viability['confirmed'] && $viability['total'] > 0 && $this->isEvaluationManager($currentUser),
             'current_teacher_has_scores' => $scores->where('teacher_id', auth('api')->id())->isNotEmpty(),
             'max_attempts' => $evaluation->room?->max_attempts ?? 1,
             'document_readiness' => $documentReadiness,

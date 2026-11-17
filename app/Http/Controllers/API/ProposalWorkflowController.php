@@ -190,7 +190,8 @@ class ProposalWorkflowController extends Controller
         $enrollment = $workflow->enrollment($student->id);
         $group = $enrollment ? SubjectGroup::find($enrollment->grupo_id) : null;
         $project = $this->studentProject($student->id);
-        $lastRejected = $project ? null : Project::where('tipo', 'propuesta')->where('estado', 'rechazado')
+        // La última propuesta rechazada o dictaminada no viable en la evaluación de 5°: el alumno ve el motivo.
+        $lastRejected = $project ? null : Project::whereIn('estado', ['rechazado', 'no_viable'])->where(fn ($query) => $query->where('tipo', 'propuesta')->orWhere('estado', 'no_viable'))
             ->whereHas('students', fn ($query) => $query->where('usuarios.id', $student->id))
             ->orderByDesc('revisado_en')->first(['id', 'titulo', 'estado', 'comentario_revision', 'revisado_en']);
         $myRequest = $project ? null : DB::table('solicitudes_union_proyecto as s')->join('proyectos as p', 'p.id', '=', 's.proyecto_id')

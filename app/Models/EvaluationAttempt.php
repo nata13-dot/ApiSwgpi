@@ -26,7 +26,7 @@ class EvaluationAttempt extends Model
 
     protected $fillable = [
         'evaluation_id', 'teacher_id', 'attempts_count', 'general_comment',
-        'apto_titulacion', 'last_submitted_at',
+        'apto_titulacion', 'viabilidad', 'last_submitted_at',
     ];
 
     protected $casts = [
