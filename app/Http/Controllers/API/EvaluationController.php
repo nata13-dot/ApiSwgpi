@@ -2198,7 +2198,7 @@ class EvaluationController extends Controller
             'semestre' => $evaluation->semestre,
             'etapa' => $evaluation->etapa,
             'sala' => $evaluation->sala,
-            'room' => $evaluation->room ? $this->shapeRoom($evaluation->room) : null,
+            'room' => $evaluation->room ? $this->shapeRoomOnce($evaluation->room) : null,
             'fecha_exposicion' => optional($evaluation->fecha_exposicion)->toDateTimeString(),
             'presentation_order' => $evaluation->presentation_order,
             'sequence_status' => $evaluation->sequence_status,
@@ -2609,6 +2609,19 @@ class EvaluationController extends Controller
         $room->unsetRelation('projects');
     }
 
+    /**
+     * Sala dentro de cada evaluación de un listado: se arma una sola vez por petición y sin sus listas de proyectos y
+     * docentes (las pantallas las piden a /evaluations/rooms). Con ellas el listado pesaba varios MB y se cortaba.
+     */
+    private function shapeRoomOnce(EvaluationRoom $room): array
+    {
+        $memo = request()->attributes;
+        $key = 'sala-armada:'.$room->id;
+        if (!$memo->has($key)) $memo->set($key, \Illuminate\Support\Arr::except($this->shapeRoom($room), ['projects', 'proyectos', 'teachers']));
+
+        return $memo->get($key);
+    }
+
     private function shapeRoom(EvaluationRoom $room): array
     {
         $room->loadMissing(['teachers', 'responsibleTeacher', 'projects']);
@@ -2761,9 +2774,20 @@ class EvaluationController extends Controller
         ];
     }
 
+    /** Si el docente ya envió su rúbrica; con los intentos ya cargados (listados) no consulta la base otra vez. */
+    private function hasSubmittedAttempt(Evaluation $evaluation, $user): bool
+    {
+        if (!$user) return false;
+        if ($evaluation->relationLoaded('attempts')) {
+            return $evaluation->attempts->contains(fn ($attempt) => (string) $attempt->teacher_id === (string) $user->id && $attempt->last_submitted_at !== null);
+        }
+
+        return EvaluationAttempt::where('evaluation_id', $evaluation->id)->where('teacher_id', $user->id)->whereNotNull('last_submitted_at')->exists();
+    }
+
     private function canScoreEvaluation(Evaluation $evaluation, $user): bool
     {
-        if (!$this->canUserScoreEvaluation($evaluation, $user) || EvaluationAttempt::where('evaluation_id', $evaluation->id)->where('teacher_id', $user->id)->whereNotNull('last_submitted_at')->exists()) {
+        if (!$this->canUserScoreEvaluation($evaluation, $user) || $this->hasSubmittedAttempt($evaluation, $user)) {
             return false;
         }
 
@@ -2777,7 +2801,7 @@ class EvaluationController extends Controller
 
     private function scoreBlockReason(Evaluation $evaluation, $user): ?string
     {
-        if ($user && EvaluationAttempt::where('evaluation_id', $evaluation->id)->where('teacher_id', $user->id)->whereNotNull('last_submitted_at')->exists()) return 'Tu resultado está registrado. Un nuevo intento requiere autorización y otra evaluación.';
+        if ($this->hasSubmittedAttempt($evaluation, $user)) return 'Tu resultado está registrado. Un nuevo intento requiere autorización y otra evaluación.';
         if ($evaluation->sequence_status === 'evaluado'
             || $evaluation->estado === 'finalizada'
             || $evaluation->finalized_at !== null) {
