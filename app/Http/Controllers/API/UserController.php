@@ -402,11 +402,16 @@ class UserController extends Controller
                     if ($release) {
                         app(\App\Services\AcademicMembershipService::class)->release((string) $user->getKey(), (int) $careerId, $data['replacement_id'] ?? null, (string) $actor->getKey());
                     }
+                    // Los proyectos se toman antes: al eliminar, la cuenta se lleva sus filas de integrante.
+                    $orphans = app(\App\Services\OrphanProjectService::class);
+                    $projects = in_array($data['action'], ['archive', 'delete'], true) ? $orphans->projectsOf([(string) $user->getKey()]) : [];
                     match ($data['action']) {
                         'deactivate', 'activate' => $this->setMembershipActive($user, $membership, $data['action'] === 'activate'),
                         'archive' => $this->archiveUser($user, $actor, (int) $careerId, $data['motivo'] ?? null),
                         'delete' => $this->purgeUser($user, $actor, $careerId),
                     };
+                    // Sus proyectos que se quedan sin alumnos desaparecen igual que ellos.
+                    if ($projects) $orphans->retire($projects, $data['action'], (string) $actor->getKey(), (int) $careerId);
                 });
                 $done[] = ['id' => (string) $id, 'name' => $name];
             } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {

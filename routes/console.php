@@ -193,6 +193,31 @@ Schedule::command('sgpi:backup-database --source=programado')
     ->name('backup-database')
     ->withoutOverlapping();
 
+Artisan::command('sgpi:orphan-projects {--apply : Retira los proyectos listados}', function () {
+    // Proyectos vigentes sin ningún alumno vigente: sus integrantes se eliminaron o se archivaron antes de que el
+    // sistema los retirara solo. Sin --apply sólo se listan para revisarlos.
+    $service = app(\App\Services\OrphanProjectService::class);
+    $ids = $service->orphaned(DB::table('proyectos')->where('activo', true)->whereNull('archivado_en')->pluck('id')->map(fn ($id) => (int) $id)->all());
+    if (!$ids) { $this->info('No hay proyectos sin alumnos.'); return self::SUCCESS; }
+    $withArchived = DB::table('proyecto_integrantes')->whereIn('proyecto_id', $ids)->whereIn('rol', ['lider', 'integrante'])->distinct()->pluck('proyecto_id')->map(fn ($id) => (int) $id)->all();
+    $rows = DB::table('proyectos as p')->leftJoin('carreras as c', 'c.id', '=', DB::raw('(SELECT g.carrera_id FROM grupos_academicos g WHERE g.id = p.grupo_id)'))
+        ->whereIn('p.id', $ids)->orderBy('p.id')->get(['p.id', 'p.titulo', 'p.semestre', 'p.creado_en', 'c.clave']);
+    $this->table(['ID', 'Carrera', 'Sem.', 'Creado', 'Situación', 'Título'], $rows->map(fn ($row) => [
+        $row->id, $row->clave ?? '—', $row->semestre ?? '—', substr((string) $row->creado_en, 0, 10),
+        in_array((int) $row->id, $withArchived, true) ? 'alumnos archivados → archivo' : 'sin integrantes → eliminar',
+        mb_strimwidth((string) $row->titulo, 0, 60, '…'),
+    ])->all());
+    if (!$this->option('apply')) {
+        $this->line(count($ids).' proyecto(s). Revisa la lista y vuelve a correr con --apply para retirarlos.');
+        return self::SUCCESS;
+    }
+    $archived = $service->retire($withArchived, 'archive', null, null);
+    $deleted = $service->retire(array_values(array_diff($ids, $withArchived)), 'delete', null, null);
+    $this->info(count($archived).' enviados al archivo histórico y '.count($deleted).' eliminados (inactivos).');
+
+    return self::SUCCESS;
+})->purpose('Lista o retira los proyectos que se quedaron sin alumnos');
+
 Artisan::command('sgpi:prune-audit', function () {
     $result = app(\App\Services\AuditRetentionService::class)->run('programado');
     $this->info($result['message']);

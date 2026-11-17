@@ -106,6 +106,14 @@ class ArchiveController extends Controller
                 ]);
             }
         });
+        // Proyectos de alumnos archivados: se archivan si se quedan sin alumnos y vuelven al restaurar a alguno.
+        if ($type === 'usuarios') {
+            $orphans = app(\App\Services\OrphanProjectService::class);
+            $userIds = $rows->map(fn ($user) => (string) $user->getKey())->all();
+            $archive
+                ? $orphans->retire($orphans->projectsOf($userIds), 'archive', $actor, $careerId)
+                : $orphans->restoreFor($userIds, $actor, $careerId);
+        }
         // Una cuenta archivada no puede seguir usando la app.
         if ($archive && $type === 'usuarios') {
             $rows->each(fn ($user) => app(AppSessionService::class)->revokeAllForUser((string) $user->getKey()));
