@@ -336,6 +336,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::put('/users/{id}', [UserController::class, 'update']);
         Route::delete('/users/{id}', [UserController::class, 'destroy']);
         Route::post('/users/{id}/toggle-active', [UserController::class, 'toggleActive']);
+        Route::post('/users/bulk', [UserController::class, 'bulk']);
         Route::put('/users/{id}/general-admin', [UserController::class, 'setGeneralAdmin']);
         Route::get('/users-inactive', [UserController::class, 'getInactive']);
     });

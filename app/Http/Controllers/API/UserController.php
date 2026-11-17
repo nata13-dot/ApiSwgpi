@@ -335,6 +335,121 @@ class UserController extends Controller
         return response()->json(['message' => 'Estado actualizado', 'activo' => $willBeActive]);
     }
 
+    /**
+     * Acciones sobre varios usuarios a la vez (también se usa para uno solo):
+     * - deactivate: pasa a inactivos en la carrera (es lo que hace "Eliminar" con un usuario activo).
+     * - activate: los reactiva.
+     * - archive: los envía al archivo histórico (sólo inactivos; reversible).
+     * - delete: los elimina definitivamente con su historial propio (sólo inactivos; irreversible).
+     * Archivar y eliminar sólo los hacen la administración general y la jefatura, siempre con su contraseña.
+     * Cada usuario se procesa por separado: los que no se pueden se devuelven con el motivo.
+     */
+    public function bulk(Request $request)
+    {
+        $data = $request->validate([
+            'action' => ['required', Rule::in(['deactivate', 'activate', 'archive', 'delete'])],
+            'ids' => 'required|array|min:1|max:300',
+            'ids.*' => 'required|string|max:30',
+            'admin_password' => 'nullable|string',
+            'motivo' => 'nullable|string|max:500',
+        ]);
+        $actor = $request->user('api');
+        $careerId = app(\App\Support\CareerContext::class)->careerId();
+        $destructive = in_array($data['action'], ['archive', 'delete'], true);
+        if ($destructive) {
+            abort_unless($actor->isGeneralAdmin() || in_array((int) $actor->perfil_id, [1, \App\Support\Profiles::CAREER_HEAD], true), 403,
+                'Sólo la administración general y la jefatura pueden archivar o eliminar usuarios.');
+            if (!$request->filled('admin_password')) {
+                return response()->json(['error' => 'Escribe tu contraseña para confirmar.', 'requires_password' => true], 423);
+            }
+            abort_unless(Hash::check($request->input('admin_password'), $actor->password), 403, 'Contraseña incorrecta.');
+        }
+
+        $done = [];
+        $skipped = [];
+        foreach (array_values(array_unique($data['ids'])) as $id) {
+            $user = User::withoutGlobalScope('careerMembership')
+                ->whereHas('careerMemberships', fn ($query) => $query->where('carrera_id', $careerId))->find($id);
+            $name = $user ? trim("{$user->nombres} {$user->apellido_paterno}") : $id;
+            try {
+                abort_unless($user, 404, 'No pertenece a esta carrera.');
+                abort_if((string) $user->getKey() === (string) $actor->getKey(), 422, 'No puedes aplicarte esta acción a ti mismo.');
+                $membership = $user->careerMemberships()->where('carrera_id', $careerId)->firstOrFail();
+                if ($guard = $this->guardAdminSensitiveAction($request, $user, (int) $membership->perfil_id)) {
+                    abort($guard->getStatusCode(), $guard->getData(true)['error'] ?? 'No autorizado.');
+                }
+                if ($destructive) {
+                    abort_if($membership->activo, 422, 'Primero debe estar inactivo.');
+                }
+                match ($data['action']) {
+                    'deactivate', 'activate' => $this->setMembershipActive($user, $membership, $data['action'] === 'activate'),
+                    'archive' => $this->archiveUser($user, $actor, (int) $careerId, $data['motivo'] ?? null),
+                    'delete' => $this->purgeUser($user, $actor, $careerId),
+                };
+                $done[] = ['id' => (string) $id, 'name' => $name];
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+                $skipped[] = ['id' => (string) $id, 'name' => $name, 'reason' => $exception->getMessage()];
+            } catch (\Illuminate\Validation\ValidationException $exception) {
+                $skipped[] = ['id' => (string) $id, 'name' => $name, 'reason' => collect($exception->errors())->flatten()->first()];
+            }
+        }
+        $verbs = ['deactivate' => 'desactivaron', 'activate' => 'reactivaron', 'archive' => 'enviaron al archivo histórico', 'delete' => 'eliminaron definitivamente'];
+        $message = count($done) ? 'Se '.$verbs[$data['action']].' '.count($done).' usuario(s).' : 'No se aplicó a ningún usuario.';
+        if ($skipped) $message .= ' '.count($skipped).' no se pudieron.';
+
+        // Siempre 200: la respuesta dice a quiénes se aplicó y a quiénes no (con el motivo).
+        return response()->json(['message' => $message, 'done' => $done, 'skipped' => $skipped]);
+    }
+
+    private function setMembershipActive(User $user, $membership, bool $active): void
+    {
+        DB::transaction(function () use ($user, $membership, $active) {
+            $membership->update(['activo' => $active, 'actualizado_en' => now()]);
+            if ($active && !$user->activo) $user->update(['activo' => true]);
+            if (!$active) {
+                $this->deactivateOperationalLinks($user);
+                if (!$user->careerMemberships()->where('activo', true)->exists()) $user->update(['activo' => false]);
+            }
+        });
+    }
+
+    /** Mismas reglas y registro que el archivo histórico (ArchiveController), para usuarios ya inactivos. */
+    private function archiveUser(User $user, User $actor, int $careerId, ?string $reason): void
+    {
+        abort_unless(\App\Support\SchemaCache::hasColumn('usuarios', 'archivado_en'), 409, 'El archivo histórico requiere ejecutar su migración en la API.');
+        abort_if($user->globalProfileId() === 4, 422, 'Es administrador general: retírale ese nivel antes de archivarlo.');
+        if (!$actor->isGeneralAdmin()) {
+            $elsewhere = $user->careerMemberships()->where('carrera_id', '!=', $careerId)->where('activo', true)->exists();
+            abort_if($elsewhere, 422, 'También pertenece a otra carrera; sólo la administración general puede archivarlo.');
+        }
+        DB::transaction(function () use ($user, $actor, $careerId, $reason) {
+            DB::table('usuarios')->where('id', $user->getKey())->update(['archivado_en' => now(), 'archivado_por' => $actor->id]);
+            DB::table('archivo_historico')->insert(['tipo' => 'usuarios', 'registro_id' => (string) $user->getKey(), 'carrera_id' => $careerId,
+                'accion' => 'archivado', 'motivo' => $reason, 'usuario_id' => $actor->id, 'creado_en' => now()]);
+        });
+        if (\App\Support\SchemaCache::hasTable('sesiones_app')) app(\App\Services\AppSessionService::class)->revokeAllForUser((string) $user->getKey());
+    }
+
+    private function purgeUser(User $user, User $actor, int $careerId): void
+    {
+        abort_if($user->globalProfileId() === 4, 422, 'Es administrador general: retírale ese nivel antes de eliminarlo.');
+        // Eliminar borra la cuenta en todas las carreras: la jefatura sólo elimina a quien es únicamente de la suya.
+        if (!$actor->isGeneralAdmin()) {
+            $elsewhere = $user->careerMemberships()->where('carrera_id', '!=', $careerId)->exists();
+            abort_if($elsewhere, 422, 'También pertenece a otra carrera; sólo la administración general puede eliminarlo.');
+        }
+        $purge = app(\App\Services\UserPurgeService::class);
+        if ($reason = $purge->blocker($user)) abort(422, $reason);
+        DB::table('auditoria_carreras')->insert([
+            'carrera_id' => $careerId, 'actor_id' => $actor->id, 'metodo' => 'POST', 'ruta' => '/api/users/bulk',
+            'accion' => 'user_deleted_permanently', 'estado_http' => 200, 'direccion_ip' => request()->ip(),
+            'agente_usuario' => mb_substr((string) request()->userAgent(), 0, 255),
+            'detalle' => json_encode(['usuario_id' => (string) $user->getKey(), 'nombre' => trim("{$user->nombres} {$user->apellido_paterno}")], JSON_UNESCAPED_UNICODE),
+            'creado_en' => now(),
+        ]);
+        $purge->purge($user);
+    }
+
     public function getInactive(Request $request)
     {
         $request->query->set('status', 'inactive');
