@@ -83,13 +83,17 @@ Artisan::command('sgpi:flush-notifications', function (\App\Services\PushNotific
 
 Artisan::command('sgpi:backup-health', function (DatabaseBackupService $backups) {
     $status = $backups->storageStatus();
-    $this->table(['Copias', 'Disponibles', 'Faltantes', 'Alteradas', 'Verificadas'], [[
+    $this->table(['Copias', 'Disponibles', 'Faltantes', 'Sin permiso', 'Alteradas', 'Verificadas', 'Huérfanas', 'Bases temporales'], [[
         $status['records'],
         $status['available'],
         $status['missing'],
+        $status['unreadable'],
         $status['altered'],
         $status['verified'],
+        $status['orphans'],
+        $status['leftover_databases'],
     ]]);
+    if ($status['unreadable_hint']) $this->warn($status['unreadable_hint']);
     $this->line($status['healthy'] ? 'Almacenamiento de respaldos saludable.' : 'Se requiere revisar el almacenamiento de respaldos.');
 
     return $status['healthy'] ? self::SUCCESS : self::FAILURE;

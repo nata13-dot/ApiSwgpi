@@ -33,6 +33,7 @@ class DatabaseBackupService
      */
     public function startCreate(string $source, ?string $actorId): array
     {
+        $this->housekeeping();
         $id = DB::table('respaldos_base_datos')->insertGetId(['creado_por' => $actorId, 'origen' => $source, 'estado' => 'en_proceso', 'creado_en' => now()]);
         $this->inBackground(fn () => $this->create($source, $actorId, $id), fn () => DB::table('respaldos_base_datos')->where('id', $id)->where('estado', 'en_proceso')
             ->update(['estado' => 'fallido', 'mensaje_error' => 'El proceso se interrumpió antes de terminar (tiempo o memoria del servidor).']));
@@ -43,9 +44,13 @@ class DatabaseBackupService
     /** Prueba de restauración en segundo plano; misma idea que startCreate. */
     public function startVerify(int $backupId, ?string $actorId): array
     {
-        $backup = DB::table('respaldos_base_datos')->where('id', $backupId)->where('estado', 'completado')->first();
+        $this->housekeeping();
+        $backup = DB::table('respaldos_base_datos')->where('id', $backupId)->where('estado', 'completado')->whereNull('eliminado_en')->first();
         if (!$backup || !$backup->ruta_privada || !is_file($backup->ruta_privada)) {
             throw new \RuntimeException('El archivo del respaldo no está disponible.');
+        }
+        if (!is_readable($backup->ruta_privada)) {
+            throw new \RuntimeException($this->unreadableMessage());
         }
         $running = DB::table('verificaciones_restauracion')->where('respaldo_id', $backupId)->where('estado', 'en_proceso')
             ->where('creado_en', '>', now()->subMinutes(self::STALE_MINUTES))->exists();
@@ -60,6 +65,81 @@ class DatabaseBackupService
         return (array) DB::table('verificaciones_restauracion')->find($id);
     }
 
+    private function directory(): string
+    {
+        return storage_path('app/private/database-backups');
+    }
+
+    /**
+     * Limpieza que corre antes de cada respaldo, prueba o revisión: lo que quedó "en_proceso" porque el proceso murió
+     * pasa a fallido en la base (no sólo en pantalla) y se borran los temporales .sql.tmp de más de una hora.
+     */
+    public function housekeeping(): void
+    {
+        $limit = now()->subMinutes(self::STALE_MINUTES);
+        DB::table('respaldos_base_datos')->where('estado', 'en_proceso')->where('creado_en', '<', $limit)
+            ->update(['estado' => 'fallido', 'mensaje_error' => 'El proceso se interrumpió antes de terminar (tiempo o memoria del servidor).']);
+        DB::table('verificaciones_restauracion')->where('estado', 'en_proceso')->where('creado_en', '<', $limit)
+            ->update(['estado' => 'fallido', 'mensaje_error' => 'La prueba se interrumpió antes de terminar (tiempo o memoria del servidor).']);
+        foreach (glob($this->directory().'/*.tmp') ?: [] as $file) {
+            if (filemtime($file) < time() - 3600) @unlink($file);
+        }
+    }
+
+    /**
+     * Bases temporales de simulacros que se cortaron antes de borrarlas. Sólo se quitan si no hay otra prueba en curso,
+     * para no tocar la de alguien más.
+     */
+    private function dropLeftoverRestoreDatabases(?int $currentVerification = null): int
+    {
+        $running = DB::table('verificaciones_restauracion')->where('estado', 'en_proceso')
+            ->when($currentVerification, fn ($query) => $query->where('id', '!=', $currentVerification))->exists();
+        if ($running) return 0;
+        $dropped = 0;
+        foreach ($this->leftoverRestoreDatabases() as $database) {
+            try {
+                DB::statement("DROP DATABASE IF EXISTS `{$database}`");
+                $dropped++;
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return $dropped;
+    }
+
+    private function leftoverRestoreDatabases(): array
+    {
+        return collect(DB::select("SELECT SCHEMA_NAME AS name FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'sgpi\\_restore\\_check\\_%'"))
+            ->pluck('name')->filter(fn ($name) => preg_match('/^sgpi_restore_check_[a-z0-9]+$/', $name))->values()->all();
+    }
+
+    /** Antes de respaldar: el disco debe tener al menos el doble de lo que ocupa la base, más 50 MB. */
+    private function ensureDiskSpace(string $database): void
+    {
+        $size = (int) (DB::selectOne('SELECT COALESCE(SUM(data_length + index_length), 0) AS size FROM information_schema.tables WHERE table_schema = ?', [$database])->size ?? 0);
+        $free = @disk_free_space($this->directory());
+        $needed = $size * 2 + 50 * 1024 * 1024;
+        if ($free !== false && $free < $needed) {
+            throw new \RuntimeException(sprintf('No hay espacio suficiente en disco: hay %s libres y el respaldo necesita al menos %s. Libera espacio o aplica la retención.',
+                $this->human((int) $free), $this->human($needed)));
+        }
+    }
+
+    private function human(int $bytes): string
+    {
+        return $bytes >= 1073741824 ? round($bytes / 1073741824, 1).' GB' : round($bytes / 1048576, 1).' MB';
+    }
+
+    /** El archivo existe pero el usuario del sistema que corre esto no lo puede leer (lo creó otro usuario). */
+    private function unreadableMessage(): string
+    {
+        $user = function_exists('posix_geteuid') && function_exists('posix_getpwuid') ? (posix_getpwuid(posix_geteuid())['name'] ?? 'el servidor web') : 'el servidor web';
+
+        return "El archivo existe pero «{$user}» no tiene permiso para leerlo: lo generó otro usuario del sistema. "
+            .'Las tareas programadas deben correr con el mismo usuario que la web (www-data).';
+    }
+
     /** Ejecuta $work después de responder; si el proceso muere antes, $onCrash deja el registro como fallido. */
     private function inBackground(\Closure $work, \Closure $onCrash): void
     {
@@ -68,6 +148,7 @@ class DatabaseBackupService
             if (!$finished) $onCrash();
         });
         app()->terminating(function () use (&$finished, $work) {
+            if ($finished) return; // Una sola vez aunque el cierre se dispare de nuevo.
             try {
                 $work();
             } catch (\Throwable $exception) {
@@ -87,8 +168,9 @@ class DatabaseBackupService
             throw new \RuntimeException('El respaldo automático requiere una conexión MySQL o MariaDB.');
         }
 
-        $directory = storage_path('app/private/database-backups');
+        $directory = $this->directory();
         File::ensureDirectoryExists($directory, 0700, true);
+        if (!$recordId) $this->housekeeping();
         $baseName = 'sgpi_'.now()->format('Ymd_His').'_'.Str::lower(Str::random(6));
         $temporaryPath = $directory.'/'.$baseName.'.sql.tmp';
         $finalName = $baseName.'.sql.gz';
@@ -96,6 +178,7 @@ class DatabaseBackupService
         @set_time_limit(360);
 
         try {
+            $this->ensureDiskSpace((string) ($connection['database'] ?? ''));
             $this->run([
                 $this->binary(['mysqldump', 'mariadb-dump']),
                 ...$this->connectionArguments($connection),
@@ -160,10 +243,10 @@ class DatabaseBackupService
         $backup = DB::table('respaldos_base_datos')
             ->where('id', $backupId)
             ->where('estado', 'completado')
+            ->whereNull('eliminado_en')
             ->first();
-        if (!$backup || !$backup->ruta_privada || !is_file($backup->ruta_privada)) {
-            throw new \RuntimeException('El archivo del respaldo no está disponible.');
-        }
+        if (!$verificationId) $this->housekeeping();
+        $this->dropLeftoverRestoreDatabases($verificationId);
 
         $temporaryDatabase = 'sgpi_restore_check_'.Str::lower(Str::random(12));
         $temporarySql = storage_path('app/private/database-backups/'.$temporaryDatabase.'.sql.tmp');
@@ -172,6 +255,12 @@ class DatabaseBackupService
         @set_time_limit(360);
 
         try {
+            if (!$backup || !$backup->ruta_privada || !is_file($backup->ruta_privada)) {
+                throw new \RuntimeException('El archivo del respaldo no está disponible.');
+            }
+            if (!is_readable($backup->ruta_privada)) {
+                throw new \RuntimeException($this->unreadableMessage());
+            }
             if (!hash_equals((string) $backup->checksum_sha256, hash_file('sha256', $backup->ruta_privada))) {
                 throw new \RuntimeException('El checksum SHA-256 del archivo no coincide con el registrado.');
             }
@@ -234,12 +323,18 @@ class DatabaseBackupService
             ->get();
         $available = 0;
         $missing = 0;
+        $unreadable = 0;
         $altered = 0;
         $totalBytes = 0;
 
         foreach ($records as $record) {
             if (!$record->ruta_privada || !is_file($record->ruta_privada)) {
                 $missing++;
+                continue;
+            }
+            // Existe pero lo creó otro usuario del sistema: no es faltante, pero tampoco sirve desde la web.
+            if (!is_readable($record->ruta_privada)) {
+                $unreadable++;
                 continue;
             }
             $available++;
@@ -250,11 +345,18 @@ class DatabaseBackupService
             }
         }
 
-        $directory = storage_path('app/private/database-backups');
+        $directory = $this->directory();
         $eligible = $this->retentionCandidates($retentionDays);
+        $orphans = $this->orphanFiles();
+        $leftoverDatabases = count($this->leftoverRestoreDatabases());
 
         return [
-            'healthy' => $missing === 0 && $altered === 0,
+            'healthy' => $missing === 0 && $altered === 0 && $unreadable === 0,
+            'unreadable' => $unreadable,
+            'orphans' => count($orphans),
+            'orphan_bytes' => array_sum(array_map(fn ($file) => (int) @filesize($file), $orphans)),
+            'leftover_databases' => $leftoverDatabases,
+            'unreadable_hint' => $unreadable ? $this->unreadableMessage() : null,
             'records' => $records->count(),
             'available' => $available,
             'missing' => $missing,
@@ -276,9 +378,29 @@ class DatabaseBackupService
         ];
     }
 
+    /** Copias en la carpeta que ningún respaldo vigente registra (de procesos cortados o ya depurados). */
+    private function orphanFiles(): array
+    {
+        $known = DB::table('respaldos_base_datos')->whereNull('eliminado_en')->whereNotNull('ruta_privada')->pluck('ruta_privada')->all();
+
+        return array_values(array_filter(glob($this->directory().'/*.sql.gz') ?: [], fn ($file) => !in_array($file, $known, true)
+            // Una copia recién generada todavía puede estar por registrarse.
+            && filemtime($file) < time() - 3600));
+    }
+
     public function cleanup(int $retentionDays, string $actorId): array
     {
         $retentionDays = max(7, min(365, $retentionDays));
+        // Además de las copias vencidas: archivos huérfanos, bases temporales sobrantes y el historial de intentos fallidos.
+        $this->housekeeping();
+        $orphans = $this->orphanFiles();
+        $orphanBytes = 0;
+        foreach ($orphans as $file) {
+            $size = (int) @filesize($file);
+            if (@unlink($file)) $orphanBytes += $size;
+        }
+        $droppedDatabases = $this->dropLeftoverRestoreDatabases();
+        $failedRemoved = DB::table('respaldos_base_datos')->where('estado', 'fallido')->where('creado_en', '<', now()->subDays($retentionDays))->delete();
         $candidates = $this->retentionCandidates($retentionDays);
         $deleted = 0;
         $releasedBytes = 0;
@@ -310,8 +432,11 @@ class DatabaseBackupService
 
         return [
             'deleted' => $deleted,
-            'released_bytes' => $releasedBytes,
+            'released_bytes' => $releasedBytes + $orphanBytes,
             'retention_days' => $retentionDays,
+            'orphans_removed' => count($orphans),
+            'databases_dropped' => $droppedDatabases,
+            'failed_records_removed' => $failedRemoved,
         ];
     }
 

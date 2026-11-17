@@ -9,8 +9,9 @@ use Illuminate\Support\Facades\DB;
 
 class DatabaseBackupController extends Controller
 {
-    public function index()
+    public function index(DatabaseBackupService $backups)
     {
+        $backups->housekeeping();
         $latestVerification = DB::table('verificaciones_restauracion as verification')
             ->select('verification.*')
             ->whereRaw('verification.id = (SELECT MAX(v2.id) FROM verificaciones_restauracion v2 WHERE v2.respaldo_id = verification.respaldo_id)');
@@ -36,20 +37,7 @@ class DatabaseBackupController extends Controller
                 ->whereNull('backup.eliminado_en')
                 ->orderByDesc('backup.id')
                 ->limit(50)
-                ->get()
-                ->map(function ($row) {
-                    $stale = fn ($at) => $at && \Illuminate\Support\Carbon::parse($at)->lt(now()->subMinutes(DatabaseBackupService::STALE_MINUTES));
-                    if ($row->estado === 'en_proceso' && $stale($row->creado_en)) {
-                        $row->estado = 'fallido';
-                        $row->mensaje_error = 'El proceso se interrumpió antes de terminar.';
-                    }
-                    if ($row->estado_verificacion === 'en_proceso' && $stale($row->verificado_en)) {
-                        $row->estado_verificacion = 'fallido';
-                        $row->error_verificacion = 'La prueba se interrumpió antes de terminar.';
-                    }
-
-                    return $row;
-                }),
+                ->get(),
         ]);
     }
 
@@ -66,8 +54,10 @@ class DatabaseBackupController extends Controller
 
     public function download(int $backup)
     {
-        $record = DB::table('respaldos_base_datos')->where('id', $backup)->where('estado', 'completado')->first();
-        abort_if(!$record || !$record->ruta_privada || !is_file($record->ruta_privada), 404, 'Respaldo no encontrado.');
+        $record = DB::table('respaldos_base_datos')->where('id', $backup)->where('estado', 'completado')->whereNull('eliminado_en')->first();
+        abort_if(!$record || !$record->ruta_privada || !is_file($record->ruta_privada), 404, 'El archivo del respaldo ya no está en el servidor.');
+        abort_unless(is_readable($record->ruta_privada), 409, 'El archivo existe pero el servidor web no tiene permiso para leerlo (lo generó otro usuario del sistema).');
+        abort_unless(hash_equals((string) $record->checksum_sha256, hash_file('sha256', $record->ruta_privada)), 409, 'El archivo no coincide con su checksum SHA-256: está alterado o dañado.');
 
         return response()->download($record->ruta_privada, $record->nombre_archivo, [
             'Content-Type' => 'application/gzip',
