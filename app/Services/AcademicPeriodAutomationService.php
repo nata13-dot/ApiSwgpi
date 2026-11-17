@@ -53,9 +53,9 @@ class AcademicPeriodAutomationService
             }
         }
 
-        // Si el semestre de los alumnos nuevos existe en este periodo, también se preparan sus grupos.
-        $freshmanSemester = \App\Support\NewStudentGroups::semester($career);
-        $freshmen = in_array($freshmanSemester, $allowed, true) ? collect(\App\Support\NewStudentGroups::letters($career))->map(fn ($letter) => ['to' => $freshmanSemester, 'clave' => $letter]) : collect();
+        // Los semestres de alumnos nuevos que existen en este periodo también preparan sus grupos.
+        $freshmen = collect(\App\Support\NewStudentGroups::semesters($career))->filter(fn ($semester) => in_array($semester, $allowed, true))
+            ->flatMap(fn ($semester) => collect(\App\Support\NewStudentGroups::letters($career))->map(fn ($letter) => ['to' => $semester, 'clave' => $letter]));
         $newGroups = collect($moves)->concat($freshmen)->map(fn ($move) => ['semestre' => $move['to'], 'clave' => $move['clave']])->unique(fn ($group) => "{$group['semestre']}|{$group['clave']}")
             ->reject(fn ($group) => $existingGroups->contains(fn ($row) => (int) $row->semestre === $group['semestre'] && $row->clave_grupo === $group['clave']))
             ->sortBy(fn ($group) => sprintf('%02d%s', $group['semestre'], $group['clave']))->values()->all();

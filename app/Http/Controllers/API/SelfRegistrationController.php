@@ -331,13 +331,13 @@ class SelfRegistrationController extends Controller
         if (!$period) {
             return 'La carrera no tiene un periodo abierto.';
         }
-        // Los alumnos nuevos entran al semestre elegido al abrir la ventana, sólo en los grupos que la carrera definió.
-        $semester = \App\Support\NewStudentGroups::semester($career->id);
-        if (!\App\Support\NewStudentGroups::allowedIn($period, $semester)) {
-            return "El periodo abierto ({$period->nombre}) es de ".\App\Support\NewStudentGroups::halfLabel($period).": no tiene {$semester}° semestre. Vuelve a abrir el autoregistro eligiendo ".implode(' o ', array_map(fn ($option) => "{$option}°", \App\Support\NewStudentGroups::optionsFor($period))).'.';
+        // Los alumnos nuevos entran a los semestres elegidos al abrir la ventana, sólo en los grupos que la carrera definió.
+        $chosen = \App\Support\NewStudentGroups::semesters($career->id);
+        if (!\App\Support\NewStudentGroups::activeSemesters($career->id, $period)) {
+            return "El periodo abierto ({$period->nombre}) es de ".\App\Support\NewStudentGroups::halfLabel($period).': no tiene '.\App\Support\NewStudentGroups::label($chosen).' semestre. Vuelve a abrir el autoregistro eligiendo entre '.\App\Support\NewStudentGroups::label(\App\Support\NewStudentGroups::optionsFor($period)).'.';
         }
         if (self::newStudentGroups($career, $period)->isEmpty()) {
-            return "No hay grupos de {$semester}° activos en el periodo {$period->nombre}. Guarda los grupos de alumnos nuevos o activa los que estén inactivos.";
+            return 'No hay grupos de '.\App\Support\NewStudentGroups::label(\App\Support\NewStudentGroups::activeSemesters($career->id, $period))." activos en el periodo {$period->nombre}. Guarda los grupos de alumnos nuevos o activa los que estén inactivos.";
         }
 
         return null;
@@ -346,8 +346,8 @@ class SelfRegistrationController extends Controller
     private static function newStudentGroups(Career $career, object $period)
     {
         return SubjectGroup::withoutGlobalScopes()->where('carrera_id', $career->id)->where('periodo_id', $period->id)
-            ->where('activo', true)->where('semestre', \App\Support\NewStudentGroups::semester($career->id))->whereIn('clave_grupo', \App\Support\NewStudentGroups::letters($career->id))
-            ->orderBy('clave_grupo')->get(['id', 'nombre', 'semestre', 'clave_grupo']);
+            ->where('activo', true)->whereIn('semestre', \App\Support\NewStudentGroups::activeSemesters($career->id, $period))->whereIn('clave_grupo', \App\Support\NewStudentGroups::letters($career->id))
+            ->orderBy('semestre')->orderBy('clave_grupo')->get(['id', 'nombre', 'semestre', 'clave_grupo']);
     }
 
     /** Datos públicos de la carrera si su autoregistro está abierto y tiene periodo abierto con grupos. */
@@ -367,7 +367,8 @@ class SelfRegistrationController extends Controller
             'nombre_corto' => $career->nombre_corto,
             'closes_at' => $until->toIso8601String(),
             'period' => $period->nombre,
-            'semester' => \App\Support\NewStudentGroups::semester($career->id),
+            'semester' => \App\Support\NewStudentGroups::activeSemesters($career->id, $period)[0] ?? null,
+            'semesters' => \App\Support\NewStudentGroups::activeSemesters($career->id, $period),
             'rule' => SelfRegistrationRule::publicPayload(SelfRegistrationRule::forCareer($career->id)),
             'groups' => $groups->all(),
         ];

@@ -47,13 +47,16 @@ class PeriodCenterController extends Controller
                 'to_promote' => $plan ? count($plan['moves']) : null,
             ],
             'self_registration' => [
-                'open' => $self['open'], 'until' => $self['until'], 'semester' => $self['semester'], 'semester_options' => $self['semester_options'],
+                'open' => $self['open'], 'until' => $self['until'], 'semester' => $self['semester'], 'semesters' => $self['semesters'],
+                'semester_options' => $self['semester_options'], 'default_semesters' => $self['default_semesters'],
                 'groups' => $self['groups'], 'blocker' => $self['blocker'], 'rule' => $self['rule'],
                 'pending_requests' => DB::table('autoregistros_pendientes')->where('carrera_id', $career)->where('estado', 'por_aprobar')->count(),
             ],
             'proposals' => [
                 'open' => (bool) ($settings['proposal_window']['open'] ?? false),
                 'until' => $settings['proposal_window']['until'] ?? null,
+                'semesters' => $settings['proposal_window']['semesters'] ?? [],
+                'semester_options' => $settings['proposal_window']['semester_options'] ?? [],
                 'pending' => Project::where('tipo', 'propuesta')->where('activo', true)->where('estado', 'pendiente')->count(),
                 'changes' => Project::where('tipo', 'propuesta')->where('activo', true)->where('estado', 'requiere_cambios')->count(),
                 'validators' => count($settings['validator_ids'] ?? []),
