@@ -352,6 +352,9 @@ class UserController extends Controller
             'ids.*' => 'required|string|max:30',
             'admin_password' => 'nullable|string',
             'motivo' => 'nullable|string|max:500',
+            // Al desactivar docentes con pendientes: liberarlos y, si se indica, pasarlos a otro docente.
+            'release' => 'sometimes|boolean',
+            'replacement_id' => 'nullable|string|max:30',
         ]);
         $actor = $request->user('api');
         $careerId = app(\App\Support\CareerContext::class)->careerId();
@@ -381,11 +384,30 @@ class UserController extends Controller
                 if ($destructive) {
                     abort_if($membership->activo, 422, 'Primero debe estar inactivo.');
                 }
-                match ($data['action']) {
-                    'deactivate', 'activate' => $this->setMembershipActive($user, $membership, $data['action'] === 'activate'),
-                    'archive' => $this->archiveUser($user, $actor, (int) $careerId, $data['motivo'] ?? null),
-                    'delete' => $this->purgeUser($user, $actor, $careerId),
-                };
+                $release = false;
+                if ($data['action'] === 'deactivate' && $membership->activo && (int) $membership->perfil_id !== 3) {
+                    $memberships = app(\App\Services\AcademicMembershipService::class);
+                    if ($memberships->hasCommitments((string) $user->getKey(), (int) $careerId)) {
+                        if (!($data['release'] ?? false)) {
+                            $skipped[] = ['id' => (string) $id, 'name' => $name, 'releasable' => true,
+                                'reason' => 'Tiene pendientes en la carrera; puedes liberarlos o pasarlos a otro docente.',
+                                'commitments' => array_column($memberships->describe((string) $user->getKey(), (int) $careerId), 'label')];
+                            continue;
+                        }
+                        $release = true;
+                    }
+                }
+                // Liberar pendientes y desactivar van juntos: si algo falla no queda a medias.
+                DB::transaction(function () use ($data, $user, $membership, $actor, $careerId, $release) {
+                    if ($release) {
+                        app(\App\Services\AcademicMembershipService::class)->release((string) $user->getKey(), (int) $careerId, $data['replacement_id'] ?? null, (string) $actor->getKey());
+                    }
+                    match ($data['action']) {
+                        'deactivate', 'activate' => $this->setMembershipActive($user, $membership, $data['action'] === 'activate'),
+                        'archive' => $this->archiveUser($user, $actor, (int) $careerId, $data['motivo'] ?? null),
+                        'delete' => $this->purgeUser($user, $actor, $careerId),
+                    };
+                });
                 $done[] = ['id' => (string) $id, 'name' => $name];
             } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
                 $skipped[] = ['id' => (string) $id, 'name' => $name, 'reason' => $exception->getMessage()];
@@ -397,8 +419,19 @@ class UserController extends Controller
         $message = count($done) ? 'Se '.$verbs[$data['action']].' '.count($done).' usuario(s).' : 'No se aplicó a ningún usuario.';
         if ($skipped) $message .= ' '.count($skipped).' no se pudieron.';
 
+        // Docentes activos que pueden recibir los pendientes de quien no se pudo desactivar.
+        $replacements = [];
+        if (collect($skipped)->contains(fn ($item) => $item['releasable'] ?? false)) {
+            $blocked = collect($skipped)->pluck('id')->all();
+            $replacements = DB::table('usuario_carrera as uc')->join('usuarios as u', 'u.id', '=', 'uc.usuario_id')
+                ->where('uc.carrera_id', $careerId)->where('uc.activo', true)->where('uc.perfil_id', '!=', 3)
+                ->whereNotIn('u.id', $blocked)->orderBy('u.nombres')
+                ->get(['u.id', 'u.nombres', 'u.apellido_paterno', 'u.apellido_materno'])
+                ->map(fn ($row) => ['id' => (string) $row->id, 'name' => trim("{$row->nombres} {$row->apellido_paterno} {$row->apellido_materno}")])->all();
+        }
+
         // Siempre 200: la respuesta dice a quiénes se aplicó y a quiénes no (con el motivo).
-        return response()->json(['message' => $message, 'done' => $done, 'skipped' => $skipped]);
+        return response()->json(['message' => $message, 'done' => $done, 'skipped' => $skipped, 'replacements' => $replacements]);
     }
 
     private function setMembershipActive(User $user, $membership, bool $active): void
