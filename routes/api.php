@@ -368,6 +368,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     Route::middleware('role:student,project_manager')->put('/projects/{id}', [ProjectController::class, 'update']);
     Route::middleware('role:project_manager')->group(function () {
         Route::delete('/projects/{id}', [ProjectController::class, 'destroy']);
+        Route::post('/projects/bulk-delete', [ProjectController::class, 'bulkDestroy']);
         Route::put('/projects/{id}/residency', [ProjectController::class, 'setResidency']);
         Route::post('/projects/{id}/advisors', [ProjectController::class, 'addAdvisor']);
         Route::put('/projects/{id}/advisors', [ProjectController::class, 'syncAdvisors']);

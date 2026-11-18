@@ -361,6 +361,40 @@ class ProjectController extends Controller
         return response()->json(['message' => 'Proyecto eliminado']);
     }
 
+    /**
+     * Eliminar varios proyectos a la vez (mismas reglas que destroy): se aplica a los que se puede y se dice por qué
+     * no a los demás. Siempre 200 con done/skipped.
+     */
+    public function bulkDestroy(Request $request)
+    {
+        abort_unless(auth('api')->user()->canManageProjects(), 403, 'Solo administradores pueden eliminar proyectos.');
+        $data = $request->validate(['ids' => 'required|array|min:1|max:300', 'ids.*' => 'required|integer']);
+        $done = [];
+        $skipped = [];
+        foreach (array_values(array_unique($data['ids'])) as $id) {
+            $project = Project::find($id);
+            $name = $project?->title ?? "Proyecto {$id}";
+            if (!$project || !$project->activo) {
+                $skipped[] = ['id' => $id, 'name' => $name, 'reason' => 'Ya no existe o ya estaba eliminado.'];
+                continue;
+            }
+            if ($guard = $this->guardThesisScope($project)) {
+                $skipped[] = ['id' => $id, 'name' => $name, 'reason' => $guard->getData(true)['error'] ?? 'Sin permiso.'];
+                continue;
+            }
+            if (DB::table('residencias')->where('proyecto_id', $project->id)->where('estado', 'abierta')->exists()) {
+                $skipped[] = ['id' => $id, 'name' => $name, 'reason' => 'Tiene una residencia abierta: ciérrala o resuélvela antes.'];
+                continue;
+            }
+            $project->update(['activo' => false]);
+            $done[] = ['id' => $id, 'name' => $name];
+        }
+        $message = count($done) ? 'Se eliminaron '.count($done).' proyecto(s).' : 'No se eliminó ningún proyecto.';
+        if ($skipped) $message .= ' '.count($skipped).' no se pudieron.';
+
+        return response()->json(['message' => $message, 'done' => $done, 'skipped' => $skipped]);
+    }
+
     public function addAdvisor(Request $request, $id)
     {
         try {
