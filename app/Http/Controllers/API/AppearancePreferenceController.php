@@ -17,7 +17,10 @@ class AppearancePreferenceController extends Controller
     {
         $row = DB::table('preferencias_apariencia')->where('usuario_id', auth('api')->id())->first();
 
-        return response()->json(['data' => $row ? ['theme' => $row->tema, 'font_scale' => (int) $row->escala_letra, 'glass' => (bool) ($row->cristal ?? false)] : null]);
+        // «glass» sólo se envía cuando existe la columna: sin la migración, los fronts conservan lo que tiene el equipo.
+        $glass = $row && \App\Support\SchemaCache::hasColumn('preferencias_apariencia', 'cristal') ? ['glass' => (bool) $row->cristal] : [];
+
+        return response()->json(['data' => $row ? ['theme' => $row->tema, 'font_scale' => (int) $row->escala_letra, ...$glass] : null]);
     }
 
     public function update(Request $request): JsonResponse
