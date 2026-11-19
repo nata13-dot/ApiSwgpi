@@ -17,7 +17,8 @@ class NotificationSchedulerService
     {
         $today = ($today ?? today())->copy()->startOfDay();
 
-        return ['entregas' => $this->deliveryReminders($today), 'salas' => $this->roomReminders($today)];
+        return ['entregas' => $this->deliveryReminders($today), 'prorrogas' => $this->extensionReminders($today),
+            'por_calificar' => $this->gradingReminders($today), 'salas' => $this->roomReminders($today)];
     }
 
     public function weekly(?Carbon $today = null): array
@@ -44,6 +45,10 @@ class NotificationSchedulerService
             $pending = DB::table('curso_estudiantes as ce')->where('ce.curso_id', $deliverable->curso_id)->where('ce.activo', true)
                 ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('entregas as e')->join('proyecto_integrantes as i', 'i.proyecto_id', '=', 'e.proyecto_id')
                     ->where('e.entregable_id', $deliverable->id)->whereColumn('i.usuario_id', 'ce.estudiante_id'))
+                // Los equipos con prórroga reciben sus recordatorios con su propia fecha (extensionReminders).
+                ->when(\App\Support\SchemaCache::hasTable('entrega_prorrogas'), fn ($query) => $query->whereNotExists(fn ($sub) => $sub->selectRaw('1')
+                    ->from('entrega_prorrogas as x')->join('proyecto_integrantes as xi', 'xi.proyecto_id', '=', 'x.proyecto_id')
+                    ->where('x.entregable_id', $deliverable->id)->whereColumn('xi.usuario_id', 'ce.estudiante_id')))
                 ->pluck('ce.estudiante_id');
             $recipients = $this->once($pending, fn ($student) => "entrega:{$deliverable->id}:{$days}:{$student}");
             [$title, $message] = match (true) {
@@ -56,6 +61,60 @@ class NotificationSchedulerService
         }
 
         return $sent;
+    }
+
+    /** Recordatorios con la fecha de la prórroga del equipo (la fecha va en la clave: si cambia, vuelven a salir). */
+    private function extensionReminders(Carbon $today): int
+    {
+        if (!\App\Support\SchemaCache::hasTable('entrega_prorrogas')) return 0;
+        $sent = 0;
+        $rows = DB::table('entrega_prorrogas as x')->join('entregables as d', 'd.id', '=', 'x.entregable_id')->join('cursos as c', 'c.id', '=', 'd.curso_id')
+            ->join('grupos_academicos as g', 'g.id', '=', 'c.grupo_id')->where('d.activo', true)->where('d.estado', 'publicado')
+            ->whereDate('x.vence_en', '>=', $today->copy()->subDay())->whereDate('x.vence_en', '<=', $today->copy()->addDays(max(self::REMINDER_DAYS)))
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('entregas as e')->whereColumn('e.entregable_id', 'x.entregable_id')->whereColumn('e.proyecto_id', 'x.proyecto_id'))
+            ->get(['x.entregable_id', 'x.proyecto_id', 'x.vence_en', 'd.nombre', 'g.carrera_id']);
+        foreach ($rows as $row) {
+            $days = (int) $today->diffInDays(Carbon::parse($row->vence_en)->startOfDay(), false);
+            if (!in_array($days, self::REMINDER_DAYS, true) && $days !== -1) continue;
+            $students = DB::table('proyecto_integrantes')->where('proyecto_id', $row->proyecto_id)->whereIn('rol', ['lider', 'integrante'])->pluck('usuario_id');
+            $date = Carbon::parse($row->vence_en)->toDateString();
+            $recipients = $this->once($students, fn ($student) => "prorroga:{$row->entregable_id}:{$date}:{$days}:{$student}");
+            [$title, $message] = match (true) {
+                $days === -1 => ['Prórroga vencida', "La prórroga de «{$row->nombre}» venció ayer y no se ha entregado."],
+                $days === 1 => ['Prórroga vence mañana', "Tu prórroga de «{$row->nombre}» vence mañana."],
+                default => ['Prórroga próxima a vencer', "Tu prórroga de «{$row->nombre}» vence en {$days} días."],
+            };
+            ActivityNotificationService::send($recipients, null, 'recordatorio_entrega', $title, $message, '/deliverables', (int) $row->carrera_id);
+            $sent += count($recipients);
+        }
+
+        return $sent;
+    }
+
+    /** A los 5 días de recibida una entrega sin calificar se avisa a los docentes de la materia (una vez por versión). */
+    private function gradingReminders(Carbon $today): int
+    {
+        $rows = DB::table('entregas as e')->join('entregables as d', 'd.id', '=', 'e.entregable_id')->join('cursos as c', 'c.id', '=', 'd.curso_id')
+            ->join('grupos_academicos as g', 'g.id', '=', 'c.grupo_id')
+            ->join('carrera_periodos as cp', fn ($join) => $join->on('cp.carrera_id', '=', 'g.carrera_id')->on('cp.periodo_id', '=', 'g.periodo_id'))
+            ->join('curso_docentes as t', fn ($join) => $join->on('t.curso_id', '=', 'c.id')->where('t.activo', true))
+            ->whereIn('cp.estado', ['abierto', 'en_cierre'])->where('d.activo', true)->whereNull('e.calificacion')
+            ->where('e.entregado_en', '<=', $today->copy()->subDays(5)->endOfDay())
+            ->get(['e.id', 'e.entregado_en', 't.docente_id', 'g.carrera_id']);
+        $fresh = [];
+        foreach ($rows as $row) {
+            $stamp = Carbon::parse($row->entregado_en)->format('YmdHi');
+            if ($this->once([$row->docente_id], fn ($teacher) => "calificar:{$row->id}:{$stamp}:{$teacher}")) {
+                $fresh["{$row->docente_id}|{$row->carrera_id}"] = ($fresh["{$row->docente_id}|{$row->carrera_id}"] ?? 0) + 1;
+            }
+        }
+        foreach ($fresh as $key => $count) {
+            [$teacher, $career] = explode('|', $key);
+            ActivityNotificationService::send([$teacher], null, 'resumen_revision', 'Avances por calificar',
+                "Tienes {$count} avance(s) entregado(s) hace 5 días o más sin calificar.", '/tracking', (int) $career);
+        }
+
+        return array_sum($fresh);
     }
 
     private function roomReminders(Carbon $today): int
@@ -94,11 +153,13 @@ class NotificationSchedulerService
     private function reviewDigests(Carbon $today): int
     {
         $sent = 0;
-        $late = DB::table('entregas as e')->join('proyecto_integrantes as i', 'i.proyecto_id', '=', 'e.proyecto_id')->join('proyectos as p', 'p.id', '=', 'e.proyecto_id')
-            ->join('grupos_academicos as g', 'g.id', '=', 'p.grupo_id')
-            ->whereNull('e.calificacion')->whereIn('i.rol', ['primario', 'secundario', 'asesor', 'revisor_1', 'revisor_2'])
+        // Califica quien imparte la materia del avance.
+        $late = DB::table('entregas as e')->join('entregables as d', 'd.id', '=', 'e.entregable_id')->join('cursos as c', 'c.id', '=', 'd.curso_id')
+            ->join('curso_docentes as t', fn ($join) => $join->on('t.curso_id', '=', 'c.id')->where('t.activo', true))
+            ->join('grupos_academicos as g', 'g.id', '=', 'c.grupo_id')
+            ->whereNull('e.calificacion')->where('d.activo', true)
             ->where('e.entregado_en', '<=', $today->copy()->subDays(3))
-            ->groupBy('i.usuario_id', 'g.carrera_id')->selectRaw('i.usuario_id, g.carrera_id, COUNT(DISTINCT e.id) as total')->get();
+            ->groupBy('t.docente_id', 'g.carrera_id')->selectRaw('t.docente_id as usuario_id, g.carrera_id, COUNT(DISTINCT e.id) as total')->get();
         $missing = DB::table('salas_evaluacion as s')->join('rubricas as r', 'r.id', '=', 's.rubrica_id')->join('sala_docentes as t', 't.sala_id', '=', 's.id')
             ->join('evaluaciones as e', 'e.sala_id', '=', 's.id')
             ->leftJoin('dictamenes_docentes as a', fn ($join) => $join->on('a.evaluacion_id', '=', 'e.id')->on('a.docente_id', '=', 't.docente_id'))
@@ -122,7 +183,7 @@ class NotificationSchedulerService
                 !empty($counts['late']) ? "{$counts['late']} entrega(s) sin calificar" : null,
                 !empty($counts['missing']) ? "{$counts['missing']} evaluación(es) sin capturar" : null,
             ]);
-            ActivityNotificationService::send([$user], null, 'resumen_revision', 'Pendientes de revisión', 'Tienes '.implode(' y ', $parts).'.', empty($counts['late']) ? '/evaluations' : '/deliverables', (int) $career);
+            ActivityNotificationService::send([$user], null, 'resumen_revision', 'Pendientes de revisión', 'Tienes '.implode(' y ', $parts).'.', empty($counts['late']) ? '/evaluations' : '/tracking', (int) $career);
             $sent++;
         }
 

@@ -120,6 +120,8 @@ class DeliverySubmissionService
                     'calificacion' => null,
                     'comentarios_docente' => null,
                 ]);
+                // Una nueva versión se revisa de nuevo: también se retiran los ajustes por integrante.
+                if (\App\Support\SchemaCache::hasTable('entrega_ajustes')) DB::table('entrega_ajustes')->where('entrega_id', $delivery->id)->delete();
             }
 
             if (\App\Support\SchemaCache::hasTable('entrega_participantes')) {
@@ -190,10 +192,17 @@ class DeliverySubmissionService
             return;
         }
 
-        // Pasada la fecha límite el alumno ya no puede entregar; el docente puede ampliarla para recibirla.
-        if ($deliverable->fecha_limite && now()->greaterThan($deliverable->fecha_limite)) {
+        // Borrador: el docente aún no lo abre. Cerrado: ya no recibe entregas aunque tenga fecha futura.
+        if (in_array($deliverable->estado, ['borrador', 'cerrado'], true)) {
             throw ValidationException::withMessages([
-                'archivo' => ['La fecha límite de este entregable ('.\Illuminate\Support\Carbon::parse($deliverable->fecha_limite)->format('d/m/Y H:i').') ya pasó. Pide a tu docente que la amplíe.'],
+                'archivo' => [$deliverable->estado === 'borrador' ? 'Este avance todavía no está abierto.' : 'Este avance ya está cerrado. Pide a tu docente que lo reabra o te dé una prórroga.'],
+            ]);
+        }
+        // Pasada la fecha límite (la prórroga del equipo, si la tiene) el alumno ya no puede entregar.
+        $due = app(ProjectTrackingService::class)->deadline($deliverable, (int) $project->id);
+        if ($due && now()->greaterThan($due)) {
+            throw ValidationException::withMessages([
+                'archivo' => ['La fecha límite de este entregable ('.$due->format('d/m/Y H:i').') ya pasó. Pide a tu docente una prórroga.'],
             ]);
         }
 

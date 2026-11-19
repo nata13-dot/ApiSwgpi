@@ -30,6 +30,7 @@ use App\Http\Controllers\API\ContinuityReportController;
 use App\Http\Controllers\API\ContinuityPolicyController;
 use App\Http\Controllers\API\CompanyController;
 use App\Http\Controllers\API\CourseEnrollmentController;
+use App\Http\Controllers\API\ProjectTrackingController;
 
 // ========================
 // AUTENTICACIÓN (sin protección)
@@ -391,6 +392,25 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     Route::post('/deliverables/{id}/calificar', [DeliverableController::class, 'calificar']);
     Route::post('/deliverables/{id}/upload', [DeliverableController::class, 'upload']);
     Route::get('/deliverables/{id}/download', [DeliverableController::class, 'download']);
+
+    // Seguimiento de avances por materia (docente de la materia y jefatura; la autorización fina va en el controlador)
+    Route::middleware('role:teacher')->prefix('tracking')->group(function () {
+        Route::get('/courses', [ProjectTrackingController::class, 'courses']);
+        Route::get('/courses/{course}', [ProjectTrackingController::class, 'show'])->whereNumber('course');
+        Route::post('/courses/{course}/template', [ProjectTrackingController::class, 'applyTemplate'])->whereNumber('course');
+        Route::get('/courses/{course}/candidates', [ProjectTrackingController::class, 'candidates'])->whereNumber('course');
+        Route::post('/courses/{course}/projects', [ProjectTrackingController::class, 'link'])->whereNumber('course');
+        Route::delete('/courses/{course}/projects/{project}', [ProjectTrackingController::class, 'unlink'])->whereNumber(['course', 'project']);
+        Route::put('/deliverables/{deliverable}/extensions/{project}', [ProjectTrackingController::class, 'extend'])->whereNumber(['deliverable', 'project']);
+        Route::delete('/deliverables/{deliverable}/extensions/{project}', [ProjectTrackingController::class, 'removeExtension'])->whereNumber(['deliverable', 'project']);
+        Route::put('/deliveries/{delivery}/adjustments/{student}', [ProjectTrackingController::class, 'adjust'])->whereNumber('delivery');
+        Route::delete('/deliveries/{delivery}/adjustments/{student}', [ProjectTrackingController::class, 'removeAdjustment'])->whereNumber('delivery');
+        Route::get('/overview', [ProjectTrackingController::class, 'overview']);
+        Route::get('/config', [ProjectTrackingController::class, 'config']);
+        Route::post('/config', [ProjectTrackingController::class, 'storeSubject']);
+        Route::put('/config/{id}', [ProjectTrackingController::class, 'updateSubject'])->whereNumber('id');
+        Route::put('/config/{id}/template', [ProjectTrackingController::class, 'updateTemplate'])->whereNumber('id');
+    });
 
     // Asignaturas (solo Admin puede crear/editar)
     Route::get('/asignaturas', [AsignaturaController::class, 'index']);

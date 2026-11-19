@@ -198,7 +198,8 @@ class DeliverableController extends Controller
         }
 
         $query->where('grupo_curso.carrera_id', app(\App\Support\CareerContext::class)->careerId());
-        if ($user->isStudent()) $query->whereIn('entregables.curso_id', DB::table('curso_estudiantes')->where('estudiante_id', $user->id)->where('activo', true)->select('curso_id'));
+        if ($user->isStudent()) $query->whereIn('entregables.curso_id', DB::table('curso_estudiantes')->where('estudiante_id', $user->id)->where('activo', true)->select('curso_id'))
+            ->where('entregables.estado', '!=', 'borrador');
 
         if ($request->filled('project_id')) {
             $query->where('proyectos.id', $request->project_id);
@@ -242,8 +243,9 @@ class DeliverableController extends Controller
             ->whereHas('students', fn ($query) => $query->where('usuarios.id', $user->id))
             ->get();
         $period = app(\App\Services\AcademicWorkflowService::class)->period();
+        app(\App\Services\ProjectTrackingService::class)->syncForStudent(app(\App\Services\AcademicWorkflowService::class)->careerId(), (string) $user->id);
         $courses = DB::table('curso_estudiantes')->where('estudiante_id', $user->id)->where('activo', true)->pluck('curso_id');
-        $deliverables = Deliverable::with('course.subject')->where('activo', true)->whereIn('curso_id', $courses)
+        $deliverables = Deliverable::with('course.subject')->where('activo', true)->where('estado', '!=', 'borrador')->whereIn('curso_id', $courses)
             ->whereHas('course.group', fn ($q) => $q->where('periodo_id', $period?->id ?? 0))->get();
         $items = $deliverables->flatMap(function ($deliverable) use ($projects, $period) {
             $eligible = $projects->filter(fn ($project) => app(\App\Services\AcademicWorkflowService::class)->projectSemester($project, $period->id) !== null);
@@ -361,14 +363,18 @@ class DeliverableController extends Controller
                 'descripcion' => 'nullable|string|max:5000',
                 'tipo_documento' => 'nullable|in:reporte,video,presentacion,codigo,documento,otro',
                 'rama_asociada' => 'nullable|string|max:255',
-                'asignatura_id' => 'required_without:competencia_id|exists:asignaturas,id',
-                'competencia_id' => 'required_without:asignatura_id|exists:asignaturas,id',
+                'asignatura_id' => 'required_without_all:competencia_id,curso_id|exists:asignaturas,id',
+                'competencia_id' => 'required_without_all:asignatura_id,curso_id|exists:asignaturas,id',
                 'autores' => 'nullable|string|max:1000',
                 'estado' => 'nullable|string',
                 'fecha_limite' => ['nullable', 'date', new \App\Rules\NotBeforeNow()],
+                'curso_id' => 'nullable|integer|exists:cursos,id',
+                'ponderacion' => 'nullable|numeric|min:0|max:100',
             ]);
 
-            $courseId = $this->courseIdForDeliverable((int) ($validated['asignatura_id'] ?? $validated['competencia_id']), $validated['project_id'] ?? null);
+            // Desde el tablero de seguimiento llega el curso exacto (materia + grupo).
+            $courseId = ! empty($validated['curso_id']) ? (int) $validated['curso_id']
+                : $this->courseIdForDeliverable((int) ($validated['asignatura_id'] ?? $validated['competencia_id']), $validated['project_id'] ?? null);
             app(\App\Services\CourseAdmissionService::class)->manage(Course::findOrFail($courseId), auth('api')->user());
             $deliverable = Deliverable::create([
                 'curso_id' => $courseId,
@@ -377,10 +383,12 @@ class DeliverableController extends Controller
                 'tipo_documento' => $validated['tipo_documento'] ?? 'documento',
                 'estado' => $this->normalizedDeliverableState($validated['estado'] ?? 'publicado'),
                 'fecha_limite' => $validated['fecha_limite'] ?? null,
+                'ponderacion' => $validated['ponderacion'] ?? null,
                 'activo' => true,
             ]);
             $project = ! empty($validated['project_id']) ? Project::find($validated['project_id']) : null;
-            $this->notifyActivityEnabled($deliverable, $project, auth('api')->user());
+            if ($project) $this->notifyActivityEnabled($deliverable, $project, auth('api')->user());
+            elseif ($deliverable->estado === 'publicado') $this->notifyCoursePublished($deliverable);
 
             return response()->json(['message' => 'Entregable creado', 'deliverable' => $deliverable], 201);
         } catch (ValidationException $e) {
@@ -402,7 +410,7 @@ class DeliverableController extends Controller
 
         $user = auth('api')->user();
         if ($user->isStudent()) {
-            abort_unless(app(\App\Services\CourseAdmissionService::class)->enrolled($deliverable->curso_id, $user->id), 403);
+            abort_unless(app(\App\Services\CourseAdmissionService::class)->enrolled($deliverable->curso_id, $user->id) && $deliverable->estado !== 'borrador', 403);
             $deliverable->setRelation('deliveries', $deliverable->deliveries->filter(fn ($d) => $d->project?->students()->where('usuarios.id', $user->id)->exists())->values());
         } else app(\App\Services\CourseAdmissionService::class)->manage($deliverable->course, $user);
         return response()->json($deliverable);
@@ -431,9 +439,11 @@ class DeliverableController extends Controller
                 'rama_asociada' => 'nullable|string|max:255',
                 'activo' => 'nullable|boolean',
                 'fecha_limite' => ['nullable', 'date', new \App\Rules\NotBeforeNow($deliverable->fecha_limite)],
+                'ponderacion' => 'nullable|numeric|min:0|max:100',
             ]);
 
-            $payload = collect($validated)->only(['nombre', 'descripcion', 'tipo_documento', 'activo', 'fecha_limite'])->toArray();
+            $payload = collect($validated)->only(['nombre', 'descripcion', 'tipo_documento', 'activo', 'fecha_limite', 'ponderacion'])->toArray();
+            $wasPublished = $deliverable->estado === 'publicado';
             if (isset($validated['estado'])) {
                 $payload['estado'] = $this->normalizedDeliverableState($validated['estado']);
             }
@@ -449,6 +459,7 @@ class DeliverableController extends Controller
                 app(\App\Services\CourseAdmissionService::class)->manage(Course::findOrFail($payload['curso_id']), auth('api')->user());
             }
             $deliverable->update($payload);
+            if (! $wasPublished && $deliverable->estado === 'publicado') $this->notifyCoursePublished($deliverable);
 
             return response()->json(['message' => 'Entregable actualizado', 'deliverable' => $deliverable]);
         } catch (ValidationException $e) {
@@ -497,6 +508,7 @@ class DeliverableController extends Controller
             $validated = $request->validate([
                 'project_id' => 'required|integer|exists:proyectos,id',
                 'calificacion' => 'required|numeric|min:0|max:100',
+                'comentarios' => 'nullable|string|max:3000',
             ]);
             $delivery = Delivery::with('project')
                 ->where('entregable_id', $deliverable->id)
@@ -505,7 +517,8 @@ class DeliverableController extends Controller
             if (! $delivery) {
                 return response()->json(['error' => 'La entrega del proyecto no existe'], 404);
             }
-            if (! $this->canAccessProject($user, $delivery->project)) {
+            // manage() ya comprobó que imparte la materia (o gestiona la carrera): eso basta para calificar.
+            if (! $delivery->project) {
                 return response()->json(['error' => 'No tienes acceso a este entregable'], 403);
             }
 
@@ -514,9 +527,7 @@ class DeliverableController extends Controller
             }
 
             $grade = (float) $validated['calificacion'];
-            $delivery->update([
-                'calificacion' => $grade,
-            ]);
+            $delivery->update(['calificacion' => $grade] + ($request->has('comentarios') ? ['comentarios_docente' => $validated['comentarios'] ?: null] : []));
 
             // El aviso no incluye la calificación: viaja por servidores externos y se consulta al abrirlo.
             ActivityNotificationService::send(
@@ -566,7 +577,8 @@ class DeliverableController extends Controller
             }
             $accessibleDeliveries = $deliveryQuery->get()
                 ->filter(function (Delivery $candidate) use ($user, $deliverable) {
-                    if (!$candidate->project || !$this->canAccessProject($user, $candidate->project)) return false;
+                    if (!$candidate->project) return false;
+                    if (!$this->canAccessProject($user, $candidate->project) && !$this->teachesCourse($user, $deliverable)) return false;
                     if (!$user->isStudent()) return true;
                     return DB::table('curso_estudiantes')->where('curso_id', $deliverable->curso_id)
                         ->where('estudiante_id', $user->id)->where('activo', true)->exists()
@@ -766,7 +778,8 @@ class DeliverableController extends Controller
         }
 
         $project->loadMissing('advisors');
-        $advisorIds = $project->advisors->pluck('id');
+        // Avisa a quien califica: los docentes de la materia, además de los asesores del proyecto.
+        $advisorIds = $project->advisors->pluck('id')->merge(DB::table('curso_docentes')->where('curso_id', $deliverable->curso_id)->where('activo', true)->pluck('docente_id'))->unique();
         $adminIds = User::admins()->where('activo', true)->pluck('id');
         $studentName = $actor->getFullName() ?: $actor->id;
 
@@ -786,6 +799,23 @@ class DeliverableController extends Controller
             "{$studentName} subio la actividad \"{$deliverable->nombre}\".",
             '/deliverables'
         );
+    }
+
+    private function teachesCourse(User $user, Deliverable $deliverable): bool
+    {
+        return $user->canManageAcademics() || DB::table('curso_docentes')->where('curso_id', $deliverable->curso_id)
+            ->where('docente_id', $user->id)->where('activo', true)->exists();
+    }
+
+    /** Al publicar un avance de la materia se avisa a los alumnos ligados al curso. */
+    private function notifyCoursePublished(Deliverable $deliverable): void
+    {
+        $deliverable->loadMissing('course.subject');
+        $students = DB::table('curso_estudiantes')->where('curso_id', $deliverable->curso_id)->where('activo', true)->pluck('estudiante_id');
+        $subject = $deliverable->course?->subject?->nombre;
+        $due = $deliverable->fecha_limite ? ' Fecha límite: '.\Illuminate\Support\Carbon::parse($deliverable->fecha_limite)->format('d/m/Y H:i').'.' : '';
+        ActivityNotificationService::send($students, (string) auth('api')->id(), 'actividad_habilitada', 'Nuevo avance abierto',
+            "«{$deliverable->nombre}»".($subject ? " de {$subject}" : '')." ya está abierto.{$due}", '/deliverables');
     }
 
     private function canAccessProject(User $user, Project $project): bool
@@ -858,14 +888,24 @@ class DeliverableController extends Controller
     {
         $version = $delivery?->document?->latestVersion;
         $subject = $deliverable->course?->subject;
-        // Igual que DeliverySubmissionService: pasada la fecha límite el alumno ya no puede entregar.
-        $closed = $deliverable->fecha_limite && now()->greaterThan($deliverable->fecha_limite);
+        // Igual que DeliverySubmissionService: la fecha del equipo es su prórroga si la tiene; cerrado no admite entregas.
+        $due = $project ? app(\App\Services\ProjectTrackingService::class)->deadline($deliverable, $project->id)
+            : ($deliverable->fecha_limite ? \Illuminate\Support\Carbon::parse($deliverable->fecha_limite) : null);
+        $closed = ($due && now()->greaterThan($due)) || $deliverable->estado === 'cerrado';
+        $teamGrade = $delivery?->calificacion !== null ? (float) $delivery->calificacion : null;
+        $ownGrade = $delivery && \App\Support\SchemaCache::hasTable('entrega_ajustes')
+            ? DB::table('entrega_ajustes')->where('entrega_id', $delivery->id)->where('estudiante_id', auth('api')->id())->value('calificacion') : null;
 
         return [
             'id' => $deliverable->id,
             'puede_subir' => $project !== null && !$closed,
-            'fecha_limite' => $deliverable->fecha_limite ? \Illuminate\Support\Carbon::parse($deliverable->fecha_limite)->toIso8601String() : null,
+            'fecha_limite' => $due?->toIso8601String(),
+            'prorroga' => $project && $due && (! $deliverable->fecha_limite || ! $due->equalTo(\Illuminate\Support\Carbon::parse($deliverable->fecha_limite))),
             'vencido' => (bool) $closed,
+            'cerrado' => $deliverable->estado === 'cerrado',
+            'comentarios_docente' => $delivery?->comentarios_docente,
+            'calificacion_equipo' => $teamGrade,
+            'ponderacion' => $deliverable->ponderacion !== null ? (float) $deliverable->ponderacion : null,
             'project_id' => $project?->id,
             'delivery_id' => $delivery?->id,
             'document_id' => $delivery?->documento_id,
@@ -878,7 +918,7 @@ class DeliverableController extends Controller
             'nombre_archivo' => $version?->nombre_original ?: $version?->nombre_archivo,
             'version_number' => $version?->numero_version,
             'tipo_documento' => $deliverable->tipo_documento,
-            'calificacion' => $delivery?->calificacion !== null ? (float) $delivery->calificacion : null,
+            'calificacion' => $ownGrade !== null ? (float) $ownGrade : $teamGrade,
             'fecha_calificacion' => optional($delivery?->entregado_en)->toDateTimeString(),
             'created_at' => optional($deliverable->created_at)->toDateTimeString(),
             'project' => [

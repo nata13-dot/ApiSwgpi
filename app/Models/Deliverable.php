@@ -25,7 +25,7 @@ class Deliverable extends Model
     ];
 
     protected $fillable = [
-        'carrera_id', 'curso_id', 'nombre', 'descripcion', 'tipo_documento', 'fecha_limite', 'estado', 'activo',
+        'carrera_id', 'curso_id', 'nombre', 'descripcion', 'tipo_documento', 'fecha_limite', 'ponderacion', 'plantilla_id', 'estado', 'activo',
     ];
 
     protected $casts = [

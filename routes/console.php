@@ -176,6 +176,16 @@ Artisan::command('sgpi:automate-periods {--apply : Guarda los cambios; sin esta 
 Schedule::command('sgpi:automate-periods --apply')->hourlyAt(20)->timezone('America/Mexico_City')
     ->name('automate-academic-periods')->withoutOverlapping()->when(fn () => config('academic.period_automation'));
 
+Artisan::command('sgpi:sync-tracking {--career= : Sólo esta carrera}', function (\App\Services\ProjectTrackingService $tracking) {
+    if (!$tracking->ready()) { $this->warn('Falta la migración de seguimiento de avances.'); return self::SUCCESS; }
+    $careers = $this->option('career') ? [(int) $this->option('career')] : DB::table('carrera_periodos')->whereIn('estado', ['abierto', 'en_cierre'])->pluck('carrera_id')->unique()->all();
+    foreach ($careers as $career) {
+        [$added, $removed] = $tracking->syncCareer((int) $career);
+        $this->line("Carrera {$career}: {$added} alta(s), {$removed} baja(s) en materias de seguimiento.");
+    }
+    return self::SUCCESS;
+})->purpose('Liga los proyectos a las materias de seguimiento de su grupo y modalidad');
+Schedule::command('sgpi:sync-tracking')->everyThirtyMinutes()->name('sync-tracking')->withoutOverlapping();
 Schedule::command('sgpi:send-reminders')->dailyAt('09:00')->timezone('America/Mexico_City')->name('send-reminders')->withoutOverlapping();
 Schedule::command('sgpi:send-reminders --weekly')->weeklyOn(1, '08:00')->timezone('America/Mexico_City')->name('send-weekly-digests')->withoutOverlapping();
 Schedule::command('sgpi:flush-notifications')->dailyAt('07:05')->timezone('America/Mexico_City')->name('flush-notifications')->withoutOverlapping();
