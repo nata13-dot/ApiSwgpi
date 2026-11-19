@@ -107,6 +107,43 @@ class RepositoryController extends Controller
         return response()->json($query->paginate(12));
     }
 
+    /**
+     * Resumen público para la portada: cuántos documentos públicos hay por tipo y los publicados más recientes.
+     * Sin datos personales más allá del autor que ya aparece en el repositorio público.
+     */
+    public function summary()
+    {
+        if (! $this->repositoryDocumentsHas('visibility')) {
+            return response()->json(['total' => 0, 'categories' => [], 'latest' => []]);
+        }
+        $data = \Illuminate\Support\Facades\Cache::remember('repositorio:resumen-publico', 120, function () {
+            $base = fn () => RepositoryDocument::query()->where('activo', true)
+                ->where('visibility', RepositoryDocument::VISIBILITY_PUBLIC)->whereNotNull('published_at');
+            $groups = [
+                'desarrollo' => [RepositoryDocument::CATEGORY_EVALUATION_DOCUMENT],
+                'tesis' => [RepositoryDocument::CATEGORY_THESIS_GENERAL],
+                'residencias' => [RepositoryDocument::CATEGORY_THESIS_RESIDENCY],
+                'general' => [RepositoryDocument::CATEGORY_REPOSITORY],
+            ];
+            $hasCategory = $this->repositoryDocumentsHas('document_category');
+            $categories = [];
+            foreach ($groups as $key => $values) {
+                $categories[$key] = $hasCategory ? $base()->whereIn('document_category', $values)->count() : 0;
+            }
+            $latest = $base()->orderByDesc('published_at')->limit(4)->get()->map(fn ($document) => [
+                'id' => $document->id,
+                'nombre' => $document->nombre,
+                'autor' => $document->autor_nombre,
+                'categoria' => $document->document_category,
+                'publicado' => optional($document->published_at)->toDateString(),
+            ])->all();
+
+            return ['total' => $base()->count(), 'categories' => $categories, 'latest' => $latest];
+        });
+
+        return response()->json($data);
+    }
+
     public function search(Request $request)
     {
         return $this->index($request);

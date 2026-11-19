@@ -54,6 +54,7 @@ Route::get('/projects-template.xls', [ProjectController::class, 'projectsExcelTe
 Route::prefix('repositorio')->group(function () {
     Route::get('/', [RepositoryController::class, 'index']);
     Route::get('/buscar', [RepositoryController::class, 'search']);
+    Route::get('/resumen', [RepositoryController::class, 'summary']);
     Route::get('/proyecto/{projectId}', [RepositoryController::class, 'byProject']);
     Route::get('/etiqueta/{tagId}', [RepositoryController::class, 'byTag']);
     Route::middleware(['auth:api', 'active', 'career', 'academic.open'])->group(function () {
