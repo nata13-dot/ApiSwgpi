@@ -71,8 +71,12 @@ class ProjectTrackingController extends Controller
         $course = $this->courseFor($course);
         $this->tracking->syncCourse($course);
         $linked = $this->tracking->linkedProjects($course);
+        $competencies = $this->tracking->competencies((int) $course->asignatura_id);
+        $order = $competencies->pluck('orden', 'id');
+        // Agrupados por competencia (en su orden) y, dentro de cada una, por fecha.
         $deliverables = DB::table('entregables')->where('curso_id', $course->id)->where('activo', true)->orderByRaw('fecha_limite IS NULL')->orderBy('fecha_limite')->orderBy('id')
-            ->get(['id', 'nombre', 'descripcion', 'tipo_documento', 'estado', 'fecha_limite', 'ponderacion', 'plantilla_id']);
+            ->get(['id', 'nombre', 'descripcion', 'tipo_documento', 'estado', 'fecha_limite', 'ponderacion', 'plantilla_id', 'competencia_id', 'extensiones'])
+            ->sortBy(fn ($d) => $d->competencia_id && $order->has($d->competencia_id) ? (int) $order[$d->competencia_id] : 999, SORT_NUMERIC)->values();
         $ids = $deliverables->pluck('id');
         $deliveries = DB::table('entregas as e')->leftJoin('documento_versiones as v', function ($join) {
             $join->on('v.documento_id', '=', 'e.documento_id')->whereRaw('v.numero_version = (SELECT MAX(x.numero_version) FROM documento_versiones x WHERE x.documento_id = e.documento_id)');
@@ -108,8 +112,10 @@ class ProjectTrackingController extends Controller
                         'estudiante_id' => $row->estudiante_id, 'calificacion' => (float) $row->calificacion, 'motivo' => $row->motivo,
                     ])->values() : [],
                     'ponderacion' => $deliverable->ponderacion !== null ? (float) $deliverable->ponderacion : null,
+                    'competencia_id' => $deliverable->competencia_id,
                 ];
             })->values();
+            $open = $cells->where('estado', '!=', 'borrador');
 
             return [
                 'id' => $project->id,
@@ -119,7 +125,9 @@ class ProjectTrackingController extends Controller
                 'integrantes' => ($members->get($project->id) ?? collect())->map(fn ($m) => [
                     'id' => $m->id, 'nombre' => trim("{$m->nombres} {$m->apellido_paterno} {$m->apellido_materno}"),
                 ])->values(),
-                'promedio' => ProjectTrackingService::average($cells->where('estado', '!=', 'borrador')->values()->all()),
+                'promedio' => ProjectTrackingService::average($open->values()->all()),
+                'promedios_competencia' => $open->whereNotNull('competencia_id')->groupBy('competencia_id')
+                    ->map(fn ($items) => ProjectTrackingService::average($items->values()->all())),
                 'celdas' => $cells,
             ];
         })->values();
@@ -133,7 +141,10 @@ class ProjectTrackingController extends Controller
                 'id' => $d->id, 'nombre' => $d->nombre, 'descripcion' => $d->descripcion, 'tipo_documento' => $d->tipo_documento,
                 'estado' => $d->estado, 'fecha_limite' => $d->fecha_limite ? Carbon::parse($d->fecha_limite)->toIso8601String() : null,
                 'ponderacion' => $d->ponderacion !== null ? (float) $d->ponderacion : null, 'plantilla_id' => $d->plantilla_id,
+                'competencia_id' => $d->competencia_id, 'tipos_archivo' => ProjectTrackingService::fileTypes($d->extensiones),
             ])->values(),
+            'competencias' => $competencies->values(),
+            'file_types' => array_keys(ProjectTrackingService::FILE_TYPES),
             'template_pending' => $this->pendingTemplate($course, $deliverables)->values(),
             'projects' => $rows,
             'removed' => $removed,
@@ -156,6 +167,7 @@ class ProjectTrackingController extends Controller
                 DB::table('entregables')->insert([
                     'curso_id' => $course->id, 'nombre' => $item->nombre, 'descripcion' => $item->descripcion, 'tipo_documento' => $item->tipo_documento,
                     'fecha_limite' => $due && $due->isFuture() ? $due : null, 'ponderacion' => $item->ponderacion, 'plantilla_id' => $item->id,
+                    'competencia_id' => $item->competencia_id ?? null, 'extensiones' => $item->extensiones ?? null,
                     'estado' => 'borrador', 'activo' => true, 'creado_en' => now(),
                 ]);
             }
@@ -321,11 +333,17 @@ class ProjectTrackingController extends Controller
                 'id' => $m->id, 'asignatura_id' => $m->asignatura_id, 'asignatura' => $m->asignatura, 'clave' => $m->asignatura_clave,
                 'modalidades' => $this->tracking->modalitiesOf($m), 'activo' => (bool) $m->activo,
                 'semestres' => $semesters->get($m->asignatura_id, collect())->values(),
+                'competencias' => $this->tracking->competencies((int) $m->asignatura_id)->values(),
                 'plantilla' => ($templates->get($m->id) ?? collect())->map(fn ($t) => [
                     'id' => $t->id, 'nombre' => $t->nombre, 'descripcion' => $t->descripcion, 'tipo_documento' => $t->tipo_documento,
                     'semana' => $t->semana, 'ponderacion' => $t->ponderacion !== null ? (float) $t->ponderacion : null,
+                    'competencia_id' => $t->competencia_id ?? null, 'tipos_archivo' => ProjectTrackingService::fileTypes($t->extensiones ?? null),
                 ])->values(),
             ])->values(),
+            'packages' => $this->packages($career),
+            'subjects_all' => DB::table('asignaturas')->where('carrera_id', $career)->where('activo', true)->orderBy('nombre')->get(['id', 'nombre', 'clave'])
+                ->map(fn ($a) => ['id' => $a->id, 'nombre' => $a->nombre, 'clave' => $a->clave, 'semestres' => $semesters->get($a->id, collect())->values()]),
+            'file_types' => array_keys(ProjectTrackingService::FILE_TYPES),
             'catalog' => DB::table('asignaturas')->where('carrera_id', $career)->where('activo', true)->whereNotIn('id', $subjects->pluck('asignatura_id'))
                 ->orderBy('nombre')->get(['id', 'nombre', 'clave'])->map(fn ($a) => [
                     'id' => $a->id, 'nombre' => $a->nombre, 'clave' => $a->clave, 'semestres' => $semesters->get($a->id, collect())->values(),
@@ -379,6 +397,9 @@ class ProjectTrackingController extends Controller
             'items.*.tipo_documento' => 'nullable|in:reporte,video,presentacion,codigo,documento,otro',
             'items.*.semana' => 'nullable|integer|min:1|max:24',
             'items.*.ponderacion' => 'nullable|numeric|min:0|max:100',
+            'items.*.competencia_id' => ['nullable', 'integer', Rule::exists('competencias_materia', 'id')->where('asignatura_id', $subject->asignatura_id)],
+            'items.*.tipos_archivo' => 'nullable|array',
+            'items.*.tipos_archivo.*' => Rule::in(array_keys(ProjectTrackingService::FILE_TYPES)),
         ]);
         $weights = array_sum(array_map(fn ($item) => (float) ($item['ponderacion'] ?? 0), $data['items']));
         abort_if($weights > 100.001, 422, 'Las ponderaciones suman más de 100 %.');
@@ -390,12 +411,174 @@ class ProjectTrackingController extends Controller
                 DB::table('plantillas_avance')->insert([
                     'materia_seguimiento_id' => $id, 'orden' => $index + 1, 'nombre' => $item['nombre'], 'descripcion' => $item['descripcion'] ?? null,
                     'tipo_documento' => $item['tipo_documento'] ?? 'documento', 'semana' => $item['semana'] ?? null, 'ponderacion' => $item['ponderacion'] ?? null,
+                    'competencia_id' => $item['competencia_id'] ?? null, 'extensiones' => ProjectTrackingService::storeFileTypes($item['tipos_archivo'] ?? null),
                 ]);
             }
             $this->workflow->audit('seguimiento.plantilla', 'asignatura', $subject->asignatura_id, $before, $data['items']);
         });
 
         return response()->json(['message' => 'Plantilla guardada. Cada docente la aplica desde su materia.']);
+    }
+
+    /** Competencias de la materia: se editan en lista; las quitadas se desactivan para no romper avances ligados. */
+    public function updateCompetencies(Request $request, int $id)
+    {
+        $this->requireStaff();
+        $subject = DB::table('materias_seguimiento')->where('id', $id)->where('carrera_id', $this->career())->first();
+        abort_unless($subject, 404);
+        $data = $request->validate([
+            'items' => 'present|array|max:20',
+            'items.*.id' => ['nullable', 'integer', Rule::exists('competencias_materia', 'id')->where('asignatura_id', $subject->asignatura_id)],
+            'items.*.nombre' => 'required|string|max:200',
+            'items.*.descripcion' => 'nullable|string|max:2000',
+        ]);
+        DB::transaction(function () use ($data, $subject) {
+            $before = $this->tracking->competencies((int) $subject->asignatura_id);
+            $kept = [];
+            foreach (array_values($data['items']) as $index => $item) {
+                $values = ['orden' => $index + 1, 'nombre' => $item['nombre'], 'descripcion' => $item['descripcion'] ?? null, 'activo' => true];
+                if (!empty($item['id'])) { DB::table('competencias_materia')->where('id', $item['id'])->update($values); $kept[] = (int) $item['id']; }
+                else $kept[] = DB::table('competencias_materia')->insertGetId($values + ['asignatura_id' => $subject->asignatura_id]);
+            }
+            DB::table('competencias_materia')->where('asignatura_id', $subject->asignatura_id)->whereNotIn('id', $kept)->update(['activo' => false]);
+            $this->workflow->audit('seguimiento.competencias', 'asignatura', $subject->asignatura_id, $before, $data['items']);
+        });
+
+        return response()->json(['message' => 'Competencias guardadas.']);
+    }
+
+    // ---------------------------------------------------------------- Paquetes de materias
+
+    public function storePackage(Request $request)
+    {
+        $this->requireStaff();
+        $career = $this->career();
+        $data = $this->validatePackage($request, $career);
+        $id = DB::transaction(function () use ($data, $career) {
+            $id = DB::table('paquetes_seguimiento')->insertGetId(['carrera_id' => $career, 'nombre' => $data['nombre'], 'semestre' => $data['semestre'] ?? null,
+                'descripcion' => $data['descripcion'] ?? null, 'actualizado_por' => auth('api')->id(), 'creado_en' => now(), 'actualizado_en' => now()]);
+            $this->savePackageSubjects($id, $data['materias']);
+            $this->workflow->audit('seguimiento.paquete_creado', 'paquete', $id, null, $data);
+
+            return $id;
+        });
+
+        return response()->json(['message' => 'Paquete creado.', 'id' => $id], 201);
+    }
+
+    /** Guarda como paquete las materias que hoy piden avances, con sus modalidades. */
+    public function packageFromCurrent(Request $request)
+    {
+        $this->requireStaff();
+        $career = $this->career();
+        $data = $request->validate(['nombre' => 'required|string|max:150', 'semestre' => 'nullable|integer|min:1|max:12', 'descripcion' => 'nullable|string|max:500']);
+        $current = DB::table('materias_seguimiento')->where('carrera_id', $career)->where('activo', true)->get();
+        abort_if($current->isEmpty(), 422, 'Todavía no hay materias que pidan avances.');
+        $materias = $current->map(fn ($m) => ['asignatura_id' => $m->asignatura_id, 'modalidades' => $this->tracking->modalitiesOf($m)])->all();
+        $id = DB::transaction(function () use ($data, $career, $materias) {
+            $id = DB::table('paquetes_seguimiento')->insertGetId(['carrera_id' => $career, 'nombre' => $data['nombre'], 'semestre' => $data['semestre'] ?? null,
+                'descripcion' => $data['descripcion'] ?? null, 'actualizado_por' => auth('api')->id(), 'creado_en' => now(), 'actualizado_en' => now()]);
+            $this->savePackageSubjects($id, $materias);
+            $this->workflow->audit('seguimiento.paquete_creado', 'paquete', $id, null, $data + ['materias' => $materias]);
+
+            return $id;
+        });
+
+        return response()->json(['message' => "Paquete creado con {$current->count()} materia(s).", 'id' => $id], 201);
+    }
+
+    public function updatePackage(Request $request, int $id)
+    {
+        $this->requireStaff();
+        $career = $this->career();
+        $before = DB::table('paquetes_seguimiento')->where('id', $id)->where('carrera_id', $career)->first();
+        abort_unless($before, 404);
+        $data = $this->validatePackage($request, $career);
+        DB::transaction(function () use ($id, $data, $before) {
+            DB::table('paquetes_seguimiento')->where('id', $id)->update(['nombre' => $data['nombre'], 'semestre' => $data['semestre'] ?? null,
+                'descripcion' => $data['descripcion'] ?? null, 'actualizado_por' => auth('api')->id(), 'actualizado_en' => now()]);
+            DB::table('paquete_materias')->where('paquete_id', $id)->delete();
+            $this->savePackageSubjects($id, $data['materias']);
+            $this->workflow->audit('seguimiento.paquete', 'paquete', $id, $before, $data);
+        });
+
+        return response()->json(['message' => 'Paquete actualizado.']);
+    }
+
+    public function destroyPackage(int $id)
+    {
+        $this->requireStaff();
+        $before = DB::table('paquetes_seguimiento')->where('id', $id)->where('carrera_id', $this->career())->first();
+        abort_unless($before, 404);
+        DB::table('paquetes_seguimiento')->where('id', $id)->delete();
+        $this->workflow->audit('seguimiento.paquete_eliminado', 'paquete', $id, $before, null);
+
+        return response()->json(['message' => 'Paquete eliminado; las materias que ya piden avances no cambian.']);
+    }
+
+    /**
+     * Aplica un paquete: sus materias piden avances con sus modalidades (se conservan plantillas y competencias).
+     * Con "reemplazar", las demás materias dejan de pedir avances; lo entregado se conserva.
+     */
+    public function applyPackage(Request $request, int $id)
+    {
+        $this->requireStaff();
+        $career = $this->career();
+        $package = DB::table('paquetes_seguimiento')->where('id', $id)->where('carrera_id', $career)->first();
+        abort_unless($package, 404);
+        $data = $request->validate(['reemplazar' => 'sometimes|boolean']);
+        $subjects = DB::table('paquete_materias')->where('paquete_id', $id)->get();
+        abort_if($subjects->isEmpty(), 422, 'El paquete no tiene materias.');
+        DB::transaction(function () use ($subjects, $career, $data, $package) {
+            foreach ($subjects as $subject) {
+                DB::table('materias_seguimiento')->updateOrInsert(['carrera_id' => $career, 'asignatura_id' => $subject->asignatura_id], [
+                    'aplica_integrador' => $subject->aplica_integrador, 'aplica_caso' => $subject->aplica_caso, 'aplica_dual' => $subject->aplica_dual,
+                    'activo' => true, 'actualizado_por' => auth('api')->id(), 'actualizado_en' => now(),
+                ]);
+            }
+            if (!empty($data['reemplazar'])) {
+                DB::table('materias_seguimiento')->where('carrera_id', $career)->whereNotIn('asignatura_id', $subjects->pluck('asignatura_id'))
+                    ->update(['activo' => false, 'actualizado_por' => auth('api')->id(), 'actualizado_en' => now()]);
+            }
+            $this->workflow->audit('seguimiento.paquete_aplicado', 'paquete', $package->id, null, ['reemplazar' => !empty($data['reemplazar'])]);
+        });
+        $this->tracking->syncCareer($career);
+
+        return response()->json(['message' => "Paquete «{$package->nombre}» aplicado: {$subjects->count()} materia(s) piden avances."]);
+    }
+
+    private function validatePackage(Request $request, int $career): array
+    {
+        return $request->validate([
+            'nombre' => 'required|string|max:150',
+            'semestre' => 'nullable|integer|min:1|max:12',
+            'descripcion' => 'nullable|string|max:500',
+            'materias' => 'required|array|min:1|max:60',
+            'materias.*.asignatura_id' => ['required', 'integer', 'distinct', Rule::exists('asignaturas', 'id')->where('carrera_id', $career)],
+            'materias.*.modalidades' => 'required|array|min:1',
+            'materias.*.modalidades.*' => Rule::in(array_keys(ProjectTrackingService::MODALITIES)),
+        ]);
+    }
+
+    private function savePackageSubjects(int $id, array $materias): void
+    {
+        foreach ($materias as $materia) {
+            DB::table('paquete_materias')->insert(['paquete_id' => $id, 'asignatura_id' => $materia['asignatura_id']] + $this->modalityColumns($materia['modalidades']));
+        }
+    }
+
+    private function packages(int $career)
+    {
+        $packages = DB::table('paquetes_seguimiento')->where('carrera_id', $career)->orderByRaw('semestre IS NULL')->orderBy('semestre')->orderBy('nombre')->get();
+        $subjects = DB::table('paquete_materias as pm')->join('asignaturas as a', 'a.id', '=', 'pm.asignatura_id')
+            ->whereIn('pm.paquete_id', $packages->pluck('id'))->orderBy('a.nombre')->get(['pm.*', 'a.nombre', 'a.clave'])->groupBy('paquete_id');
+
+        return $packages->map(fn ($p) => [
+            'id' => $p->id, 'nombre' => $p->nombre, 'semestre' => $p->semestre !== null ? (int) $p->semestre : null, 'descripcion' => $p->descripcion,
+            'materias' => ($subjects->get($p->id) ?? collect())->map(fn ($m) => [
+                'asignatura_id' => $m->asignatura_id, 'nombre' => $m->nombre, 'clave' => $m->clave, 'modalidades' => $this->tracking->modalitiesOf($m),
+            ])->values(),
+        ])->values();
     }
 
     // ---------------------------------------------------------------- Apoyo

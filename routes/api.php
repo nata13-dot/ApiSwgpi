@@ -410,6 +410,12 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::post('/config', [ProjectTrackingController::class, 'storeSubject']);
         Route::put('/config/{id}', [ProjectTrackingController::class, 'updateSubject'])->whereNumber('id');
         Route::put('/config/{id}/template', [ProjectTrackingController::class, 'updateTemplate'])->whereNumber('id');
+        Route::put('/config/{id}/competencies', [ProjectTrackingController::class, 'updateCompetencies'])->whereNumber('id');
+        Route::post('/packages', [ProjectTrackingController::class, 'storePackage']);
+        Route::post('/packages/from-current', [ProjectTrackingController::class, 'packageFromCurrent']);
+        Route::put('/packages/{id}', [ProjectTrackingController::class, 'updatePackage'])->whereNumber('id');
+        Route::delete('/packages/{id}', [ProjectTrackingController::class, 'destroyPackage'])->whereNumber('id');
+        Route::post('/packages/{id}/apply', [ProjectTrackingController::class, 'applyPackage'])->whereNumber('id');
     });
 
     // Asignaturas (solo Admin puede crear/editar)

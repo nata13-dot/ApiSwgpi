@@ -370,6 +370,9 @@ class DeliverableController extends Controller
                 'fecha_limite' => ['nullable', 'date', new \App\Rules\NotBeforeNow()],
                 'curso_id' => 'nullable|integer|exists:cursos,id',
                 'ponderacion' => 'nullable|numeric|min:0|max:100',
+                'competencia_materia_id' => 'nullable|integer|exists:competencias_materia,id',
+                'tipos_archivo' => 'nullable|array',
+                'tipos_archivo.*' => 'string|in:'.implode(',', array_keys(\App\Services\ProjectTrackingService::FILE_TYPES)),
             ]);
 
             // Desde el tablero de seguimiento llega el curso exacto (materia + grupo).
@@ -384,6 +387,8 @@ class DeliverableController extends Controller
                 'estado' => $this->normalizedDeliverableState($validated['estado'] ?? 'publicado'),
                 'fecha_limite' => $validated['fecha_limite'] ?? null,
                 'ponderacion' => $validated['ponderacion'] ?? null,
+                'competencia_id' => $this->competencyFor($validated['competencia_materia_id'] ?? null, $courseId),
+                'extensiones' => \App\Services\ProjectTrackingService::storeFileTypes($validated['tipos_archivo'] ?? null),
                 'activo' => true,
             ]);
             $project = ! empty($validated['project_id']) ? Project::find($validated['project_id']) : null;
@@ -440,9 +445,14 @@ class DeliverableController extends Controller
                 'activo' => 'nullable|boolean',
                 'fecha_limite' => ['nullable', 'date', new \App\Rules\NotBeforeNow($deliverable->fecha_limite)],
                 'ponderacion' => 'nullable|numeric|min:0|max:100',
+                'competencia_materia_id' => 'nullable|integer|exists:competencias_materia,id',
+                'tipos_archivo' => 'nullable|array',
+                'tipos_archivo.*' => 'string|in:'.implode(',', array_keys(\App\Services\ProjectTrackingService::FILE_TYPES)),
             ]);
 
             $payload = collect($validated)->only(['nombre', 'descripcion', 'tipo_documento', 'activo', 'fecha_limite', 'ponderacion'])->toArray();
+            if ($request->exists('competencia_materia_id')) $payload['competencia_id'] = $this->competencyFor($validated['competencia_materia_id'] ?? null, (int) $deliverable->curso_id);
+            if ($request->exists('tipos_archivo')) $payload['extensiones'] = \App\Services\ProjectTrackingService::storeFileTypes($validated['tipos_archivo'] ?? null);
             $wasPublished = $deliverable->estado === 'publicado';
             if (isset($validated['estado'])) {
                 $payload['estado'] = $this->normalizedDeliverableState($validated['estado']);
@@ -801,6 +811,16 @@ class DeliverableController extends Controller
         );
     }
 
+    /** La competencia debe ser de la materia del curso; si no, se rechaza. */
+    private function competencyFor(?int $competencyId, int $courseId): ?int
+    {
+        if (! $competencyId) return null;
+        $subject = DB::table('cursos')->where('id', $courseId)->value('asignatura_id');
+        abort_unless(DB::table('competencias_materia')->where('id', $competencyId)->where('asignatura_id', $subject)->exists(), 422, 'La competencia no pertenece a la materia del avance.');
+
+        return $competencyId;
+    }
+
     private function teachesCourse(User $user, Deliverable $deliverable): bool
     {
         return $user->canManageAcademics() || DB::table('curso_docentes')->where('curso_id', $deliverable->curso_id)
@@ -906,6 +926,9 @@ class DeliverableController extends Controller
             'comentarios_docente' => $delivery?->comentarios_docente,
             'calificacion_equipo' => $teamGrade,
             'ponderacion' => $deliverable->ponderacion !== null ? (float) $deliverable->ponderacion : null,
+            'extensiones' => $this->allowedExtensionsFor($deliverable),
+            'tipos_archivo' => \App\Services\ProjectTrackingService::fileTypes($deliverable->extensiones),
+            'competencia_materia' => $deliverable->competencia_id ? DB::table('competencias_materia')->where('id', $deliverable->competencia_id)->first(['id', 'orden', 'nombre']) : null,
             'project_id' => $project?->id,
             'delivery_id' => $delivery?->id,
             'document_id' => $delivery?->documento_id,
@@ -966,7 +989,8 @@ class DeliverableController extends Controller
         return match ($this->deliverableCategory($deliverable)) {
             self::CATEGORY_RESEARCH_DOCUMENT => ['pdf', 'doc', 'docx'],
             self::CATEGORY_EVALUATION_SLIDES => ['ppt', 'pptx', 'pdf'],
-            default => SystemSetting::valueFor('allowed_file_types', config('uploads.default_extensions')),
+            default => \App\Services\ProjectTrackingService::extensionsFor($deliverable->extensiones, (array) SystemSetting::valueFor('allowed_file_types', config('uploads.default_extensions')))
+                ?? SystemSetting::valueFor('allowed_file_types', config('uploads.default_extensions')),
         };
     }
 

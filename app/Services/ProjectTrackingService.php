@@ -20,6 +20,44 @@ class ProjectTrackingService
 
     private const EXCLUDED_STATES = ['rechazado', 'no_viable', 'archivado'];
 
+    /** Tipos de archivo que el docente puede exigir en un avance (clave => extensiones). */
+    public const FILE_TYPES = [
+        'pdf' => ['pdf'], 'word' => ['doc', 'docx'], 'excel' => ['xls', 'xlsx'], 'powerpoint' => ['ppt', 'pptx'],
+        'imagen' => ['jpg', 'jpeg', 'png', 'webp'], 'comprimido' => ['zip', 'rar', '7z'], 'texto' => ['txt'],
+    ];
+
+    /** "pdf,word" → ['pdf', 'word'] (sólo claves conocidas). */
+    public static function fileTypes(?string $stored): array
+    {
+        return array_values(array_intersect(array_filter(array_map('trim', explode(',', (string) $stored))), array_keys(self::FILE_TYPES)));
+    }
+
+    public static function storeFileTypes(?array $types): ?string
+    {
+        $types = array_values(array_intersect($types ?? [], array_keys(self::FILE_TYPES)));
+
+        return $types ? implode(',', $types) : null;
+    }
+
+    /** Extensiones aceptadas por un avance, dentro de las que permite el sistema. Null = las del sistema. */
+    public static function extensionsFor(?string $stored, array $systemAllowed): ?array
+    {
+        $types = self::fileTypes($stored);
+        if (!$types) return null;
+        $extensions = array_merge(...array_map(fn ($type) => self::FILE_TYPES[$type], $types));
+        $allowed = array_values(array_intersect($extensions, array_map('strtolower', $systemAllowed)));
+
+        return $allowed ?: $extensions;
+    }
+
+    /** Competencias activas de una materia, en orden. */
+    public function competencies(int $subjectId)
+    {
+        return SchemaCache::hasTable('competencias_materia')
+            ? DB::table('competencias_materia')->where('asignatura_id', $subjectId)->where('activo', true)->orderBy('orden')->orderBy('id')->get(['id', 'orden', 'nombre', 'descripcion'])
+            : collect();
+    }
+
     public function ready(): bool
     {
         return SchemaCache::hasTable('materias_seguimiento') && SchemaCache::hasColumn('curso_estudiantes', 'origen');
