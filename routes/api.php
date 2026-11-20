@@ -45,6 +45,7 @@ Route::get('/settings/public', [SystemSettingController::class, 'public']);
 // Actualización de la app Android (pública: se consulta también antes de iniciar sesión).
 Route::get('/app/latest', [\App\Http\Controllers\API\AppReleaseController::class, 'latest'])->middleware('throttle:60,1');
 Route::get('/app/download/{id}', [\App\Http\Controllers\API\AppReleaseController::class, 'download'])->whereNumber('id')->middleware('throttle:20,1');
+Route::post('/app/publish', [\App\Http\Controllers\API\AppReleaseController::class, 'publishWithToken'])->middleware('throttle:10,1');
 Route::get('/help/public', [\App\Http\Controllers\API\HelpController::class, 'publicIndex'])->middleware('throttle:60,1');
 Route::get('/self-registration', [SelfRegistrationController::class, 'index']);
 Route::post('/self-registration', [SelfRegistrationController::class, 'request'])->middleware('throttle:self-registration');

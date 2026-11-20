@@ -185,6 +185,19 @@ Artisan::command('sgpi:sync-tracking {--career= : Sólo esta carrera}', function
     }
     return self::SUCCESS;
 })->purpose('Liga los proyectos a las materias de seguimiento de su grupo y modalidad');
+Artisan::command('sgpi:release-token {nombre=compilacion : Para reconocer la llave} {--revoke : Revoca todas las llaves activas}', function () {
+    if ($this->option('revoke')) {
+        $count = DB::table('app_llaves_publicacion')->whereNull('revocada_en')->update(['revocada_en' => now()]);
+        $this->info("Llaves revocadas: {$count}. La publicación automática queda desactivada.");
+        return self::SUCCESS;
+    }
+    $token = bin2hex(random_bytes(32));
+    DB::table('app_llaves_publicacion')->insert(['huella' => hash('sha256', $token), 'nombre' => mb_substr((string) $this->argument('nombre'), 0, 80), 'creada_en' => now()]);
+    $this->warn('Llave de publicación (se muestra una sola vez; guárdala en la computadora que compila):');
+    $this->line($token);
+    $this->line('Sólo sirve para publicar versiones de la app. Para desactivarla: php artisan sgpi:release-token --revoke');
+    return self::SUCCESS;
+})->purpose('Crea una llave para publicar versiones de la app automáticamente');
 Schedule::command('sgpi:sync-tracking')->everyThirtyMinutes()->name('sync-tracking')->withoutOverlapping();
 Schedule::command('sgpi:send-reminders')->dailyAt('09:00')->timezone('America/Mexico_City')->name('send-reminders')->withoutOverlapping();
 Schedule::command('sgpi:send-reminders --weekly')->weeklyOn(1, '08:00')->timezone('America/Mexico_City')->name('send-weekly-digests')->withoutOverlapping();

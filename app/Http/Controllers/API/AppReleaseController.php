@@ -70,6 +70,26 @@ class AppReleaseController extends Controller
 
     public function store(Request $request)
     {
+        return $this->publish($request, (string) auth('api')->id());
+    }
+
+    /**
+     * Publicación automática desde el script de compilación (npm run release:android). Se autentica con una
+     * llave de publicación (php artisan sgpi:release-token), no con una sesión de usuario.
+     */
+    public function publishWithToken(Request $request)
+    {
+        $token = (string) $request->header('X-SGPI-Release-Token', '');
+        abort_if(strlen($token) < 32 || !SchemaCache::hasTable('app_llaves_publicacion'), 401, 'Llave de publicación no válida.');
+        $key = DB::table('app_llaves_publicacion')->where('huella', hash('sha256', $token))->whereNull('revocada_en')->first();
+        abort_unless($key, 401, 'Llave de publicación no válida.');
+        DB::table('app_llaves_publicacion')->where('id', $key->id)->update(['ultimo_uso' => now()]);
+
+        return $this->publish($request, 'auto:'.mb_substr($key->nombre, 0, 15));
+    }
+
+    private function publish(Request $request, string $by)
+    {
         $data = $request->validate([
             'apk' => 'required|file|max:204800',
             'version_code' => 'required|integer|min:1|unique:app_versiones,version_code',
@@ -88,7 +108,7 @@ class AppReleaseController extends Controller
             'version_code' => $data['version_code'], 'version_name' => $data['version_name'], 'notas' => $data['notas'] ?? null,
             'obligatoria' => (bool) ($data['obligatoria'] ?? false), 'activa' => true, 'ruta' => $stored,
             'tamano_bytes' => $file->getSize(), 'sha256' => hash_file('sha256', $path),
-            'publicada_por' => auth('api')->id(), 'publicada_en' => now(),
+            'publicada_por' => mb_substr($by, 0, 20), 'publicada_en' => now(),
         ]);
 
         return response()->json(['message' => "Versión {$data['version_name']} publicada. Las apps la ofrecerán al abrirse.", 'id' => $id], 201);
