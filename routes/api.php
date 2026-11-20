@@ -42,6 +42,9 @@ Route::post('/auth/password/request-token', [AuthController::class, 'requestPass
 Route::post('/auth/password/verify-token', [AuthController::class, 'verifyPasswordResetToken'])->middleware('throttle:password-recovery');
 Route::post('/auth/password/reset', [AuthController::class, 'resetPasswordWithToken'])->middleware('throttle:password-recovery');
 Route::get('/settings/public', [SystemSettingController::class, 'public']);
+// Actualización de la app Android (pública: se consulta también antes de iniciar sesión).
+Route::get('/app/latest', [\App\Http\Controllers\API\AppReleaseController::class, 'latest'])->middleware('throttle:60,1');
+Route::get('/app/download/{id}', [\App\Http\Controllers\API\AppReleaseController::class, 'download'])->whereNumber('id')->middleware('throttle:20,1');
 Route::get('/help/public', [\App\Http\Controllers\API\HelpController::class, 'publicIndex'])->middleware('throttle:60,1');
 Route::get('/self-registration', [SelfRegistrationController::class, 'index']);
 Route::post('/self-registration', [SelfRegistrationController::class, 'request'])->middleware('throttle:self-registration');
@@ -146,6 +149,10 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
     });
     Route::middleware('role:general_admin')->prefix('admin')->group(function () {
         Route::get('/operational-alerts', [OperationalAlertController::class, 'index']);
+        Route::get('/app-releases', [\App\Http\Controllers\API\AppReleaseController::class, 'index']);
+        Route::post('/app-releases', [\App\Http\Controllers\API\AppReleaseController::class, 'store']);
+        Route::put('/app-releases/{id}', [\App\Http\Controllers\API\AppReleaseController::class, 'update'])->whereNumber('id');
+        Route::delete('/app-releases/{id}', [\App\Http\Controllers\API\AppReleaseController::class, 'destroy'])->whereNumber('id');
         Route::get('/operational-alerts/summary', [OperationalAlertController::class, 'summary']);
         Route::post('/operational-alerts/scan', [OperationalAlertController::class, 'scan']);
         Route::put('/operational-alerts/{alert}/acknowledge', [OperationalAlertController::class, 'acknowledge']);
