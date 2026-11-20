@@ -156,11 +156,25 @@ class SubjectGroupController extends Controller
             return response()->json(['error' => 'Carga de asignaturas no encontrada'], 404);
         }
 
-        if ($group->projects()->exists()) {
-            return response()->json(['message' => 'No puedes eliminar una carga usada por proyectos.'], 422);
+        // Eliminar sólo oculta el grupo (el historial se conserva): lo impiden los proyectos vigentes y los alumnos actuales,
+        // no los proyectos ya archivados o dados de baja.
+        $projects = DB::table('proyectos')->where('activo', true)->whereNull('archivado_en')->whereNotIn('estado', ['archivado', 'rechazado', 'no_viable'])
+            ->where(fn ($q) => $q->where('grupo_id', $group->id)->orWhereIn('id', DB::table('proyecto_periodos')->where('grupo_id', $group->id)->select('proyecto_id')))
+            ->orderBy('titulo')->pluck('titulo');
+        if ($projects->isNotEmpty()) {
+            $list = $projects->take(3)->map(fn ($t) => "«{$t}»")->implode(', ').($projects->count() > 3 ? ' y '.($projects->count() - 3).' más' : '');
+            return response()->json(['message' => "No se puede eliminar: lo usan {$projects->count()} proyecto(s) vigente(s): {$list}. Cámbialos de grupo o archívalos primero."], 422);
         }
 
-        abort_if(DB::table('matriculas_academicas')->where('grupo_id', $group->id)->exists(), 409, 'El grupo tiene matrículas; conserva su historial.');
+        // Misma regla que el control de grupos: matrícula activa, o el registro anterior de quien aún no tiene matrícula.
+        $careerId = (int) $group->carrera_id;
+        $students = DB::table('matriculas_academicas as m')->join('usuarios as u', 'u.id', '=', 'm.estudiante_id')
+            ->where('m.grupo_id', $group->id)->where('m.estado', 'activa')->where('u.activo', true)->count()
+            + (\App\Support\SchemaCache::hasTable('grupo_estudiantes') ? DB::table('grupo_estudiantes as ge')->join('usuarios as u', 'u.id', '=', 'ge.estudiante_id')
+                ->where('ge.grupo_id', $group->id)->where('ge.activo', true)->where('u.activo', true)
+                ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('matriculas_academicas as mx')->join('grupos_academicos as gx', 'gx.id', '=', 'mx.grupo_id')
+                    ->whereColumn('mx.estudiante_id', 'ge.estudiante_id')->where('gx.carrera_id', $careerId)->where('mx.estado', 'activa'))->count() : 0);
+        abort_if($students > 0, 409, "El grupo tiene {$students} alumno(s); quítalos o cámbialos de grupo primero.");
 
         $group->update(['activo' => false]);
         return response()->json(['message' => 'Carga de asignaturas eliminada']);
