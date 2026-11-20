@@ -180,6 +180,72 @@ final class AuditDescriber
         'ActivityNotificationController@markAllRead' => ['Marcó todos sus avisos como leídos', null, null],
     ];
 
+    /**
+     * Importancia para el seguimiento y la retención: las importantes se conservan más tiempo; la rutina, unos días.
+     * Lo que no está en ninguna lista es «edición» (altas y cambios comunes).
+     */
+    private const IMPORTANT = [
+        'SelfRegistrationController@approve', 'SelfRegistrationController@reject', 'SelfRegistrationController@updateRule',
+        'UserController@destroy', 'UserController@toggleActive', 'UserController@bulk', 'UserController@setGeneralAdmin', 'UserController@store',
+        'UserController@importExcel', 'UserController@sendCredentialEmails',
+        'ProjectController@destroy', 'ProjectController@bulkDestroy', 'ProposalWorkflowController@review', 'ProposalWorkflowController@updateValidators',
+        'SubjectGroupController@destroy', 'SubjectGroupController@removeStudent', 'SubjectGroupController@syncStudents',
+        'AsignaturaController@destroy', 'CompetenciaController@destroy', 'DeliverableController@destroy', 'DeliverableController@calificar',
+        'EvaluationController@destroy', 'EvaluationController@score', 'EvaluationController@confirmViability', 'EvaluationController@destroyRoom',
+        'EvaluationController@archive', 'EvaluationController@archiveSelected', 'EvaluationController@updateManagers',
+        'RepositoryController@destroy', 'RepositoryController@publish', 'ArchiveController@archive', 'ArchiveController@restore',
+        'AcademicOperationsController@membership', 'AcademicOperationsController@assign', 'AcademicOperationsController@applyAutomation',
+        'SemesterManagementController@transition', 'SemesterManagementController@activatePeriod', 'SemesterManagementController@applyPromotion',
+        'SemesterManagementController@decideException', 'CourseEnrollmentController@leave',
+        'CareerManagementController@storeMembership', 'CareerManagementController@updateMembership', 'CareerManagementController@destroyMembership',
+        'CareerManagementController@update', 'CareerModuleController@updateModule', 'SystemSettingController@update',
+        'ThesisTrackingController@release', 'ThesisTrackingController@reopen', 'ThesisTrackingController@review', 'ThesisTrackingController@updateReviewers',
+        'ProjectTrackingController@adjust', 'ProjectTrackingController@removeAdjustment', 'ProjectTrackingController@extend', 'ProjectTrackingController@unlink',
+        'ProjectTrackingController@applyPackage', 'ResidencyController@review', 'ResidencyController@close',
+        'DatabaseBackupController@cleanup', 'CareerAuditController@prune', 'ContinuityPolicyController@update',
+        'AppReleaseController@store', 'AppReleaseController@update', 'AppReleaseController@destroy', 'ViewAsController@start',
+    ];
+
+    private const ROUTINE = [
+        'ActivityNotificationController@markRead', 'ActivityNotificationController@markAllRead', 'AppearancePreferenceController@update',
+        'NotificationPreferenceController@update', 'EvaluationController@controlRoomTimer', 'EvaluationController@advanceRoom',
+        'OperationalAlertController@scan', 'CareerIntegrityController@run', 'AuthController@heartbeat', 'AuthController@logout',
+    ];
+
+    public const LEVELS = ['importante' => 'Importante', 'edicion' => 'Edición', 'rutina' => 'Rutina'];
+
+    public static function level(?string $action): string
+    {
+        $short = preg_replace('/^.*\\\\/', '', (string) $action);
+        return in_array($short, self::IMPORTANT, true) ? 'importante' : (in_array($short, self::ROUTINE, true) ? 'rutina' : 'edicion');
+    }
+
+    /** Nombres completos de acción (como se guardan en auditoria_carreras.accion) de un nivel. */
+    public static function actionsOf(string $level): array
+    {
+        $list = $level === 'importante' ? self::IMPORTANT : ($level === 'rutina' ? self::ROUTINE : []);
+        return array_map(fn ($a) => 'App\\Http\\Controllers\\API\\'.$a, $list);
+    }
+
+    /** Personas afectadas (ids de usuario): el objetivo, alumnos o usuarios de acciones masivas y campos de persona. */
+    public static function affected(Request $request, array $before, ?array $response): array
+    {
+        $ids = [];
+        if (($before['tipo'] ?? null) === 'user' && ($before['id'] ?? null) !== null) $ids[] = $before['id'];
+        if (($before['tipo'] ?? null) === 'registration' && !empty($before['matricula'])) $ids[] = $before['matricula'];
+        if (($before['tipo'] ?? null) === 'user' && empty($before['id'])) $ids[] = $response['user']['id'] ?? $response['id'] ?? null;
+        foreach (['ids', 'student_ids', 'user_ids'] as $key) {
+            if (($before['accion'] ?? '') === 'ProjectController@bulkDestroy') break;
+            foreach ((array) $request->input($key, []) as $value) if (is_scalar($value)) $ids[] = $value;
+        }
+        foreach (['student', 'userId'] as $param) if ($request->route($param) !== null) $ids[] = $request->route($param);
+        foreach (['usuario_id', 'user_id', 'student_id', 'estudiante_id', 'docente_id', 'teacher_id'] as $key) {
+            if (is_scalar($request->input($key))) $ids[] = $request->input($key);
+        }
+
+        return collect($ids)->filter(fn ($id) => $id !== null && $id !== '')->map(fn ($id) => (string) $id)->unique()->take(300)->values()->all();
+    }
+
     /** Campos que jamás se registran (sólo se indica que cambiaron, si acaso). */
     private const SECRET = '/pass|contrasena|token|codigo|secret|clave_autoregistro|admin_password/i';
 
@@ -203,7 +269,10 @@ final class AuditDescriber
         $id = $param ? $request->route($param) : null;
         if (is_object($id) && method_exists($id, 'getKey')) $id = $id->getKey();
 
-        return ['accion' => $action, 'frase' => $phrase, 'tipo' => $type, 'objetivo' => $type && $id !== null ? self::label($type, $id) : null];
+        $matricula = $type === 'registration' && $id !== null ? DB::table('autoregistros_pendientes')->where('id', $id)->value('matricula') : null;
+
+        return ['accion' => $action, 'frase' => $phrase, 'tipo' => $type, 'id' => is_scalar($id) ? (string) $id : null, 'matricula' => $matricula,
+            'objetivo' => $type && $id !== null ? self::label($type, $id) : null];
     }
 
     /** Descripción final, con el resultado y los detalles de la petición. */
@@ -226,7 +295,8 @@ final class AuditDescriber
             if ($reason && !collect($details)->contains(fn ($d) => str_contains($d, (string) $reason))) $details[] = 'Motivo: '.mb_substr((string) $reason, 0, 300);
         }
 
-        return ['descripcion' => $sentence, 'objetivo' => $target, 'detalles' => $details];
+        return ['descripcion' => $sentence, 'objetivo' => $target, 'detalles' => $details, 'nivel' => self::level($before['accion'] ?? null),
+            'afectados' => self::affected($request, $before, $response)];
     }
 
     /** Para registros anteriores a esta mejora: lo que se puede deducir de la acción y los parámetros guardados. */

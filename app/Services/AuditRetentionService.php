@@ -13,7 +13,11 @@ use Illuminate\Support\Facades\DB;
  */
 class AuditRetentionService
 {
-    public const DEFAULT_DAYS = 180;
+    public const DEFAULT_DAYS = 90;
+    /** Rutina (avisos leídos, apariencia, temporizador…): se borra pronto. Importantes (aprobaciones, eliminaciones,
+     *  cambios de acceso, calificaciones…): al menos un año, o el plazo general si es mayor. */
+    public const ROUTINE_DAYS = 7;
+    public const IMPORTANT_DAYS = 365;
     public const MIN_DAYS = 30;
     public const MAX_DAYS = 1825;
     /** Tabla => columna de fecha. */
@@ -36,16 +40,46 @@ class AuditRetentionService
         return max(self::MIN_DAYS, min(self::MAX_DAYS, (int) ($this->policy->get()['audit_retention_days'] ?? self::DEFAULT_DAYS)));
     }
 
-    /** Cuántos registros se depurarían hoy, por tabla. */
+    public function importantDays(): int
+    {
+        return max(self::IMPORTANT_DAYS, $this->days());
+    }
+
+    /**
+     * Registros vencidos de una tabla. En la auditoría el plazo depende del nivel de la acción (AuditDescriber):
+     * rutina 7 días, ediciones el plazo general, importantes al menos un año.
+     */
+    private function expired(string $table)
+    {
+        $column = self::TABLES[$table];
+        $general = now()->subDays($this->days())->startOfDay();
+        if ($table !== 'auditoria_carreras') return DB::table($table)->where($column, '<', $general);
+        $routine = \App\Support\AuditDescriber::actionsOf('rutina');
+        $important = \App\Support\AuditDescriber::actionsOf('importante');
+
+        return DB::table($table)->where(function ($q) use ($column, $general, $routine, $important) {
+            $q->where(fn ($r) => $r->whereIn('accion', $routine)->where($column, '<', now()->subDays(self::ROUTINE_DAYS)->startOfDay()))
+                ->orWhere(fn ($r) => $r->whereIn('accion', $important)->where($column, '<', now()->subDays($this->importantDays())->startOfDay()))
+                ->orWhere(fn ($r) => $r->where(fn ($n) => $n->whereNull('accion')->orWhereNotIn('accion', array_merge($routine, $important)))->where($column, '<', $general));
+        });
+    }
+
+    /** Cuántos registros se depurarían hoy, por tabla y, en la auditoría, por nivel. */
     public function preview(): array
     {
         $cutoff = now()->subDays($this->days())->startOfDay();
         $counts = [];
         foreach ($this->tables() as $table => $column) {
-            $counts[$table] = DB::table($table)->where($column, '<', $cutoff)->count();
+            $counts[$table] = $this->expired($table)->count();
+        }
+        $levels = [];
+        if (isset($counts['auditoria_carreras'])) {
+            foreach (['rutina', 'importante'] as $level) $levels[$level] = $this->expired('auditoria_carreras')->whereIn('accion', \App\Support\AuditDescriber::actionsOf($level))->count();
+            $levels['edicion'] = $counts['auditoria_carreras'] - $levels['rutina'] - $levels['importante'];
         }
 
-        return ['days' => $this->days(), 'cutoff' => $cutoff->toDateTimeString(), 'pending' => $counts, 'total' => array_sum($counts)];
+        return ['days' => $this->days(), 'cutoff' => $cutoff->toDateTimeString(), 'pending' => $counts, 'total' => array_sum($counts),
+            'tiers' => ['rutina' => self::ROUTINE_DAYS, 'edicion' => $this->days(), 'importante' => $this->importantDays()], 'by_level' => $levels];
     }
 
     public function run(string $source = 'programado', ?string $actorId = null): array
@@ -55,7 +89,7 @@ class AuditRetentionService
         $cutoff = now()->subDays($days)->startOfDay();
         $preview = $this->preview();
         if (!$preview['total']) {
-            return ['status' => 'sin_cambios', 'message' => "No hay registros de auditoría de antes del {$cutoff->format('d/m/Y')}.", 'records' => $preview['pending']];
+            return ['status' => 'sin_cambios', 'message' => 'No hay registros de auditoría vencidos.', 'records' => $preview['pending']];
         }
         // Sin una copia completa reciente de la base no se depura: así lo borrado también vive en un respaldo completo.
         $backup = DB::table('respaldos_base_datos')->where('estado', 'completado')->whereNull('eliminado_en')
@@ -78,7 +112,7 @@ class AuditRetentionService
                 if (!$count) continue;
                 $column = self::TABLES[$table];
                 do {
-                    $deleted = DB::table($table)->where($column, '<', $cutoff)->where('id', '<=', $limits[$table])->limit(5000)->delete();
+                    $deleted = $this->expired($table)->where('id', '<=', $limits[$table])->limit(5000)->delete();
                 } while ($deleted > 0);
             }
             DB::table('depuraciones_auditoria')->where('id', $id)->update([
@@ -91,7 +125,7 @@ class AuditRetentionService
             throw $error;
         }
 
-        return ['status' => 'completada', 'message' => 'Se copiaron y depuraron '.array_sum($counts)." registros de antes del {$cutoff->format('d/m/Y')}.", 'records' => $counts, 'archive' => $this->find($id)];
+        return ['status' => 'completada', 'message' => 'Se copiaron y depuraron '.array_sum($counts).' registros vencidos (rutina de más de '.self::ROUTINE_DAYS." días, ediciones de más de {$days} y lo importante de más de {$this->importantDays()}).", 'records' => $counts, 'archive' => $this->find($id)];
     }
 
     public function history(int $limit = 30): array
@@ -152,7 +186,7 @@ class AuditRetentionService
                 $counts[$table] = 0;
                 $limits[$table] = 0;
                 $columns = null;
-                DB::table($table)->where($column, '<', $cutoff)->orderBy('id')->chunkById(1000, function ($rows) use ($gz, $pdo, $table, &$counts, &$limits, &$columns) {
+                $this->expired($table)->orderBy('id')->chunkById(1000, function ($rows) use ($gz, $pdo, $table, &$counts, &$limits, &$columns) {
                     foreach ($rows as $row) {
                         $data = (array) $row;
                         $columns ??= '`'.implode('`, `', array_keys($data)).'`';

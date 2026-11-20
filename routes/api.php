@@ -176,6 +176,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::get('/careers/export', [CareerExportController::class, 'institutionalSummary']);
         Route::get('/audit', [CareerAuditController::class, 'index']);
         Route::get('/audit/ip-check', [CareerAuditController::class, 'ipCheck']);
+        Route::get('/audit/person/{id}', [CareerAuditController::class, 'person']);
         Route::get('/audit/retention', [CareerAuditController::class, 'retention']);
         Route::post('/audit/retention/run', [CareerAuditController::class, 'prune']);
         Route::get('/audit/archives/{archive}/download', [CareerAuditController::class, 'downloadArchive'])->whereNumber('archive');

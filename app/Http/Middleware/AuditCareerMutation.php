@@ -20,7 +20,7 @@ class AuditCareerMutation
         }
 
         // El objetivo (nombre, número de control, título) se lee antes: tras eliminar ya no existiría.
-        try { $before = \App\Support\AuditDescriber::before($request); } catch (\Throwable) { $before = ['accion' => null, 'frase' => null, 'tipo' => null, 'objetivo' => null]; }
+        try { $before = \App\Support\AuditDescriber::before($request); } catch (\Throwable) { $before = ['accion' => null, 'frase' => null, 'tipo' => null, 'id' => null, 'objetivo' => null]; }
 
         try {
             $response = $next($request);
@@ -48,7 +48,7 @@ class AuditCareerMutation
     {
         try {
             try { $described = \App\Support\AuditDescriber::describe($request, $before, $status, $response, $error); }
-            catch (\Throwable) { $described = ['descripcion' => null, 'objetivo' => null, 'detalles' => []]; }
+            catch (\Throwable) { $described = ['descripcion' => null, 'objetivo' => null, 'detalles' => [], 'nivel' => null, 'afectados' => []]; }
             DB::table('auditoria_carreras')->insert([
                 'carrera_id' => app(CareerContext::class)->careerId(),
                 'actor_id' => $request->user('api')?->id,
@@ -69,6 +69,9 @@ class AuditCareerMutation
                     'descripcion' => $described['descripcion'],
                     'objetivo' => $described['objetivo'],
                     'detalles' => $described['detalles'],
+                    'nivel' => $described['nivel'],
+                    // Personas afectadas (ids de usuario): permiten ver «lo que le hicieron» a cada quien.
+                    'afectados' => $described['afectados'],
                 ], JSON_UNESCAPED_UNICODE),
                 'creado_en' => now(),
             ]);
