@@ -28,7 +28,8 @@ class SubjectGroup extends Model
 
     protected $fillable = ['carrera_id', 'nombre', 'semestre', 'grupo', 'periodo_id', 'registro_proyectos_desde', 'registro_proyectos_hasta', 'activo'];
 
-    protected $appends = ['periodo'];
+    // "grupo" es la letra (clave_grupo); los fronts la leen con ese nombre.
+    protected $appends = ['periodo', 'grupo'];
 
     protected $casts = [
         'semestre' => 'integer',
@@ -53,7 +54,12 @@ class SubjectGroup extends Model
         return $names[$this->periodo_id] ?? null;
     }
 
-    public function asignaturas(): BelongsToMany
+    public function getGrupoAttribute(): ?string
+    {
+        return $this->attributes['clave_grupo'] ?? null;
+    }
+
+        public function asignaturas(): BelongsToMany
     {
         return $this->belongsToMany(Asignatura::class, 'cursos', 'grupo_id', 'asignatura_id');
     }

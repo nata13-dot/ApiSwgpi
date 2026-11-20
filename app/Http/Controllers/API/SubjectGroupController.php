@@ -33,7 +33,55 @@ class SubjectGroupController extends Controller
             $query->where('grupo', strtoupper($request->grupo));
         }
 
-        return response()->json($query->get());
+        $groups = $query->get();
+        if (!$request->boolean('with_students')) return response()->json($groups);
+
+        // Control de grupos: cada grupo con los alumnos de su matrícula activa (no por letra) y el estado de su periodo.
+        $careerId = app(\App\Support\CareerContext::class)->careerId();
+        $states = DB::table('carrera_periodos')->where('carrera_id', $careerId)->pluck('estado', 'periodo_id');
+        $enrolled = DB::table('matriculas_academicas as m')->join('usuarios as u', 'u.id', '=', 'm.estudiante_id')
+            ->whereIn('m.grupo_id', $groups->pluck('id'))->where('m.estado', 'activa')->where('u.activo', true)
+            ->get(['m.grupo_id', 'u.id', 'u.nombres', 'u.apellido_paterno', 'u.apellido_materno']);
+        // Alumnos aún sin matrícula: su grupo de la tabla anterior, hasta que se concilie el periodo.
+        $legacy = \App\Support\SchemaCache::hasTable('grupo_estudiantes') ? DB::table('grupo_estudiantes as ge')->join('usuarios as u', 'u.id', '=', 'ge.estudiante_id')
+            ->whereIn('ge.grupo_id', $groups->pluck('id'))->where('ge.activo', true)->where('u.activo', true)
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('matriculas_academicas as mx')->join('grupos_academicos as gx', 'gx.id', '=', 'mx.grupo_id')
+                ->whereColumn('mx.estudiante_id', 'ge.estudiante_id')->where('gx.carrera_id', $careerId)->where('mx.estado', 'activa'))
+            ->get(['ge.grupo_id', 'u.id', 'u.nombres', 'u.apellido_paterno', 'u.apellido_materno']) : collect();
+        $members = $enrolled->concat($legacy)->unique(fn ($row) => "{$row->grupo_id}:{$row->id}")
+            ->sortBy(fn ($row) => mb_strtolower("{$row->apellido_paterno} {$row->nombres}"))->groupBy('grupo_id');
+        $starts = DB::table('periodos_academicos')->pluck('fecha_inicio', 'id');
+        $data = $groups->map(function ($group) use ($states, $members, $starts) {
+            $state = $states[$group->periodo_id] ?? null;
+            $group->setAttribute('periodo_estado', $state);
+            $group->setAttribute('periodo_vigente', in_array($state, ['abierto', 'en_cierre'], true));
+            $group->setAttribute('alumnos', ($members->get($group->id) ?? collect())->map(fn ($u) => [
+                'id' => (string) $u->id, 'nombres' => $u->nombres, 'apa' => $u->apellido_paterno, 'ama' => $u->apellido_materno,
+            ])->values());
+            $group->setAttribute('periodo_inicio', $starts[$group->periodo_id] ?? null);
+
+            return $group;
+        })
+            // Primero el periodo vigente; después los demás, del más reciente al más antiguo.
+            ->sortBy(fn ($g) => [$g->periodo_vigente ? 0 : 1, -strtotime((string) ($g->periodo_inicio ?? '1970-01-01')), (string) $g->grupo])->values();
+
+        return response()->json($data);
+    }
+
+    /** Quita al alumno del grupo: su matrícula en ese grupo queda inactiva; el historial se conserva. */
+    public function removeStudent($id, string $student)
+    {
+        $group = SubjectGroup::find($id);
+        abort_unless($group, 404, 'Grupo no encontrado');
+        $row = DB::table('matriculas_academicas')->where('grupo_id', $group->id)->where('estudiante_id', $student)->where('estado', 'activa')->first();
+        $legacy = \App\Support\SchemaCache::hasTable('grupo_estudiantes')
+            ? DB::table('grupo_estudiantes')->where('grupo_id', $group->id)->where('estudiante_id', $student)->where('activo', true)->first() : null;
+        abort_unless($row || $legacy, 404, 'El alumno no está en este grupo.');
+        if ($row) DB::table('matriculas_academicas')->where('id', $row->id)->update(['estado' => 'inactiva', 'version' => DB::raw('version + 1'), 'updated_at' => now()]);
+        if ($legacy) DB::table('grupo_estudiantes')->where('grupo_id', $group->id)->where('estudiante_id', $student)->update(['activo' => false]);
+        app(\App\Services\AcademicWorkflowService::class)->audit('matricula.retirada', 'matricula', $student, $row ?? $legacy, ['activo' => false, 'grupo_id' => $group->id]);
+
+        return response()->json(['message' => 'Alumno quitado del grupo; se conserva su historial.']);
     }
 
     public function store(Request $request)

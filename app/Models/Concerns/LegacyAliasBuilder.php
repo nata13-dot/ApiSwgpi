@@ -213,7 +213,12 @@ class LegacyAliasBuilder extends Builder
             && \App\Support\SchemaCache::hasTable('matriculas_academicas')) {
             $career = (int) app(\App\Support\CareerContext::class)->careerId();
             $field = $name === 'semestre' ? 'semestre' : 'clave_grupo';
-            return new Expression("(SELECT g.{$field} FROM matriculas_academicas m JOIN grupos_academicos g ON g.id=m.grupo_id JOIN carrera_periodos cp ON cp.carrera_id=g.carrera_id AND cp.periodo_id=g.periodo_id WHERE m.estudiante_id=usuarios.id AND g.carrera_id={$career} AND m.estado='activa' AND cp.estado IN ('abierto','en_cierre') LIMIT 1)");
+            // Matrícula del periodo abierto y, si no hay, la activa más reciente (igual que User::academicGroup()).
+            // Sin matrícula, el grupo de la tabla anterior (grupo_estudiantes) hasta que se concilie el periodo.
+            $enrolled = "(SELECT g.{$field} FROM matriculas_academicas m JOIN grupos_academicos g ON g.id=m.grupo_id LEFT JOIN carrera_periodos cp ON cp.carrera_id=g.carrera_id AND cp.periodo_id=g.periodo_id LEFT JOIN periodos_academicos pa ON pa.id=g.periodo_id WHERE m.estudiante_id=usuarios.id AND g.carrera_id={$career} AND m.estado='activa' ORDER BY (COALESCE(cp.estado, '') IN ('abierto','en_cierre')) DESC, pa.fecha_inicio DESC, m.id DESC LIMIT 1)";
+            if (!\App\Support\SchemaCache::hasTable('grupo_estudiantes')) return new Expression($enrolled);
+            $legacy = "(SELECT g.{$field} FROM grupo_estudiantes ge JOIN grupos_academicos g ON g.id=ge.grupo_id LEFT JOIN periodos_academicos pa ON pa.id=g.periodo_id WHERE ge.estudiante_id=usuarios.id AND ge.activo=1 AND g.activo=1 AND g.carrera_id={$career} AND NOT EXISTS (SELECT 1 FROM matriculas_academicas mx JOIN grupos_academicos gx ON gx.id=mx.grupo_id WHERE mx.estudiante_id=usuarios.id AND gx.carrera_id={$career} AND mx.estado='activa') ORDER BY pa.fecha_inicio DESC, ge.inscrito_en DESC LIMIT 1)";
+            return new Expression("COALESCE({$enrolled}, {$legacy})");
         }
 
         if ($this->model instanceof \App\Models\RepositoryDocument && $name === 'document_category' && \App\Support\SchemaCache::hasColumn('documentos', 'categoria_detalle')) return new Expression('COALESCE(documentos.categoria_detalle, documentos.categoria)');

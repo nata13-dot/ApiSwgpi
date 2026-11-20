@@ -241,8 +241,8 @@ class User extends Authenticatable implements JWTSubject
     public function getSemestreAttribute(): ?int
     {
         if (app(CareerContext::class)->careerId() && \App\Support\SchemaCache::hasTable('matriculas_academicas')) {
-            $enrollment = app(\App\Services\AcademicWorkflowService::class)->enrollment($this->id);
-            return $enrollment?->semestre;
+            $group = $this->academicGroup();
+            return $group ? (int) $group->semestre : null;
         }
 
         if (array_key_exists('semestre', $this->attributes)) {
@@ -267,8 +267,7 @@ class User extends Authenticatable implements JWTSubject
     public function getGrupoAttribute(): ?string
     {
         if (app(CareerContext::class)->careerId() && \App\Support\SchemaCache::hasTable('matriculas_academicas')) {
-            $enrollment = app(\App\Services\AcademicWorkflowService::class)->enrollment($this->id);
-            return $enrollment?->clave_grupo;
+            return $this->academicGroup()?->clave_grupo;
         }
 
         if (array_key_exists('grupo', $this->attributes)) {
@@ -287,6 +286,37 @@ class User extends Authenticatable implements JWTSubject
         return $query
             ->orderByDesc('grupo_estudiantes.inscrito_en')
             ->value('grupos_academicos.clave_grupo');
+    }
+
+    /**
+     * Grupo académico del alumno: su matrícula del periodo abierto y, si no tiene (o la carrera no tiene periodo
+     * abierto), su matrícula activa más reciente. Misma regla que el filtro de LegacyAliasBuilder.
+     */
+    public function academicGroup(): ?object
+    {
+        $careerId = app(CareerContext::class)->careerId();
+        if (!$careerId) return null;
+
+        return \App\Support\RequestMemo::remember("grupo-academico:{$careerId}:{$this->id}", function () use ($careerId) {
+            $enrollment = app(\App\Services\AcademicWorkflowService::class)->enrollment($this->id);
+            if ($enrollment) return (object) ['semestre' => $enrollment->semestre, 'clave_grupo' => $enrollment->clave_grupo];
+
+            $latest = \Illuminate\Support\Facades\DB::table('matriculas_academicas as m')
+                ->join('grupos_academicos as g', 'g.id', '=', 'm.grupo_id')
+                ->leftJoin('periodos_academicos as p', 'p.id', '=', 'g.periodo_id')
+                ->where('m.estudiante_id', $this->id)->where('g.carrera_id', $careerId)->where('m.estado', 'activa')
+                ->orderByDesc('p.fecha_inicio')->orderByDesc('m.id')
+                ->first(['g.semestre', 'g.clave_grupo']);
+            if ($latest || !\App\Support\SchemaCache::hasTable('grupo_estudiantes')) return $latest;
+
+            // Sin matrícula: el grupo de la tabla anterior, hasta que la conciliación del periodo lo pase a matrícula.
+            return \Illuminate\Support\Facades\DB::table('grupo_estudiantes as ge')
+                ->join('grupos_academicos as g', 'g.id', '=', 'ge.grupo_id')
+                ->leftJoin('periodos_academicos as p', 'p.id', '=', 'g.periodo_id')
+                ->where('ge.estudiante_id', $this->id)->where('ge.activo', true)->where('g.activo', true)->where('g.carrera_id', $careerId)
+                ->orderByDesc('p.fecha_inicio')->orderByDesc('ge.inscrito_en')
+                ->first(['g.semestre', 'g.clave_grupo']);
+        });
     }
 
     // JWT SUBJECT METHODS

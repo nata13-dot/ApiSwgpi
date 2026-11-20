@@ -366,6 +366,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::delete('/subject-groups/{id}', [SubjectGroupController::class, 'destroy']);
         Route::get('/subject-groups/{id}/students', [SubjectGroupController::class, 'students']);
         Route::post('/subject-groups/{id}/students', [SubjectGroupController::class, 'syncStudents']);
+        Route::delete('/subject-groups/{id}/students/{student}', [SubjectGroupController::class, 'removeStudent']);
     });
 
     // Projects (CRUD)
