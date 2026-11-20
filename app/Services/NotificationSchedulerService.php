@@ -18,7 +18,7 @@ class NotificationSchedulerService
         $today = ($today ?? today())->copy()->startOfDay();
 
         return ['entregas' => $this->deliveryReminders($today), 'prorrogas' => $this->extensionReminders($today),
-            'por_calificar' => $this->gradingReminders($today), 'salas' => $this->roomReminders($today)];
+            'por_calificar' => $this->gradingReminders($today), 'tesis' => $this->thesisReminders($today), 'salas' => $this->roomReminders($today)];
     }
 
     public function weekly(?Carbon $today = null): array
@@ -115,6 +115,42 @@ class NotificationSchedulerService
         }
 
         return array_sum($fresh);
+    }
+
+    /**
+     * Tesis: al alumno, 3 y 1 días antes de una entrega planeada que no ha enviado; a cada revisor, una vez por
+     * entrega cuando lleva 7 días sin revisar algún capítulo vigente.
+     */
+    private function thesisReminders(Carbon $today): int
+    {
+        if (!\App\Support\SchemaCache::hasTable('tesis_cursos')) return 0;
+        $sent = 0;
+        $plans = DB::table('tesis_plan_entregas as p')->join('tesis_cursos as c', 'c.id', '=', 'p.curso_id')->where('c.estado', 'activo')->whereNotNull('p.fecha_limite')
+            ->whereDate('p.fecha_limite', '>=', $today)->whereDate('p.fecha_limite', '<=', $today->copy()->addDays(3))
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('tesis_envios as e')->whereColumn('e.plan_id', 'p.id'))
+            ->get(['p.id', 'p.titulo', 'p.fecha_limite', 'c.id as curso_id', 'c.estudiante_id', 'c.carrera_id']);
+        foreach ($plans as $plan) {
+            $days = (int) $today->diffInDays(Carbon::parse($plan->fecha_limite)->startOfDay(), false);
+            if (!in_array($days, [3, 1], true)) continue;
+            $recipients = $this->once([$plan->estudiante_id], fn ($id) => "tesis_plan:{$plan->id}:{$days}:{$id}");
+            ActivityNotificationService::send($recipients, null, 'tesis', 'Entrega de tesis próxima', "«{$plan->titulo}» vence ".($days === 1 ? 'mañana' : "en {$days} días").'.', '/thesis?course='.$plan->curso_id, (int) $plan->carrera_id);
+            $sent += count($recipients);
+        }
+        $service = app(ThesisTrackingService::class);
+        foreach (DB::table('tesis_cursos')->where('estado', 'activo')->get(['id', 'titulo', 'carrera_id']) as $course) {
+            $reviewers = $service->reviewers($course->id);
+            foreach ($service->chapters($course->id, $reviewers) as $chapter) {
+                if (!$chapter['envio_id']) continue;
+                $at = DB::table('tesis_envios')->where('id', $chapter['envio_id'])->value('enviado_en');
+                if (!$at || Carbon::parse($at)->gt($today->copy()->subDays(7)->endOfDay())) continue;
+                $missing = $reviewers->pluck('id')->diff(collect($chapter['revisiones'])->pluck('docente_id'));
+                $recipients = $this->once($missing, fn ($id) => "tesis_revisar:{$chapter['envio_id']}:{$id}");
+                ActivityNotificationService::send($recipients, null, 'tesis', 'Tesis por revisar', "Tienes capítulos sin revisar de «{$course->titulo}» desde hace una semana.", '/thesis?course='.$course->id, (int) $course->carrera_id);
+                $sent += count($recipients);
+            }
+        }
+
+        return $sent;
     }
 
     private function roomReminders(Carbon $today): int

@@ -31,6 +31,7 @@ use App\Http\Controllers\API\ContinuityPolicyController;
 use App\Http\Controllers\API\CompanyController;
 use App\Http\Controllers\API\CourseEnrollmentController;
 use App\Http\Controllers\API\ProjectTrackingController;
+use App\Http\Controllers\API\ThesisTrackingController;
 
 // ========================
 // AUTENTICACIÓN (sin protección)
@@ -416,6 +417,23 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::put('/packages/{id}', [ProjectTrackingController::class, 'updatePackage'])->whereNumber('id');
         Route::delete('/packages/{id}', [ProjectTrackingController::class, 'destroyPackage'])->whereNumber('id');
         Route::post('/packages/{id}/apply', [ProjectTrackingController::class, 'applyPackage'])->whereNumber('id');
+    });
+
+    // Seguimiento de tesis (alumno, revisores, director y jefatura; la autorización fina va en el controlador)
+    Route::prefix('thesis')->group(function () {
+        Route::get('/', [ThesisTrackingController::class, 'index']);
+        Route::get('/options', [ThesisTrackingController::class, 'options']);
+        Route::post('/', [ThesisTrackingController::class, 'store']);
+        Route::get('/{id}', [ThesisTrackingController::class, 'show'])->whereNumber('id');
+        Route::put('/{id}', [ThesisTrackingController::class, 'update'])->whereNumber('id');
+        Route::put('/{id}/reviewers', [ThesisTrackingController::class, 'updateReviewers'])->whereNumber('id');
+        Route::post('/{id}/release', [ThesisTrackingController::class, 'release'])->whereNumber('id');
+        Route::post('/{id}/reopen', [ThesisTrackingController::class, 'reopen'])->whereNumber('id');
+        Route::post('/{id}/submissions', [ThesisTrackingController::class, 'submit'])->whereNumber('id')->middleware('throttle:20,1');
+        Route::get('/submissions/{envio}/file', [ThesisTrackingController::class, 'file'])->whereNumber('envio');
+        Route::put('/submissions/{envio}/chapters/{chapter}/review', [ThesisTrackingController::class, 'review'])->whereNumber(['envio', 'chapter']);
+        Route::post('/submissions/{envio}/annotations', [ThesisTrackingController::class, 'annotate'])->whereNumber('envio');
+        Route::delete('/annotations/{id}', [ThesisTrackingController::class, 'removeAnnotation'])->whereNumber('id');
     });
 
     // Asignaturas (solo Admin puede crear/editar)
