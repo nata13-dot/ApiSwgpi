@@ -18,6 +18,7 @@ class CareerAuditController extends Controller
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
             'per_page' => 'nullable|integer|min:10|max:100',
+            'q' => 'nullable|string|max:120',
         ]);
 
         $query = DB::table('auditoria_carreras as audit')
@@ -36,12 +37,22 @@ class CareerAuditController extends Controller
             ->when($validated['status'] ?? null, fn ($q, $value) => $q->where('audit.estado_http', $value))
             ->when($validated['date_from'] ?? null, fn ($q, $value) => $q->whereDate('audit.creado_en', '>=', $value))
             ->when($validated['date_to'] ?? null, fn ($q, $value) => $q->whereDate('audit.creado_en', '<=', $value))
+            // Texto libre: descripción, objetivo y detalles (por ejemplo, el nombre o número de control de un alumno), actor o ruta.
+            ->when(trim((string) ($validated['q'] ?? '')) !== '', function ($q) use ($validated) {
+                $term = '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($validated['q'])).'%';
+                $q->where(fn ($w) => $w->where('audit.detalle', 'like', $term)->orWhere('audit.ruta', 'like', $term)->orWhere('audit.actor_id', 'like', $term)
+                    ->orWhereRaw("CONCAT_WS(' ', actor.nombres, actor.apellido_paterno) LIKE ?", [$term]));
+            })
             ->orderByDesc('audit.id');
 
         $page = $query->paginate((int) ($validated['per_page'] ?? 25));
         $page->getCollection()->transform(function ($row) {
             $detail = json_decode((string) $row->detalle, true) ?: [];
             $row->dispositivo = \App\Support\DeviceLabel::from($row->agente_usuario, $detail['cliente'] ?? null);
+            // Registros anteriores a la descripción: se deduce de la acción y los parámetros guardados.
+            $row->descripcion = $detail['descripcion'] ?? \App\Support\AuditDescriber::fromStored($row->accion, (string) $row->metodo, (string) $row->ruta, (array) ($detail['route_parameters'] ?? []), (int) $row->estado_http);
+            $row->objetivo = $detail['objetivo'] ?? null;
+            $row->detalles = $detail['detalles'] ?? [];
 
             return $row;
         });
