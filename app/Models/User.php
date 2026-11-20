@@ -229,6 +229,22 @@ class User extends Authenticatable implements JWTSubject
         $this->attributes['perfil_completado_en'] = $value;
     }
 
+    // Nombres y apellidos se guardan siempre con formato de nombre propio, venga de donde venga el dato.
+    public function setNombresAttribute($value): void
+    {
+        $this->attributes['nombres'] = \App\Support\PersonName::format($value);
+    }
+
+    public function setApellidoPaternoAttribute($value): void
+    {
+        $this->attributes['apellido_paterno'] = \App\Support\PersonName::format($value);
+    }
+
+    public function setApellidoMaternoAttribute($value): void
+    {
+        $this->attributes['apellido_materno'] = $value === null || trim((string) $value) === '' ? null : \App\Support\PersonName::format($value);
+    }
+
     public function getTelefonosAttribute(): string
     {
         if (!$this->relationLoaded('phoneNumbers')) {

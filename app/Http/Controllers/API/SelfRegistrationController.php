@@ -77,11 +77,12 @@ class SelfRegistrationController extends Controller
         }
 
         $code = (string) random_int(100000, 999999);
-        $name = trim($validated['nombres']);
+        // La solicitud ya guarda el nombre con formato de nombre propio (así se ve al revisarla y en el correo).
+        $name = \App\Support\PersonName::format($validated['nombres']);
         $data = [
             'nombres' => $name,
-            'apa' => trim($validated['apa']),
-            'ama' => trim((string) ($validated['ama'] ?? '')) ?: null,
+            'apa' => \App\Support\PersonName::format($validated['apa']),
+            'ama' => \App\Support\PersonName::format(trim((string) ($validated['ama'] ?? ''))) ?: null,
             'grupo_id' => (int) $validated['grupo_id'],
             'password' => Hash::make($validated['password']),
         ];

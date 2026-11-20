@@ -185,6 +185,37 @@ Artisan::command('sgpi:sync-tracking {--career= : Sólo esta carrera}', function
     }
     return self::SUCCESS;
 })->purpose('Liga los proyectos a las materias de seguimiento de su grupo y modalidad');
+Artisan::command('sgpi:normalize-names {--apply : Guarda los cambios; sin esta opción sólo cuenta lo que cambiaría}', function () {
+    // Corrige los nombres ya guardados (por ejemplo, alumnos que se registraron en MAYÚSCULAS). No imprime nombres.
+    $fields = ['nombres', 'apellido_paterno', 'apellido_materno'];
+    $changes = array_fill_keys($fields, 0);
+    $people = 0;
+    DB::table('usuarios')->orderBy('id')->select(array_merge(['id'], $fields))->chunk(500, function ($rows) use ($fields, &$changes, &$people) {
+        foreach ($rows as $row) {
+            $update = [];
+            foreach ($fields as $field) {
+                if ($row->{$field} === null || $row->{$field} === '') continue;
+                $formatted = \App\Support\PersonName::format($row->{$field});
+                if ($formatted !== $row->{$field}) { $update[$field] = $formatted; $changes[$field]++; }
+            }
+            if (!$update) continue;
+            $people++;
+            if ($this->option('apply')) DB::table('usuarios')->where('id', $row->id)->update($update);
+        }
+    });
+    $pending = 0;
+    foreach (DB::table('autoregistros_pendientes')->whereIn('estado', ['codigo', 'por_aprobar'])->get(['id', 'datos']) as $request) {
+        $data = json_decode((string) $request->datos, true) ?: [];
+        $fixed = $data;
+        foreach (['nombres', 'apa', 'ama'] as $field) if (!empty($data[$field])) $fixed[$field] = \App\Support\PersonName::format($data[$field]);
+        if ($fixed === $data) continue;
+        $pending++;
+        if ($this->option('apply')) DB::table('autoregistros_pendientes')->where('id', $request->id)->update(['datos' => json_encode($fixed, JSON_UNESCAPED_UNICODE)]);
+    }
+    $this->info(($this->option('apply') ? 'Corregidos' : 'Por corregir').": {$people} usuario(s) · nombres {$changes['nombres']}, apellido paterno {$changes['apellido_paterno']}, apellido materno {$changes['apellido_materno']} · {$pending} solicitud(es) pendiente(s).");
+    if (!$this->option('apply') && ($people || $pending)) $this->line('Para guardarlos: php artisan sgpi:normalize-names --apply');
+    return self::SUCCESS;
+})->purpose('Pone en formato de nombre propio los nombres y apellidos guardados');
 Artisan::command('sgpi:release-token {nombre=compilacion : Para reconocer la llave} {--revoke : Revoca todas las llaves activas}', function () {
     if ($this->option('revoke')) {
         $count = DB::table('app_llaves_publicacion')->whereNull('revocada_en')->update(['revocada_en' => now()]);
