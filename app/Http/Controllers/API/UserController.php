@@ -985,6 +985,28 @@ class UserController extends Controller
         return response()->json(['message' => $grant ? ($until ? 'Ahora es administrador general hasta el '.$until->format('d/m/Y H:i').'.' : 'Ahora es administrador general.') : 'Se retiró la administración general.', 'es_administrador_general' => $grant, 'hasta' => $until?->toIso8601String()]);
     }
 
+    /** Últimos movimientos de administración general: designaciones, cambios de vigencia, retiros y vencimientos. */
+    private function generalAdminHistory()
+    {
+        return DB::table('bitacora_usuarios as b')
+            ->leftJoin('usuarios as u', 'u.id', '=', 'b.usuario_id')
+            ->leftJoin('usuarios as a', 'a.id', '=', 'b.administrador_id')
+            ->where('b.accion', 'like', 'admin_general.%')->orderByDesc('b.id')->limit(40)
+            ->get(['b.accion', 'b.detalle', 'b.accion_en', 'b.usuario_id', 'u.nombres', 'u.apellido_paterno', 'a.nombres as a_nombres', 'a.apellido_paterno as a_apellido'])
+            ->map(function ($row) {
+                $detail = json_decode((string) $row->detalle, true) ?: [];
+
+                return [
+                    'accion' => str_replace('admin_general.', '', $row->accion),
+                    'persona' => trim("{$row->nombres} {$row->apellido_paterno}") ?: (string) $row->usuario_id,
+                    'persona_id' => (string) $row->usuario_id,
+                    'por' => trim("{$row->a_nombres} {$row->a_apellido}") ?: null,
+                    'hasta' => $detail['hasta'] ?? null,
+                    'en' => \Illuminate\Support\Carbon::parse($row->accion_en)->toIso8601String(),
+                ];
+            })->values();
+    }
+
     /** Administradores generales vigentes: quién, desde cuándo, quién lo designó y si es temporal. */
     public function generalAdmins()
     {
@@ -1005,7 +1027,7 @@ class UserController extends Controller
             'desde' => isset($grants[$u->id]) ? \Illuminate\Support\Carbon::parse($grants[$u->id]->accion_en)->toIso8601String() : null,
             'designado_por' => isset($grants[$u->id]) ? trim("{$grants[$u->id]->nombres} {$grants[$u->id]->apellido_paterno}") ?: null : null,
             'soy_yo' => (string) $u->id === $me,
-        ])->values()]);
+        ])->values(), 'historial' => $this->generalAdminHistory()]);
     }
 
     private function isGeneralAdminAccount(User $user): bool
