@@ -13,7 +13,8 @@ class CareerManagementController extends Controller
     public function index()
     {
         // Un solo conteo agrupado por carrera y perfil en lugar de una consulta por perfil.
-        $roles = DB::table('usuario_carrera')->where('activo', true)
+        // Los administradores generales no cuentan como jefatura ni personal de la carrera.
+        $roles = \App\Support\GeneralAdmins::exclude(DB::table('usuario_carrera')->where('activo', true), 'usuario_id')
             ->selectRaw('carrera_id, perfil_id, COUNT(*) total')->groupBy('carrera_id', 'perfil_id')->get();
         $byProfile = fn (int $profile) => $roles->where('perfil_id', $profile)->pluck('total', 'carrera_id');
         $memberships = $roles->groupBy('carrera_id')->map(fn ($rows) => $rows->sum('total'));
@@ -242,6 +243,7 @@ class CareerManagementController extends Controller
             ->where('carrera_id', $validated['carrera_id'])
             // Aquí se gestiona el personal; los alumnos se administran dentro de la carrera.
             ->when(empty($validated['include_students']), fn ($q) => $q->where('perfil_id', '!=', 3));
+        \App\Support\GeneralAdmins::exclude($query, 'usuario_id');
 
         if ($search = trim((string) ($validated['search'] ?? ''))) {
             $query->whereHas('user', function ($userQuery) use ($search): void {
@@ -259,12 +261,13 @@ class CareerManagementController extends Controller
     public function candidates(Request $request)
     {
         $validated = $request->validate([
-            'carrera_id' => 'required|integer|exists:carreras,id',
+            'carrera_id' => 'nullable|integer|exists:carreras,id',
             'search' => 'required|string|min:2|max:100',
         ]);
         $query = \App\Models\User::withoutGlobalScopes()->where('usuarios.activo', true)
             ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('usuario_carrera as alumno')->whereColumn('alumno.usuario_id', 'usuarios.id')->where('alumno.perfil_id', 3)->where('alumno.activo', true));
         \App\Support\TextSearch::apply($query, trim($validated['search']), ['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo']);
+        \App\Support\GeneralAdmins::exclude($query, 'usuarios.id');
         $users = $query->orderBy('nombres')->limit(8)->get(['usuarios.id', 'usuarios.nombres', 'usuarios.apellido_paterno', 'usuarios.apellido_materno']);
         $memberships = DB::table('usuario_carrera as uc')->join('carreras as c', 'c.id', '=', 'uc.carrera_id')
             ->whereIn('uc.usuario_id', $users->pluck('id'))->where('uc.activo', true)
@@ -272,7 +275,7 @@ class CareerManagementController extends Controller
 
         return response()->json(['data' => $users->map(function ($user) use ($memberships, $validated) {
             $own = collect($memberships[$user->id] ?? []);
-            $here = $own->firstWhere('carrera_id', (int) $validated['carrera_id']);
+            $here = !empty($validated['carrera_id']) ? $own->firstWhere('carrera_id', (int) $validated['carrera_id']) : null;
 
             return [
                 'id' => (string) $user->id,

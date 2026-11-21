@@ -176,6 +176,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::get('/database-backups/{backup}/download', [DatabaseBackupController::class, 'download']);
         Route::get('/careers/export', [CareerExportController::class, 'institutionalSummary']);
         Route::get('/audit', [CareerAuditController::class, 'index']);
+        Route::get('/general-admins', [UserController::class, 'generalAdmins']);
         Route::get('/audit/ip-check', [CareerAuditController::class, 'ipCheck']);
         Route::get('/audit/person/{id}', [CareerAuditController::class, 'person']);
         Route::get('/audit/retention', [CareerAuditController::class, 'retention']);

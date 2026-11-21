@@ -21,6 +21,7 @@ class CareerExportController extends Controller
                     ->join('usuarios as user', 'user.id', '=', 'membership.usuario_id')
                     ->join('perfiles as profile', 'profile.id', '=', 'membership.perfil_id')
                     ->where('membership.carrera_id', $career->id)
+                    ->whereNotIn('membership.usuario_id', \App\Support\GeneralAdmins::ids() ?: [''])
                     ->orderBy('membership.perfil_id')->orderBy('user.nombres')
                     ->get(['user.id', 'user.nombres', 'user.apellido_paterno', 'user.apellido_materno', 'user.correo', 'profile.nombre as perfil', 'membership.activo'])
                     ->map(fn ($row) => (array) $row)->all(),
@@ -96,10 +97,10 @@ class CareerExportController extends Controller
             return [
                 $career->clave,
                 $career->nombre,
-                DB::table('usuario_carrera')->where('carrera_id', $career->id)->where('activo', true)->count(),
-                DB::table('usuario_carrera')->where('carrera_id', $career->id)->where('perfil_id', 1)->where('activo', true)->count(),
-                DB::table('usuario_carrera')->where('carrera_id', $career->id)->where('perfil_id', 2)->where('activo', true)->count(),
-                DB::table('usuario_carrera')->where('carrera_id', $career->id)->where('perfil_id', 3)->where('activo', true)->count(),
+                \App\Support\GeneralAdmins::exclude(DB::table('usuario_carrera'), 'usuario_id')->where('carrera_id', $career->id)->where('activo', true)->count(),
+                \App\Support\GeneralAdmins::exclude(DB::table('usuario_carrera'), 'usuario_id')->where('carrera_id', $career->id)->where('perfil_id', 1)->where('activo', true)->count(),
+                \App\Support\GeneralAdmins::exclude(DB::table('usuario_carrera'), 'usuario_id')->where('carrera_id', $career->id)->where('perfil_id', 2)->where('activo', true)->count(),
+                \App\Support\GeneralAdmins::exclude(DB::table('usuario_carrera'), 'usuario_id')->where('carrera_id', $career->id)->where('perfil_id', 3)->where('activo', true)->count(),
                 DB::table('asignaturas')->where('carrera_id', $career->id)->where('activo', true)->count(),
                 DB::table('grupos_academicos')->where('carrera_id', $career->id)->where('activo', true)->count(),
                 \App\Support\CareerScope::constrain(DB::table('proyectos'), 'proyectos', $career->id)->where('activo', true)->count(),

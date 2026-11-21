@@ -387,6 +387,7 @@ class AuthController extends Controller
             'active_profile_id' => $activeProfileId,
             'capabilities' => \App\Http\Middleware\CheckRole::grantsForProfile($activeProfileId),
             'is_general_admin' => $user->globalProfileId() === 4,
+            'general_admin_until' => $user->globalProfileId() === 4 && $user->admin_general_hasta ? $user->admin_general_hasta->toIso8601String() : null,
             // Sólo cuenta para el administrador general: true cuando entró a la carrera activa.
             'career_entered' => $user->globalProfileId() !== 4 || $entered,
             'active_career' => $career ? $this->careerPayload($career, $activeProfileId) : null,

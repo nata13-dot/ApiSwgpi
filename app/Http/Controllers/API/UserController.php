@@ -27,6 +27,8 @@ class UserController extends Controller
         $query = User::withoutGlobalScope('careerMembership')
             ->whereHas('careerMemberships', fn ($membershipQuery) => $membershipQuery
                 ->where('carrera_id', $careerId));
+        // Los administradores generales se gestionan en la administración general, no como personal de la carrera.
+        \App\Support\GeneralAdmins::exclude($query, 'usuarios.id');
 
         if ($compact) {
             $columns = ['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'perfil_id', 'activo'];
@@ -926,7 +928,12 @@ class UserController extends Controller
         if ($actor?->globalProfileId() !== \App\Support\Profiles::GENERAL_ADMIN) {
             return response()->json(['error' => 'Solo el administrador general puede nombrar administradores generales.'], 403);
         }
-        $validated = $request->validate(['grant' => 'required|boolean', 'admin_password' => 'required|string'], [], ['admin_password' => 'contraseña']);
+        $validated = $request->validate([
+            'grant' => 'required|boolean', 'admin_password' => 'required|string',
+            // Vacío: definitiva. Con fecha: temporal hasta ese momento.
+            'hasta' => 'nullable|date|after:now|before:+2 years',
+        ], [], ['admin_password' => 'contraseña', 'hasta' => 'fecha de término']);
+        $until = $validated['grant'] && !empty($validated['hasta']) ? \Illuminate\Support\Carbon::parse($validated['hasta']) : null;
         if (!Hash::check($validated['admin_password'], $actor->password)) {
             return response()->json(['error' => 'Contraseña de administrador incorrecta'], 403);
         }
@@ -945,30 +952,56 @@ class UserController extends Controller
         if ($grant && UserCareer::where('usuario_id', $target->id)->where('perfil_id', \App\Support\Profiles::STUDENT)->where('activo', true)->exists()) {
             return response()->json(['error' => 'Un estudiante no puede ser administrador general.'], 422);
         }
-        if ($this->isGeneralAdminAccount($target) === $grant) {
-            return response()->json(['message' => $grant ? 'Ya es administrador general.' : 'No es administrador general.', 'es_administrador_general' => $grant]);
+        $already = $this->isGeneralAdminAccount($target);
+        if (!$grant && !$already) {
+            return response()->json(['message' => 'No es administrador general.', 'es_administrador_general' => false]);
         }
 
-        DB::transaction(function () use ($target, $actor, $grant) {
-            DB::table('usuarios')->where('id', $target->id)->update(['es_administrador_general' => $grant, 'actualizado_en' => now()]);
+        DB::transaction(function () use ($target, $actor, $grant, $until, $already) {
+            DB::table('usuarios')->where('id', $target->id)->update(['es_administrador_general' => $grant, 'admin_general_hasta' => $until, 'actualizado_en' => now()]);
             DB::table('bitacora_usuarios')->insert([
                 'usuario_id' => $target->id,
                 'administrador_id' => $actor->id,
-                'accion' => $grant ? 'admin_general.otorgado' : 'admin_general.retirado',
-                'detalle' => json_encode(['es_administrador_general' => $grant]),
+                'accion' => !$grant ? 'admin_general.retirado' : ($already ? 'admin_general.vigencia' : 'admin_general.otorgado'),
+                'detalle' => json_encode(['es_administrador_general' => $grant, 'hasta' => $until?->toIso8601String()]),
                 'accion_en' => now(),
             ]);
         });
+        if ($grant && $already) {
+            return response()->json(['message' => $until ? 'Vigencia actualizada hasta el '.$until->format('d/m/Y H:i').'.' : 'Ahora es administrador general definitivo.', 'es_administrador_general' => true, 'hasta' => $until?->toIso8601String()]);
+        }
         // Al retirarlo se cierran sus sesiones de la app para que vuelva a entrar con su perfil de carrera.
         if (!$grant && \App\Support\SchemaCache::hasTable('sesiones_app')) {
             app(\App\Services\AppSessionService::class)->revokeAllForUser((string) $target->id);
         }
         \App\Services\ActivityNotificationService::send([$target->id], $actor->id, 'cuenta',
             $grant ? 'Ahora eres administrador general' : 'Ya no eres administrador general',
-            $grant ? 'Cierra sesión y vuelve a entrar para ver todas las carreras y opciones de administración.' : 'Tu cuenta vuelve a su perfil dentro de la carrera.',
+            $grant ? 'Cierra sesión y vuelve a entrar para ver todas las carreras y opciones de administración.'.($until ? ' Es temporal: vence el '.$until->format('d/m/Y H:i').'.' : '') : 'Tu cuenta vuelve a su perfil dentro de la carrera.',
             '/dashboard');
 
-        return response()->json(['message' => $grant ? 'Ahora es administrador general.' : 'Se retiró la administración general.', 'es_administrador_general' => $grant]);
+        return response()->json(['message' => $grant ? ($until ? 'Ahora es administrador general hasta el '.$until->format('d/m/Y H:i').'.' : 'Ahora es administrador general.') : 'Se retiró la administración general.', 'es_administrador_general' => $grant, 'hasta' => $until?->toIso8601String()]);
+    }
+
+    /** Administradores generales vigentes: quién, desde cuándo, quién lo designó y si es temporal. */
+    public function generalAdmins()
+    {
+        abort_unless(auth('api')->user()?->globalProfileId() === \App\Support\Profiles::GENERAL_ADMIN, 403);
+        $rows = DB::table('usuarios')->where('es_administrador_general', true)->where('activo', true)
+            ->where(fn ($q) => $q->whereNull('admin_general_hasta')->orWhere('admin_general_hasta', '>', now()))
+            ->orderBy('nombres')->get(['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'admin_general_hasta']);
+        $grants = DB::table('bitacora_usuarios as b')->leftJoin('usuarios as a', 'a.id', '=', 'b.administrador_id')
+            ->whereIn('b.usuario_id', $rows->pluck('id'))->where('b.accion', 'admin_general.otorgado')->orderByDesc('b.id')
+            ->get(['b.usuario_id', 'b.accion_en', 'a.nombres', 'a.apellido_paterno'])->unique('usuario_id')->keyBy('usuario_id');
+        $me = (string) auth('api')->id();
+
+        return response()->json(['data' => $rows->map(fn ($u) => [
+            'id' => (string) $u->id,
+            'nombre' => trim("{$u->nombres} {$u->apellido_paterno} {$u->apellido_materno}"),
+            'hasta' => $u->admin_general_hasta ? \Illuminate\Support\Carbon::parse($u->admin_general_hasta)->toIso8601String() : null,
+            'desde' => isset($grants[$u->id]) ? \Illuminate\Support\Carbon::parse($grants[$u->id]->accion_en)->toIso8601String() : null,
+            'designado_por' => isset($grants[$u->id]) ? trim("{$grants[$u->id]->nombres} {$grants[$u->id]->apellido_paterno}") ?: null : null,
+            'soy_yo' => (string) $u->id === $me,
+        ])->values()]);
     }
 
     private function isGeneralAdminAccount(User $user): bool

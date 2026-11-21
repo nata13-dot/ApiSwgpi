@@ -64,7 +64,7 @@ class DashboardController extends Controller
                 'estado',
                 self::PROPOSAL_STATUSES
             );
-            $userCounts = DB::table('usuarios')
+            $userCounts = \App\Support\GeneralAdmins::exclude(DB::table('usuarios'), 'usuarios.id')
                 ->join('usuario_carrera', 'usuario_carrera.usuario_id', '=', 'usuarios.id')
                 ->where('usuario_carrera.carrera_id', $careerId)
                 ->selectRaw(

@@ -305,3 +305,22 @@ Schedule::command('sgpi:measure-continuity --source=programado')
     ->dailyAt('02:15')
     ->name('measure-operational-continuity')
     ->withoutOverlapping();
+
+// Administración general temporal: al vencer se retira, se cierran sus sesiones de la app y se le avisa.
+Artisan::command('sgpi:expire-general-admins', function () {
+    $expired = DB::table('usuarios')->where('es_administrador_general', true)
+        ->whereNotNull('admin_general_hasta')->where('admin_general_hasta', '<=', now())->pluck('id');
+    foreach ($expired as $id) {
+        DB::transaction(function () use ($id) {
+            DB::table('usuarios')->where('id', $id)->update(['es_administrador_general' => false, 'admin_general_hasta' => null, 'actualizado_en' => now()]);
+            DB::table('bitacora_usuarios')->insert([
+                'usuario_id' => $id, 'administrador_id' => null, 'accion' => 'admin_general.vencido',
+                'detalle' => json_encode(['es_administrador_general' => false]), 'motivo' => 'Venció la designación temporal', 'accion_en' => now(),
+            ]);
+        });
+        if (\App\Support\SchemaCache::hasTable('sesiones_app')) app(\App\Services\AppSessionService::class)->revokeAllForUser((string) $id);
+        \App\Services\ActivityNotificationService::send([$id], null, 'cuenta', 'Terminó tu administración general temporal', 'Tu cuenta vuelve a su perfil dentro de la carrera.', '/dashboard');
+    }
+    $this->info("Designaciones vencidas retiradas: {$expired->count()}");
+})->purpose('Retira las designaciones temporales de administración general vencidas');
+Schedule::command('sgpi:expire-general-admins')->everyFifteenMinutes()->name('expire-general-admins')->withoutOverlapping();

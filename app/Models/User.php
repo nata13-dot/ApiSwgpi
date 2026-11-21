@@ -63,6 +63,7 @@ class User extends Authenticatable implements JWTSubject
         'creado_en' => 'datetime',
         'actualizado_en' => 'datetime',
         'es_administrador_general' => 'boolean',
+        'admin_general_hasta' => 'datetime',
         'debe_cambiar_contrasena' => 'boolean',
         'semestre' => 'integer',
         'perfil_completado_en' => 'datetime',
@@ -150,12 +151,21 @@ class User extends Authenticatable implements JWTSubject
 
     private function isGeneralAdministrator(): bool
     {
-        if (array_key_exists('es_administrador_general', $this->attributes)) {
-            return (bool) $this->attributes['es_administrador_general'];
+        // La designación temporal deja de valer al vencer, aunque la tarea programada aún no la haya retirado.
+        if (array_key_exists('es_administrador_general', $this->attributes) && array_key_exists('admin_general_hasta', $this->attributes)) {
+            return (bool) $this->attributes['es_administrador_general'] && self::stillValid($this->attributes['admin_general_hasta']);
         }
 
-        return $this->generalAdministrator ??= $this->exists && (bool) static::withoutGlobalScopes()
-            ->whereKey($this->getKey())->value('es_administrador_general');
+        return $this->generalAdministrator ??= $this->exists && (function () {
+            $row = static::withoutGlobalScopes()->whereKey($this->getKey())->first(['es_administrador_general', 'admin_general_hasta']);
+
+            return $row && (bool) $row->getAttributes()['es_administrador_general'] && self::stillValid($row->getAttributes()['admin_general_hasta'] ?? null);
+        })();
+    }
+
+    private static function stillValid($until): bool
+    {
+        return $until === null || \Illuminate\Support\Carbon::parse($until)->isFuture();
     }
 
     private function principalProfileId(): int
