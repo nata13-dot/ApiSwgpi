@@ -109,6 +109,75 @@ class CareerManagementController extends Controller
             ->pluck('total', 'carrera_id');
     }
 
+    /** Módulos con los que nace una carrera nueva (los comunes a todas); los propios se activan después. */
+    private const DEFAULT_MODULES = ['academico', 'configuracion', 'entregables', 'evaluaciones', 'proyectos', 'reportes', 'repositorio', 'usuarios'];
+
+    /** Registrar una carrera: identidad, colores y, si se indica, su jefatura y asistencia. */
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'clave' => ['required', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/', 'unique:carreras,clave'],
+            'nombre' => 'required|string|max:180',
+            'nombre_corto' => 'required|string|max:100',
+            'color_primario' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'color_secundario' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'color_acento' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'lema' => 'nullable|string|max:255',
+            'activa' => 'sometimes|boolean',
+            'jefe_id' => ['nullable', 'string', \Illuminate\Validation\Rule::exists('usuarios', 'id')->where('activo', true)],
+            'asistente_id' => ['nullable', 'string', 'different:jefe_id', \Illuminate\Validation\Rule::exists('usuarios', 'id')->where('activo', true)],
+        ], [], ['clave' => 'clave', 'nombre_corto' => 'nombre corto', 'jefe_id' => 'jefatura', 'asistente_id' => 'asistencia']);
+        foreach (['jefe_id', 'asistente_id'] as $key) {
+            if (!empty($validated[$key])) abort_if(DB::table('usuario_carrera')->where('usuario_id', $validated[$key])->where('perfil_id', 3)->where('activo', true)->exists(), 422, 'La jefatura y la asistencia no pueden ser alumnos.');
+        }
+        $clave = strtoupper($validated['clave']);
+        $career = DB::transaction(function () use ($validated, $clave) {
+            $career = Career::create([
+                'clave' => $clave, 'slug' => \Illuminate\Support\Str::slug($validated['nombre'].'-'.$clave), 'nombre' => trim($validated['nombre']),
+                'nombre_corto' => trim($validated['nombre_corto']), 'color_primario' => strtoupper($validated['color_primario']),
+                'color_secundario' => strtoupper($validated['color_secundario']), 'color_acento' => isset($validated['color_acento']) ? strtoupper($validated['color_acento']) : null,
+                'lema' => $validated['lema'] ?? null, 'activa' => $validated['activa'] ?? true,
+            ]);
+            foreach (self::DEFAULT_MODULES as $module) {
+                DB::table('carrera_modulos')->insert(['carrera_id' => $career->id, 'modulo' => $module, 'habilitado' => true, 'creado_en' => now(), 'actualizado_en' => now()]);
+            }
+            foreach (['jefe_id' => 5, 'asistente_id' => 6] as $key => $profile) {
+                if (empty($validated[$key])) continue;
+                $principal = !DB::table('usuario_carrera')->where('usuario_id', $validated[$key])->where('es_principal', true)->where('activo', true)->exists();
+                DB::table('usuario_carrera')->insert(['usuario_id' => $validated[$key], 'carrera_id' => $career->id, 'perfil_id' => $profile,
+                    'es_principal' => $principal, 'activo' => true, 'asignado_por' => auth('api')->id(), 'creado_en' => now(), 'actualizado_en' => now()]);
+            }
+
+            return $career;
+        });
+
+        return response()->json(['message' => "Carrera {$career->nombre_corto} registrada.", 'career' => $career->fresh()], 201);
+    }
+
+    /** Logo o portada de la carrera (imagen pública). La portada es opcional: sin ella se usan las fotos del instituto. */
+    public function storeImage(Request $request, Career $career)
+    {
+        $data = $request->validate(['tipo' => 'required|in:logo,portada', 'imagen' => 'required|image|mimes:jpg,jpeg,png,webp|max:4096']);
+        $column = $data['tipo'] === 'logo' ? 'logo_ruta' : 'portada_ruta';
+        $old = $career->{$column};
+        $path = $request->file('imagen')->store("careers/{$career->id}", 'public');
+        $career->update([$column => $path]);
+        if ($old && !str_starts_with($old, '/') && \Illuminate\Support\Facades\Storage::disk('public')->exists($old)) \Illuminate\Support\Facades\Storage::disk('public')->delete($old);
+
+        return response()->json(['message' => $data['tipo'] === 'logo' ? 'Logo actualizado.' : 'Portada actualizada.', 'career' => $career->fresh()]);
+    }
+
+    public function destroyImage(Career $career, string $tipo)
+    {
+        abort_unless(in_array($tipo, ['logo', 'portada'], true), 404);
+        $column = $tipo === 'logo' ? 'logo_ruta' : 'portada_ruta';
+        $old = $career->{$column};
+        $career->update([$column => null]);
+        if ($old && !str_starts_with($old, '/') && \Illuminate\Support\Facades\Storage::disk('public')->exists($old)) \Illuminate\Support\Facades\Storage::disk('public')->delete($old);
+
+        return response()->json(['message' => $tipo === 'logo' ? 'Logo quitado.' : 'Portada quitada: se usarán las fotos del instituto.', 'career' => $career->fresh()]);
+    }
+
     public function update(Request $request, Career $career)
     {
         $validated = $request->validate([

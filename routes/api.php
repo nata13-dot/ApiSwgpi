@@ -84,6 +84,7 @@ Route::prefix('repositorio')->group(function () {
 Route::middleware(['auth:api', 'active'])->group(function () {
     Route::get('/auth/careers', [AuthController::class, 'careers']);
     Route::post('/auth/switch-career', [AuthController::class, 'switchCareer']);
+    Route::post('/auth/leave-career', [AuthController::class, 'leaveCareer'])->middleware('career');
     Route::post('/devices/push-token', [\App\Http\Controllers\API\PushDeviceController::class, 'store']);
     Route::delete('/devices/push-token', [\App\Http\Controllers\API\PushDeviceController::class, 'destroy']);
     Route::post('/auth/password/change-initial', [\App\Http\Controllers\API\ProfileController::class, 'changeInitialPassword']);
@@ -184,6 +185,9 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         // Simular un nivel de perfil (sin entrar a la cuenta de ninguna persona).
         Route::post('/view-level', [\App\Http\Controllers\API\ViewAsController::class, 'start']);
         Route::put('/careers/{career}', [CareerManagementController::class, 'update']);
+        Route::post('/careers', [CareerManagementController::class, 'store']);
+        Route::post('/careers/{career}/image', [CareerManagementController::class, 'storeImage']);
+        Route::delete('/careers/{career}/image/{tipo}', [CareerManagementController::class, 'destroyImage']);
         Route::get('/self-registration-rules', [SelfRegistrationController::class, 'rules']);
         Route::put('/self-registration-rules/{career}', [SelfRegistrationController::class, 'updateRule']);
         Route::get('/career-memberships', [CareerManagementController::class, 'memberships']);

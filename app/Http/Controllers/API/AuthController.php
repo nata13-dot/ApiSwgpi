@@ -123,7 +123,8 @@ class AuthController extends Controller
         }
 
         $remember = $this->rememberedToken();
-        $newToken = $this->issueToken($user, $remember, $access['career']->id, $access['profile_id'], \App\Services\AppSessionService::current());
+        // El administrador general que cambia de carrera «entra» a ella.
+        $newToken = $this->issueToken($user, $remember, $access['career']->id, $access['profile_id'], \App\Services\AppSessionService::current(), true);
         try {
             JWTAuth::invalidate(JWTAuth::getToken());
         } catch (\Throwable) {
@@ -134,8 +135,21 @@ class AuthController extends Controller
             'access_token' => $newToken,
             'token_type' => 'bearer',
             'remember' => $remember,
-            'user' => $this->userPayload($user, $access['career'], $access['profile_id']),
+            'user' => $this->userPayload($user, $access['career'], $access['profile_id'], true),
         ]);
+    }
+
+    /** El administrador general sale de la carrera: vuelve a la administración institucional (sólo consulta en carreras). */
+    public function leaveCareer()
+    {
+        $user = auth('api')->user();
+        abort_unless($user->globalProfileId() === 4, 403, 'Sólo el administrador general entra y sale de las carreras.');
+        $career = app(\App\Support\CareerContext::class)->career();
+        $remember = $this->rememberedToken();
+        $newToken = $this->issueToken($user, $remember, $career->id, 4, \App\Services\AppSessionService::current(), false);
+        try { JWTAuth::invalidate(JWTAuth::getToken()); } catch (\Throwable) { /* el nuevo token sigue siendo válido */ }
+
+        return response()->json(['access_token' => $newToken, 'token_type' => 'bearer', 'remember' => $remember, 'user' => $this->userPayload($user, $career, 4, false)]);
     }
 
     public function logout(Request $request)
@@ -358,9 +372,11 @@ class AuthController extends Controller
         return 'auth:reset_attempts:'.sha1(strtolower($email));
     }
 
-    private function userPayload(User $user, ?Career $career = null, ?int $activeProfileId = null): array
+    private function userPayload(User $user, ?Career $career = null, ?int $activeProfileId = null, ?bool $entered = null): array
     {
         $activeProfileId ??= (int) $user->perfil_id;
+        // Sin valor explícito: lo que diga el token de la petición (al iniciar sesión no hay token: fuera de la carrera).
+        $entered ??= (function () { try { return JWTAuth::parseToken()->getPayload()->get('career_entered') === true; } catch (\Throwable) { return false; } })();
         $payload = [
             'id' => $user->id,
             'nombres' => $user->nombres,
@@ -371,6 +387,8 @@ class AuthController extends Controller
             'active_profile_id' => $activeProfileId,
             'capabilities' => \App\Http\Middleware\CheckRole::grantsForProfile($activeProfileId),
             'is_general_admin' => $user->globalProfileId() === 4,
+            // Sólo cuenta para el administrador general: true cuando entró a la carrera activa.
+            'career_entered' => $user->globalProfileId() !== 4 || $entered,
             'active_career' => $career ? $this->careerPayload($career, $activeProfileId) : null,
             'careers' => $this->availableCareers($user),
             'semestre' => $user->semestre ?? null,
@@ -402,9 +420,10 @@ class AuthController extends Controller
             'simulated_profile' => $simulated, 'simulated_label' => $simulated ? \App\Support\Profiles::label($simulated) : null];
     }
 
-    private function issueToken(User $user, bool $remember, int $careerId, int $profileId, ?string $appSession = null): string
+    private function issueToken(User $user, bool $remember, int $careerId, int $profileId, ?string $appSession = null, bool $entered = false): string
     {
-        $claims = ['remember' => $remember, 'career_id' => $careerId, 'career_role' => $profileId];
+        // career_entered: el administrador general entró a la carrera (ResolveCareerContext lo exige para modificarla).
+        $claims = ['remember' => $remember, 'career_id' => $careerId, 'career_role' => $profileId, 'career_entered' => $entered];
         if (!$appSession) {
             return JWTAuth::claims($claims)->fromUser($user);
         }

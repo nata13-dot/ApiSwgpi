@@ -11,6 +11,8 @@ class CareerContext
     private ?int $profileId = null;
     private ?User $user = null;
     private ?int $simulatedProfile = null;
+    /** El administrador general «entró» a esta carrera (sólo así puede modificar sus datos). */
+    private bool $entered = true;
 
     public function set(User $user, Career $career, int $profileId, ?int $simulatedProfile = null): void
     {
@@ -18,6 +20,16 @@ class CareerContext
         $this->career = $career;
         $this->profileId = $profileId;
         $this->simulatedProfile = $simulatedProfile;
+    }
+
+    public function setEntered(bool $entered): void
+    {
+        $this->entered = $entered;
+    }
+
+    public function entered(): bool
+    {
+        return $this->entered;
     }
 
     /** Perfil que el administrador general está simulando (sólo lectura), o null. */

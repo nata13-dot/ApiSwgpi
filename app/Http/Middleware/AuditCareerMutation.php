@@ -49,6 +49,11 @@ class AuditCareerMutation
         try {
             try { $described = \App\Support\AuditDescriber::describe($request, $before, $status, $response, $error); }
             catch (\Throwable) { $described = ['descripcion' => null, 'objetivo' => null, 'detalles' => [], 'nivel' => null, 'afectados' => []]; }
+            // El administrador general dentro de una carrera: queda indicado en el registro.
+            $context = app(CareerContext::class);
+            if ($request->user('api')?->globalProfileId() === 4 && $context->career() && !$request->is('api/admin/*')) {
+                $described['detalles'][] = 'Como administración general dentro de '.$context->career()->clave;
+            }
             DB::table('auditoria_carreras')->insert([
                 'carrera_id' => app(CareerContext::class)->careerId(),
                 'actor_id' => $request->user('api')?->id,
