@@ -28,8 +28,8 @@ class AppReleaseController extends Controller
         if (!$latest) return response()->json(['data' => null]);
         // Obligatoria si alguna versión obligatoria publicada es mayor que la instalada.
         $minimum = (int) DB::table('app_versiones')->where('activa', true)->where('obligatoria', true)->max('version_code');
-        $notes = DB::table('app_versiones')->where('activa', true)->where('version_code', '>', $current)->orderByDesc('version_code')->limit(5)
-            ->get(['version_name', 'notas'])->filter(fn ($v) => trim((string) $v->notas) !== '')->map(fn ($v) => ['version' => $v->version_name, 'notas' => $v->notas])->values();
+        // Aunque falten varias versiones, sólo se instala la última: se muestran sólo sus novedades.
+        $notes = trim((string) $latest->notas) !== '' ? [['version' => $latest->version_name, 'notas' => $latest->notas]] : [];
 
         return response()->json(['data' => [
             'id' => $latest->id,
