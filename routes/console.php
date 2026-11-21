@@ -325,3 +325,9 @@ Artisan::command('sgpi:expire-general-admins', function () {
     $this->info("Designaciones vencidas retiradas: {$expired->count()}");
 })->purpose('Retira las designaciones temporales de administración general vencidas');
 Schedule::command('sgpi:expire-general-admins')->everyFifteenMinutes()->name('expire-general-admins')->withoutOverlapping();
+
+// Versiones de la app: conserva sólo las últimas 3 (también se hace al publicar).
+Artisan::command('sgpi:prune-app-releases', function () {
+    $removed = \App\Http\Controllers\API\AppReleaseController::prune();
+    $this->info("Versiones eliminadas: {$removed}. Se conservan las últimas ".\App\Http\Controllers\API\AppReleaseController::KEEP.'.');
+})->purpose('Elimina las versiones de la app anteriores a las últimas 3');

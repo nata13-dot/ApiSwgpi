@@ -18,6 +18,8 @@ class AppReleaseController extends Controller
 {
     private const DISK = 'local';
     private const DIR = 'app-releases';
+    /** Por seguridad sólo se conservan las últimas versiones; las anteriores se borran (registro y APK). */
+    public const KEEP = 3;
 
     /** Pública: la consulta también se hace antes de iniciar sesión. */
     public function latest(Request $request)
@@ -27,7 +29,9 @@ class AppReleaseController extends Controller
         $latest = DB::table('app_versiones')->where('activa', true)->orderByDesc('version_code')->first();
         if (!$latest) return response()->json(['data' => null]);
         // Obligatoria si alguna versión obligatoria publicada es mayor que la instalada.
-        $minimum = (int) DB::table('app_versiones')->where('activa', true)->where('obligatoria', true)->max('version_code');
+        // También cuenta la obligatoria más reciente que ya se depuró (si no, quien la tenga pendiente podría saltarla).
+        $minimum = max((int) DB::table('app_versiones')->where('activa', true)->where('obligatoria', true)->max('version_code'),
+            (int) \App\Models\SystemSetting::valueFor('app_min_version_code', 0));
         // Aunque falten varias versiones, sólo se instala la última: se muestran sólo sus novedades.
         $notes = trim((string) $latest->notas) !== '' ? [['version' => $latest->version_name, 'notas' => $latest->notas]] : [];
 
@@ -111,7 +115,9 @@ class AppReleaseController extends Controller
             'publicada_por' => mb_substr($by, 0, 20), 'publicada_en' => now(),
         ]);
 
-        return response()->json(['message' => "Versión {$data['version_name']} publicada. Las apps la ofrecerán al abrirse.", 'id' => $id], 201);
+        $removed = self::prune();
+
+        return response()->json(['message' => "Versión {$data['version_name']} publicada. Las apps la ofrecerán al abrirse.".($removed ? " Se eliminaron {$removed} versiones anteriores (se conservan las últimas ".self::KEEP.')' : ''), 'id' => $id, 'eliminadas' => $removed], 201);
     }
 
     public function update(Request $request, int $id)
@@ -131,6 +137,24 @@ class AppReleaseController extends Controller
         DB::table('app_versiones')->where('id', $id)->delete();
 
         return response()->json(['message' => 'Versión eliminada.']);
+    }
+
+    /** Borra las versiones que no estén entre las últimas KEEP. Devuelve cuántas se eliminaron. */
+    public static function prune(): int
+    {
+        $keep = DB::table('app_versiones')->orderByDesc('version_code')->limit(self::KEEP)->pluck('id');
+        $old = DB::table('app_versiones')->whereNotIn('id', $keep)->get(['id', 'ruta', 'version_code', 'obligatoria']);
+        if ($old->isEmpty()) return 0;
+        $mandatory = (int) $old->where('obligatoria', true)->max('version_code');
+        if ($mandatory > (int) \App\Models\SystemSetting::valueFor('app_min_version_code', 0)) {
+            \App\Models\SystemSetting::setValue('app_min_version_code', $mandatory, 'integer', 'Última versión obligatoria ya depurada de la app');
+        }
+        foreach ($old as $release) {
+            if ($release->ruta) Storage::disk(self::DISK)->delete($release->ruta);
+            DB::table('app_versiones')->where('id', $release->id)->delete();
+        }
+
+        return $old->count();
     }
 
     private function looksLikeApk(string $path): bool
