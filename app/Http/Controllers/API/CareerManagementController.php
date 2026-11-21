@@ -224,6 +224,8 @@ class CareerManagementController extends Controller
         $validated = $request->validate([
             'carrera_id' => 'required|integer|exists:carreras,id',
             'search' => 'nullable|string|max:100',
+            'include_students' => 'sometimes|boolean',
+            'per_page' => 'sometimes|integer|min:10|max:100',
         ]);
 
         $query = UserCareer::query()
@@ -237,7 +239,9 @@ class CareerManagementController extends Controller
                         'usuarios.correo', 'usuarios.activo', 'membresia.perfil_id as career_profile_id']),
                 'career',
             ])
-            ->where('carrera_id', $validated['carrera_id']);
+            ->where('carrera_id', $validated['carrera_id'])
+            // Aquí se gestiona el personal; los alumnos se administran dentro de la carrera.
+            ->when(empty($validated['include_students']), fn ($q) => $q->where('perfil_id', '!=', 3));
 
         if ($search = trim((string) ($validated['search'] ?? ''))) {
             $query->whereHas('user', function ($userQuery) use ($search): void {
@@ -245,7 +249,38 @@ class CareerManagementController extends Controller
             });
         }
 
-        return response()->json($query->orderByDesc('activo')->orderBy('perfil_id')->paginate(25));
+        return response()->json($query->orderByDesc('activo')->orderByRaw('FIELD(perfil_id, 5, 6, 7, 1, 2, 3)')->paginate((int) ($validated['per_page'] ?? 25)));
+    }
+
+    /**
+     * Personal que se puede asignar a una carrera (buscador por nombre o número): cuentas activas que no son alumnos,
+     * con las carreras y roles que ya tienen.
+     */
+    public function candidates(Request $request)
+    {
+        $validated = $request->validate([
+            'carrera_id' => 'required|integer|exists:carreras,id',
+            'search' => 'required|string|min:2|max:100',
+        ]);
+        $query = \App\Models\User::withoutGlobalScopes()->where('usuarios.activo', true)
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('usuario_carrera as alumno')->whereColumn('alumno.usuario_id', 'usuarios.id')->where('alumno.perfil_id', 3)->where('alumno.activo', true));
+        \App\Support\TextSearch::apply($query, trim($validated['search']), ['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'correo']);
+        $users = $query->orderBy('nombres')->limit(8)->get(['usuarios.id', 'usuarios.nombres', 'usuarios.apellido_paterno', 'usuarios.apellido_materno']);
+        $memberships = DB::table('usuario_carrera as uc')->join('carreras as c', 'c.id', '=', 'uc.carrera_id')
+            ->whereIn('uc.usuario_id', $users->pluck('id'))->where('uc.activo', true)
+            ->get(['uc.usuario_id', 'uc.carrera_id', 'uc.perfil_id', 'c.clave'])->groupBy('usuario_id');
+
+        return response()->json(['data' => $users->map(function ($user) use ($memberships, $validated) {
+            $own = collect($memberships[$user->id] ?? []);
+            $here = $own->firstWhere('carrera_id', (int) $validated['carrera_id']);
+
+            return [
+                'id' => (string) $user->id,
+                'nombre' => trim("{$user->nombres} {$user->apellido_paterno} {$user->apellido_materno}"),
+                'carreras' => $own->map(fn ($m) => ['clave' => $m->clave, 'perfil_id' => (int) $m->perfil_id])->values(),
+                'perfil_aqui' => $here ? (int) $here->perfil_id : null,
+            ];
+        })->values()]);
     }
 
     public function storeMembership(Request $request)

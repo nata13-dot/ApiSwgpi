@@ -191,6 +191,7 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::get('/self-registration-rules', [SelfRegistrationController::class, 'rules']);
         Route::put('/self-registration-rules/{career}', [SelfRegistrationController::class, 'updateRule']);
         Route::get('/career-memberships', [CareerManagementController::class, 'memberships']);
+        Route::get('/career-candidates', [CareerManagementController::class, 'candidates']);
         Route::post('/career-memberships', [CareerManagementController::class, 'storeMembership']);
         Route::put('/career-memberships/{membership}', [CareerManagementController::class, 'updateMembership']);
         Route::delete('/career-memberships/{membership}', [CareerManagementController::class, 'destroyMembership']);
