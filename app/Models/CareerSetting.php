@@ -22,6 +22,11 @@ final class CareerSetting
         'proposal_registration_until',
         'proposal_semesters',
         'proposal_validator_teacher_ids',
+        // Registro de tesis por los alumnos (ThesisRegistrationController).
+        'thesis_registration_until',
+        'thesis_semesters',
+        'thesis_max_members',
+        'thesis_validator_teacher_ids',
     ];
 
     public static function all(): array

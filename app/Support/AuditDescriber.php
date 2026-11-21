@@ -140,6 +140,13 @@ final class AuditDescriber
         'ProjectTrackingController@updatePackage' => ['Editó un paquete de materias', null, null],
         'ProjectTrackingController@destroyPackage' => ['Eliminó un paquete de materias', null, null],
         'ProjectTrackingController@applyPackage' => ['Aplicó un paquete de materias', null, null],
+        'ThesisRegistrationController@register' => ['Registró su tesis para validación', null, null],
+        'ThesisRegistrationController@update' => ['Corrigió su registro de tesis', null, null],
+        'ThesisRegistrationController@invite' => ['Invitó a un compañero a su tesis', null, null],
+        'ThesisRegistrationController@answerInvitation' => ['Respondió una invitación a una tesis', null, null],
+        'ThesisRegistrationController@cancelInvitation' => ['Canceló una invitación a su tesis', null, null],
+        'ThesisRegistrationController@review' => ['Validó el registro de la tesis', 'project', 'id'],
+        'ThesisRegistrationController@updateSettings' => ['Cambió el registro de tesis (ventana, semestres y validadores)', null, null],
         'ThesisTrackingController@store' => ['Creó un curso de tesis', null, null],
         'ThesisTrackingController@update' => ['Editó el curso de tesis', 'thesis', 'id'],
         'ThesisTrackingController@updateReviewers' => ['Cambió los docentes revisores de la tesis', 'thesis', 'id'],
@@ -199,6 +206,7 @@ final class AuditDescriber
         'SemesterManagementController@decideException', 'CourseEnrollmentController@leave',
         'CareerManagementController@storeMembership', 'CareerManagementController@updateMembership', 'CareerManagementController@destroyMembership',
         'CareerManagementController@update', 'CareerModuleController@updateModule', 'SystemSettingController@update',
+        'ThesisRegistrationController@review', 'ThesisRegistrationController@updateSettings',
         'ThesisTrackingController@release', 'ThesisTrackingController@reopen', 'ThesisTrackingController@review', 'ThesisTrackingController@updateReviewers',
         'ProjectTrackingController@adjust', 'ProjectTrackingController@removeAdjustment', 'ProjectTrackingController@extend', 'ProjectTrackingController@unlink',
         'ProjectTrackingController@applyPackage', 'ResidencyController@review', 'ResidencyController@close',
@@ -360,6 +368,11 @@ final class AuditDescriber
             case 'ProposalWorkflowController@review':
                 $out[] = 'Decisión: '.str_replace('_', ' ', (string) $request->input('proposal_status'));
                 if ($request->filled('proposal_review_comment')) $out[] = 'Comentario: '.mb_substr((string) $request->input('proposal_review_comment'), 0, 300);
+                return $out;
+            case 'ThesisRegistrationController@review':
+                $out[] = 'Decisión: '.str_replace('_', ' ', (string) $request->input('decision'));
+                if ($request->filled('comentario')) $out[] = 'Comentario: '.mb_substr((string) $request->input('comentario'), 0, 300);
+                if ($request->filled('director_id')) $out[] = 'Director: '.self::label('user', $request->input('director_id'));
                 return $out;
             case 'ProposalWorkflowController@answerJoin':
                 $out[] = 'Respuesta: '.(string) $request->input('decision');

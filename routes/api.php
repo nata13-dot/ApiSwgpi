@@ -429,6 +429,20 @@ Route::middleware(['auth:api', 'active', 'career', 'career.module', 'audit', 'ac
         Route::post('/packages/{id}/apply', [ProjectTrackingController::class, 'applyPackage'])->whereNumber('id');
     });
 
+    // Registro de tesis por los alumnos y su validación (la autorización fina va en el controlador)
+    Route::prefix('thesis-registration')->group(function () {
+        Route::get('/status', [\App\Http\Controllers\API\ThesisRegistrationController::class, 'status']);
+        Route::post('/', [\App\Http\Controllers\API\ThesisRegistrationController::class, 'register'])->middleware('throttle:10,1');
+        Route::put('/mine', [\App\Http\Controllers\API\ThesisRegistrationController::class, 'update']);
+        Route::post('/invitations', [\App\Http\Controllers\API\ThesisRegistrationController::class, 'invite'])->middleware('throttle:10,1');
+        Route::put('/invitations/{id}', [\App\Http\Controllers\API\ThesisRegistrationController::class, 'answerInvitation'])->whereNumber('id');
+        Route::delete('/invitations/{id}', [\App\Http\Controllers\API\ThesisRegistrationController::class, 'cancelInvitation'])->whereNumber('id');
+        Route::get('/', [\App\Http\Controllers\API\ThesisRegistrationController::class, 'index']);
+        Route::post('/{id}/review', [\App\Http\Controllers\API\ThesisRegistrationController::class, 'review'])->whereNumber('id');
+        Route::get('/settings', [\App\Http\Controllers\API\ThesisRegistrationController::class, 'settings']);
+        Route::put('/settings', [\App\Http\Controllers\API\ThesisRegistrationController::class, 'updateSettings']);
+    });
+
     // Seguimiento de tesis (alumno, revisores, director y jefatura; la autorización fina va en el controlador)
     Route::prefix('thesis')->group(function () {
         Route::get('/', [ThesisTrackingController::class, 'index']);
