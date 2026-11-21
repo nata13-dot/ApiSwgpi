@@ -157,9 +157,12 @@ class User extends Authenticatable implements JWTSubject
         }
 
         return $this->generalAdministrator ??= $this->exists && (function () {
-            $row = static::withoutGlobalScopes()->whereKey($this->getKey())->first(['es_administrador_general', 'admin_general_hasta']);
+            // Antes de la migración (o en bases de prueba) puede no existir la fecha de término.
+            $withUntil = \App\Support\SchemaCache::hasColumn('usuarios', 'admin_general_hasta');
+            $row = static::withoutGlobalScopes()->whereKey($this->getKey())->toBase()
+                ->first($withUntil ? ['es_administrador_general', 'admin_general_hasta'] : ['es_administrador_general']);
 
-            return $row && (bool) $row->getAttributes()['es_administrador_general'] && self::stillValid($row->getAttributes()['admin_general_hasta'] ?? null);
+            return $row && (bool) ($row->es_administrador_general ?? false) && self::stillValid($row->admin_general_hasta ?? null);
         })();
     }
 

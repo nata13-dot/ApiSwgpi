@@ -13,9 +13,15 @@ class GeneralAdmins
     /** @return array<int, string> */
     public static function ids(): array
     {
-        return RequestMemo::remember('general-admin-ids', fn () => DB::table('usuarios')->where('es_administrador_general', true)
-            ->where(fn ($q) => $q->whereNull('admin_general_hasta')->orWhere('admin_general_hasta', '>', now()))
-            ->pluck('id')->map(fn ($id) => (string) $id)->all());
+        return RequestMemo::remember('general-admin-ids', function () {
+            if (!SchemaCache::hasColumn('usuarios', 'es_administrador_general')) return [];
+            $query = DB::table('usuarios')->where('es_administrador_general', true);
+            if (SchemaCache::hasColumn('usuarios', 'admin_general_hasta')) {
+                $query->where(fn ($q) => $q->whereNull('admin_general_hasta')->orWhere('admin_general_hasta', '>', now()));
+            }
+
+            return $query->pluck('id')->map(fn ($id) => (string) $id)->all();
+        });
     }
 
     /** Quita a los administradores generales de una consulta por la columna del usuario indicada. */

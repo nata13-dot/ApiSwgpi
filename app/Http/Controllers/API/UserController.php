@@ -958,7 +958,10 @@ class UserController extends Controller
         }
 
         DB::transaction(function () use ($target, $actor, $grant, $until, $already) {
-            DB::table('usuarios')->where('id', $target->id)->update(['es_administrador_general' => $grant, 'admin_general_hasta' => $until, 'actualizado_en' => now()]);
+            $changes = ['es_administrador_general' => $grant, 'actualizado_en' => now()];
+            if (\App\Support\SchemaCache::hasColumn('usuarios', 'admin_general_hasta')) $changes['admin_general_hasta'] = $until;
+            elseif ($until) abort(422, 'La designación temporal requiere actualizar la base de datos (migración pendiente).');
+            DB::table('usuarios')->where('id', $target->id)->update($changes);
             DB::table('bitacora_usuarios')->insert([
                 'usuario_id' => $target->id,
                 'administrador_id' => $actor->id,
@@ -986,9 +989,10 @@ class UserController extends Controller
     public function generalAdmins()
     {
         abort_unless(auth('api')->user()?->globalProfileId() === \App\Support\Profiles::GENERAL_ADMIN, 403);
+        $withUntil = \App\Support\SchemaCache::hasColumn('usuarios', 'admin_general_hasta');
         $rows = DB::table('usuarios')->where('es_administrador_general', true)->where('activo', true)
-            ->where(fn ($q) => $q->whereNull('admin_general_hasta')->orWhere('admin_general_hasta', '>', now()))
-            ->orderBy('nombres')->get(['id', 'nombres', 'apellido_paterno', 'apellido_materno', 'admin_general_hasta']);
+            ->when($withUntil, fn ($query) => $query->where(fn ($q) => $q->whereNull('admin_general_hasta')->orWhere('admin_general_hasta', '>', now())))
+            ->orderBy('nombres')->get(array_merge(['id', 'nombres', 'apellido_paterno', 'apellido_materno'], $withUntil ? ['admin_general_hasta'] : []));
         $grants = DB::table('bitacora_usuarios as b')->leftJoin('usuarios as a', 'a.id', '=', 'b.administrador_id')
             ->whereIn('b.usuario_id', $rows->pluck('id'))->where('b.accion', 'admin_general.otorgado')->orderByDesc('b.id')
             ->get(['b.usuario_id', 'b.accion_en', 'a.nombres', 'a.apellido_paterno'])->unique('usuario_id')->keyBy('usuario_id');
@@ -997,7 +1001,7 @@ class UserController extends Controller
         return response()->json(['data' => $rows->map(fn ($u) => [
             'id' => (string) $u->id,
             'nombre' => trim("{$u->nombres} {$u->apellido_paterno} {$u->apellido_materno}"),
-            'hasta' => $u->admin_general_hasta ? \Illuminate\Support\Carbon::parse($u->admin_general_hasta)->toIso8601String() : null,
+            'hasta' => !empty($u->admin_general_hasta) ? \Illuminate\Support\Carbon::parse($u->admin_general_hasta)->toIso8601String() : null,
             'desde' => isset($grants[$u->id]) ? \Illuminate\Support\Carbon::parse($grants[$u->id]->accion_en)->toIso8601String() : null,
             'designado_por' => isset($grants[$u->id]) ? trim("{$grants[$u->id]->nombres} {$grants[$u->id]->apellido_paterno}") ?: null : null,
             'soy_yo' => (string) $u->id === $me,

@@ -308,6 +308,7 @@ Schedule::command('sgpi:measure-continuity --source=programado')
 
 // Administración general temporal: al vencer se retira, se cierran sus sesiones de la app y se le avisa.
 Artisan::command('sgpi:expire-general-admins', function () {
+    if (!\App\Support\SchemaCache::hasColumn('usuarios', 'admin_general_hasta')) return $this->warn('Falta la migración 2026_11_24_000001_general_admin_expiry.');
     $expired = DB::table('usuarios')->where('es_administrador_general', true)
         ->whereNotNull('admin_general_hasta')->where('admin_general_hasta', '<=', now())->pluck('id');
     foreach ($expired as $id) {
